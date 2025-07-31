@@ -1,0 +1,24 @@
+{
+  "name": "laundry-backend",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node src/server.js",
+    "prisma:generate": "prisma generate",
+    "prisma:push": "prisma db push"
+  },
+  "dependencies": {
+    "@prisma/client": "^4.16.0",
+    "bcrypt": "^5.1.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.0.0",
+    "fastify": "^5.0.0",
+    "jsonwebtoken": "^9.0.0",
+    "papaparse": "^5.5.3",
+    "twilio": "^4.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.0",
+    "prisma": "^4.16.0"
+  }
+}
