@@ -25,6 +25,11 @@ export function printWashLabels({
       <head>
         <title>Etiquetas ${orderNum}</title>
         <style>
+        @page {
+            size: 80mm auto; 
+            margin: 0;
+           }
+           
           body {
             font-family: sans-serif;
             padding: 8px;
@@ -34,9 +39,9 @@ export function printWashLabels({
             width: 220px;
             padding: 8px;
             margin-bottom: 12px;
-            border: 1px solid #000;
             box-sizing: border-box;
             page-break-inside: avoid;
+            height: auto;
           }
           .label div { margin: 4px 0; }
           .cut {
@@ -45,7 +50,8 @@ export function printWashLabels({
             margin: 8px 0 12px;
           }
           @media print {
-            .label { page-break-after: always; }
+            .label { page-break-after: always; 
+            }
             body { margin: 0; }
           }
         </style>
