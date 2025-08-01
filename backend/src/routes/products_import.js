@@ -1,6 +1,7 @@
 // backend/src/routes/products_import.js
 import fs from 'fs';
-import { parse } from 'papaparse';
+import pkg from 'papaparse';
+const { parse } = pkg;
 import crypto from 'crypto';
 import path from 'path';
 
