@@ -62,17 +62,17 @@ export default function App() {
                         })}>POS</NavLink>
                     </li>
                     <li>
-                        <NavLink to="/inventory" style={({isActive}) => ({
+                        <NavLink to="/productos" style={({isActive}) => ({
                             display: 'block',
                             padding: '8px 12px',
                             borderRadius: 4,
                             textDecoration: 'none',
                             background: isActive ? '#e0e7ff' : 'transparent',
                             color: '#1f2956'
-                        })}>Inventario</NavLink>
+                        })}>Productos</NavLink>
                     </li>
                     <li>
-                        <NavLink to="/tasks" style={({isActive}) => ({
+                        <NavLink to="/tareas" style={({isActive}) => ({
                             display: 'block',
                             padding: '8px 12px',
                             borderRadius: 4,
@@ -82,7 +82,7 @@ export default function App() {
                         })}>Tareas</NavLink>
                     </li>
                     <li>
-                        <NavLink to="/users" style={({isActive}) => ({ /* mismo estilo */
+                        <NavLink to="/usuarios" style={({isActive}) => ({ /* mismo estilo */
                             display: 'block',
                             padding: '8px 12px',
                             borderRadius: 4,
@@ -102,9 +102,9 @@ export default function App() {
                 <Routes>
                     <Route path="/" element={<Navigate to="/pos" replace/>}/>
                     <Route path="/pos" element={<POS token={token}/>}/>
-                    <Route path="/inventory" element={<Inventory token={token}/>}/>
-                    <Route path="/tasks" element={<Tasks token={token}/>}/>
-                    <Route path="/users" element={<Users token={token}/>}/>
+                    <Route path="/productos" element={<Inventory token={token}/>}/>
+                    <Route path="/tareas" element={<Tasks token={token}/>}/>
+                    <Route path="/usuarios" element={<Users token={token}/>}/>
                     <Route path="*" element={<div>Ruta no encontrada</div>}/>
                 </Routes>
             </main>

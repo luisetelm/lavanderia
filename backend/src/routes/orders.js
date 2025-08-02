@@ -1,6 +1,6 @@
 // backend/src/routes/orders.js
-import nextOrderNum from '../utils/generateOrderNum.js';
-import { isValidSpanishPhone } from '../utils/validatePhone.js';
+//import nextOrderNum from '../utils/generateOrderNum.js';
+import {isValidSpanishPhone} from '../utils/validatePhone.js';
 
 export default async function (fastify, opts) {
     const prisma = fastify.prisma;
@@ -21,28 +21,28 @@ export default async function (fastify, opts) {
         let client = null;
         if (clientId) {
             client = await prisma.user.findUnique({
-                where: { id: Number(clientId) },
+                where: {id: Number(clientId)},
             });
-            if (!client) return reply.status(400).send({ error: 'clientId inválido' });
+            if (!client) return reply.status(400).send({error: 'clientId inválido'});
             if (client.role === 'customer' && !client.phone) {
-                return reply.status(400).send({ error: 'El cliente debe tener teléfono' });
+                return reply.status(400).send({error: 'El cliente debe tener teléfono'});
             }
         } else {
             // Necesitamos nombres y teléfono válido
             if (!clientFirstName || !clientLastName) {
                 return reply
                     .status(400)
-                    .send({ error: 'clientFirstName y clientLastName son obligatorios' });
+                    .send({error: 'clientFirstName y clientLastName son obligatorios'});
             }
             if (!clientPhone || !isValidSpanishPhone(clientPhone)) {
                 return reply
                     .status(400)
-                    .send({ error: 'Teléfono válido obligatorio (ej: 600123456)' });
+                    .send({error: 'Teléfono válido obligatorio (ej: 600123456)'});
             }
 
             if (clientEmail) {
                 client = await prisma.user.upsert({
-                    where: { email: clientEmail },
+                    where: {email: clientEmail},
                     update: {
                         firstName: clientFirstName,
                         lastName: clientLastName,
@@ -60,7 +60,7 @@ export default async function (fastify, opts) {
                 });
             } else {
                 // buscar por teléfono si ya existe
-                client = await prisma.user.findFirst({ where: { phone: clientPhone } });
+                client = await prisma.user.findFirst({where: {phone: clientPhone}});
                 if (!client) {
                     client = await prisma.user.create({
                         data: {
@@ -78,7 +78,7 @@ export default async function (fastify, opts) {
         if (!lines || !Array.isArray(lines) || lines.length === 0) {
             return reply
                 .status(400)
-                .send({ error: 'Debe haber al menos una línea en el pedido' });
+                .send({error: 'Debe haber al menos una línea en el pedido'});
         }
 
         // Calcular totales y preparar líneas
@@ -87,16 +87,16 @@ export default async function (fastify, opts) {
 
         for (const l of lines) {
             const product = await prisma.product.findUnique({
-                where: { id: l.productId },
+                where: {id: l.productId},
             });
             if (!product) {
-                return reply.status(400).send({ error: `Producto inválido: ${l.productId}` });
+                return reply.status(400).send({error: `Producto inválido: ${l.productId}`});
             }
 
             let unitPrice = product.basePrice;
             if (l.variantId) {
                 const variant = await prisma.productVariant.findUnique({
-                    where: { id: l.variantId },
+                    where: {id: l.variantId},
                 });
                 if (variant) unitPrice += variant.priceModifier;
             }
@@ -115,7 +115,7 @@ export default async function (fastify, opts) {
             });
         }
 
-        const orderNum = nextOrderNum();
+        const orderNum = await nextOrderNum(prisma); // debe ser un string
         const order = await prisma.order.create({
             data: {
                 orderNum,
@@ -123,7 +123,7 @@ export default async function (fastify, opts) {
                 total,
                 paid: !!paid,
                 paymentMethod: paymentMethod || null,
-                lines: { create: lineCreates },
+                lines: {create: lineCreates},
             },
             include: {
                 lines: {
@@ -173,4 +173,29 @@ export default async function (fastify, opts) {
 
         return reply.send(serialized);
     });
+}
+
+export async function nextOrderNum(prisma) {
+
+    const year = new Date().getFullYear();
+
+    const lastOrder = await prisma.order.findFirst({
+        where: {
+            orderNum: {
+                startsWith: `TPV/${year}/`,
+            },
+        },
+        orderBy: {
+            orderNum: 'desc',
+        },
+    });
+
+    let nextNumber = 1;
+
+    if (lastOrder) {
+        const lastNum = parseInt(lastOrder.orderNum.split('/')[2]);
+        nextNumber = lastNum + 1;
+    }
+
+    return `TPV/${year}/${String(nextNumber).padStart(4, '0')}`;
 }
