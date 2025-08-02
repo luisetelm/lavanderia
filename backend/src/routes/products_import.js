@@ -1,9 +1,7 @@
 // backend/src/routes/products_import.js
-import fs from 'fs';
 import pkg from 'papaparse';
 const { parse } = pkg;
 import crypto from 'crypto';
-import path from 'path';
 
 function randomSKU() {
     return 'SKU-' + crypto.randomBytes(3).toString('hex').toUpperCase();
