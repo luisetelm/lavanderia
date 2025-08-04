@@ -1,5 +1,5 @@
 // backend/src/routes/orders.js
-import nextOrderNum from '../utils/generateOrderNum.js';
+//import nextOrderNum from '../utils/generateOrderNum.js';
 import {isValidSpanishPhone} from '../utils/validatePhone.js';
 
 export default async function (fastify, opts) {
@@ -7,6 +7,15 @@ export default async function (fastify, opts) {
 
     fastify.post('/', async (req, reply) => {
         const prisma = fastify.prisma;
+
+        console.log('Entrando a /api/orders, body:', req.body, 'query:', req.query);
+        console.log('Modelos Prisma:', {
+            order: !!prisma.order,
+            user: !!prisma.user,
+            product: !!prisma.product,
+        });
+
+
         const {
             clientId,
             clientFirstName,
@@ -224,18 +233,18 @@ export default async function (fastify, opts) {
     fastify.post('/:id/pay', async (req, reply) => {
         const prisma = fastify.prisma;
         const orderId = Number(req.params.id);
-        const { method, receivedAmount } = req.body; // method: 'cash' | 'card'
+        const {method, receivedAmount} = req.body; // method: 'cash' | 'card'
 
         try {
-            const order = await prisma.order.findUnique({ where: { id: orderId } });
-            if (!order) return reply.status(404).send({ error: 'Pedido no encontrado' });
+            const order = await prisma.order.findUnique({where: {id: orderId}});
+            if (!order) return reply.status(404).send({error: 'Pedido no encontrado'});
 
             if (order.paid) {
-                return reply.status(400).send({ error: 'Pedido ya está pagado' });
+                return reply.status(400).send({error: 'Pedido ya está pagado'});
             }
 
             if (method !== 'cash' && method !== 'card') {
-                return reply.status(400).send({ error: 'Método de pago inválido' });
+                return reply.status(400).send({error: 'Método de pago inválido'});
             }
 
             const updateData = {
@@ -246,38 +255,38 @@ export default async function (fastify, opts) {
             let change = 0;
             if (method === 'cash') {
                 if (receivedAmount === undefined) {
-                    return reply.status(400).send({ error: 'Debe indicar cantidad recibida para efectivo' });
+                    return reply.status(400).send({error: 'Debe indicar cantidad recibida para efectivo'});
                 }
                 const received = parseFloat(receivedAmount);
                 if (isNaN(received) || received < order.total) {
-                    return reply.status(400).send({ error: 'Cantidad recibida insuficiente' });
+                    return reply.status(400).send({error: 'Cantidad recibida insuficiente'});
                 }
                 change = received - order.total;
             }
 
             const updated = await prisma.order.update({
-                where: { id: orderId },
+                where: {id: orderId},
                 data: updateData,
                 include: {
-                    lines: { include: { product: true } },
+                    lines: {include: {product: true}},
                     client: {
-                        select: { id: true, firstName: true, lastName: true, email: true, phone: true },
+                        select: {id: true, firstName: true, lastName: true, email: true, phone: true},
                     },
                 },
             });
 
-            return reply.send({ order: updated, change: method === 'cash' ? change : 0 });
+            return reply.send({order: updated, change: method === 'cash' ? change : 0});
         } catch (err) {
             console.error('Error en /orders/:id/pay:', err);
             return reply
                 .status(500)
-                .send({ error: 'Fallo interno al procesar el pago', details: err.message });
+                .send({error: 'Fallo interno al procesar el pago', details: err.message});
         }
     });
 
     fastify.get('/', async (req, reply) => {
         const prisma = fastify.prisma;
-        const { fechaLimite_gte, fechaLimite_lte } = req.query;
+        const {fechaLimite_gte, fechaLimite_lte} = req.query;
 
         const where = {};
 
@@ -293,7 +302,7 @@ export default async function (fastify, opts) {
                 where,
                 include: {
                     lines: {
-                        include: { product: true },
+                        include: {product: true},
                     },
                     client: {
                         select: {
@@ -305,12 +314,12 @@ export default async function (fastify, opts) {
                         },
                     },
                 },
-                orderBy: { fechaLimite: 'asc' },
+                orderBy: {fechaLimite: 'asc'},
             });
             return reply.send(orders);
         } catch (err) {
             console.error('Error en GET /api/orders:', err);
-            return reply.status(500).send({ error: 'Error al obtener pedidos' });
+            return reply.status(500).send({error: 'Error al obtener pedidos'});
         }
     });
 
@@ -318,12 +327,12 @@ export default async function (fastify, opts) {
         const prisma = fastify.prisma;
         const orderId = Number(req.params.id);
         if (isNaN(orderId)) {
-            return reply.status(400).send({ error: 'ID de pedido inválido' });
+            return reply.status(400).send({error: 'ID de pedido inválido'});
         }
 
         try {
             const order = await prisma.order.findUnique({
-                where: { id: orderId },
+                where: {id: orderId},
                 include: {
                     lines: {
                         include: {
@@ -345,7 +354,7 @@ export default async function (fastify, opts) {
             });
 
             if (!order) {
-                return reply.status(404).send({ error: 'Pedido no encontrado' });
+                return reply.status(404).send({error: 'Pedido no encontrado'});
             }
 
             // Normalizar/cocinar la línea para que tenga todo lo que el frontend espera:
@@ -388,8 +397,13 @@ export default async function (fastify, opts) {
             return reply.send(serialized);
         } catch (err) {
             console.error('Error en GET /orders/:id:', err);
-            return reply.status(500).send({ error: 'Error al obtener el pedido' });
+            return reply.status(500).send({error: 'Error al obtener el pedido'});
         }
+    });
+
+    fastify.setErrorHandler((error, request, reply) => {
+        console.error('Error no capturado:', error);
+        reply.status(500).send({error: 'Error interno'});
     });
 
 }
