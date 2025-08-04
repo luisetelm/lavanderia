@@ -1,23 +1,23 @@
-import React, {useEffect, useState} from 'react';
+import React, { useEffect, useState } from 'react';
 import {
     fetchProducts,
     fetchUsers,
     createOrder,
     payWithCard,
     payWithCash,
-    fetchOrder
+    fetchOrder,
 } from '../api.js';
-import {printWashLabels, printSaleTicket} from '../utils/printUtils.js';
+import { printWashLabels, printSaleTicket } from '../utils/printUtils.js';
 import CustomerSelector from '../components/CustomerSelector.jsx';
 import ProductList from '../components/ProductList.jsx';
-import CartSummary from '../components/CartSummary.jsx';
 import DateCarousel from '../components/DateCarousel.jsx';
 import PaymentSection from '../components/PaymentSection.jsx';
 import CashModal from '../components/CashModal.jsx';
+import CartSummary from "../components/CartSummary.jsx";
 
 const isValidSpanishPhone = (phone) => /^[6789]\d{8}$/.test(phone);
 
-export default function POS({token}) {
+export default function POS({ token }) {
     const [products, setProducts] = useState([]);
     const [users, setUsers] = useState([]);
     const [cart, setCart] = useState([]);
@@ -40,6 +40,8 @@ export default function POS({token}) {
     const [isValidated, setIsValidated] = useState(false);
     const [loadByDay, setLoadByDay] = useState({});
 
+    const [isPaying, setIsPaying] = useState(false);
+
     useEffect(() => {
         fetchProducts(token).then(setProducts).catch(() => setError('No se pudieron cargar productos'));
         fetchUsers(token).then(setUsers).catch(() => setError('No se pudieron cargar clientes'));
@@ -47,7 +49,6 @@ export default function POS({token}) {
 
     // carga por día
     useEffect(() => {
-
         const fetchLoads = async () => {
             try {
                 const getNextBusinessDays = (count = 12) => {
@@ -105,7 +106,6 @@ export default function POS({token}) {
             }
         };
 
-
         fetchLoads();
     }, [token, isValidated, order]);
 
@@ -114,14 +114,14 @@ export default function POS({token}) {
             const exists = prev.find((c) => c.productId === p.id);
             if (exists) {
                 return prev.map((c) =>
-                    c.productId === p.id ? {...c, quantity: c.quantity + 1} : c
+                    c.productId === p.id ? { ...c, quantity: c.quantity + 1 } : c
                 );
             }
-            return [...prev, {productId: p.id, quantity: 1}];
+            return [...prev, { productId: p.id, quantity: 1 }];
         });
     };
 
-    const handleValidate = async ({submit, observaciones: obs}) => {
+    const handleValidate = async ({ submit, observaciones: obs } = {}) => {
         if (obs !== undefined) {
             setObservaciones(obs);
             return;
@@ -167,8 +167,6 @@ export default function POS({token}) {
         }
     };
 
-    const [isPaying, setIsPaying] = useState(false);
-
     const handleCardPay = async () => {
         if (!order) return;
         setIsPaying(true);
@@ -190,16 +188,22 @@ export default function POS({token}) {
     const handleCashConfirm = async () => {
         if (!order) return;
         const received = parseFloat(receivedAmount);
-        if (isNaN(received) || received < order.total) return;
+        if (isNaN(received) || received < order.total) {
+            setError('Cantidad recibida insuficiente');
+            return;
+        }
+        setIsPaying(true);
         try {
             const data = await payWithCash(token, order.id, receivedAmount);
             setOrder(data.order || data);
             const vuelta = data.change; // si el backend la incluye
             console.log('Vuelta:', vuelta);
+            setShowCashModal(false);
         } catch (e) {
             setError('Error en pago efectivo');
+        } finally {
+            setIsPaying(false);
         }
-
     };
 
     const total = cart.reduce((sum, c) => {
@@ -224,7 +228,7 @@ export default function POS({token}) {
     };
 
     return (
-        <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 30}}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 30 }}>
             <div>
                 <h2>Clientes</h2>
                 <CustomerSelector
@@ -243,9 +247,9 @@ export default function POS({token}) {
                     setQuickClientEmail={setQuickClientEmail}
                 />
 
-                <div style={{marginTop: 12, display: 'flex', gap: 16, alignItems: 'flex-start'}}>
+                <div style={{ marginTop: 12, display: 'flex', gap: 16, alignItems: 'flex-start' }}>
                     {/* Carrusel existente */}
-                    <div style={{flex: 2}}>
+                    <div style={{ flex: 2 }}>
                         <DateCarousel
                             loadByDay={loadByDay}
                             fechaLimite={fechaLimite}
@@ -256,7 +260,7 @@ export default function POS({token}) {
 
                 <div>
                     {/* Fecha libre */}
-                    <div style={{flex: 1, minWidth: 180}}>
+                    <div style={{ flex: 1, minWidth: 180, marginTop: 8 }}>
                         <label>O elegir otra fecha</label>
                         <input
                             type="date"
@@ -265,10 +269,10 @@ export default function POS({token}) {
                                 const picked = e.target.value; // formato YYYY-MM-DD
                                 setFechaLimite(picked);
                             }}
-                            style={{width: '100%', padding: 6}}
-                            min={new Date().toISOString().split('T')[0]} // opcional: no permitir pasado
+                            style={{ width: '100%', padding: 6 }}
+                            min={new Date().toISOString().split('T')[0]}
                         />
-                        <div style={{fontSize: 12, marginTop: 4}}>
+                        <div style={{ fontSize: 12, marginTop: 4 }}>
                             {fechaLimite
                                 ? `Entrega: ${new Date(fechaLimite).toLocaleDateString('es-ES', {
                                     weekday: 'long',
@@ -279,18 +283,17 @@ export default function POS({token}) {
                         </div>
                     </div>
 
-
-                    <div style={{marginTop: 12}}>
+                    <div style={{ marginTop: 12 }}>
                         <label>Observaciones:</label>
                         <textarea
                             placeholder="Prenda en mal estado, petición especial..."
                             value={observaciones}
                             onChange={(e) => setObservaciones(e.target.value)}
-                            style={{width: '100%', minHeight: 60}}
+                            style={{ width: '100%', minHeight: 60 }}
                         />
                     </div>
 
-                    <div style={{marginTop: 10}}>
+                    <div style={{ marginTop: 10 }}>
                         <h2>Ticket</h2>
                         {selectedUser ? (
                             <div>
@@ -301,34 +304,37 @@ export default function POS({token}) {
                                 Cliente rápido: {quickFirstName} {quickLastName} - {quickClientPhone}
                             </div>
                         ) : (
-                            <div style={{color: '#888'}}>Seleccione o cree un cliente</div>
+                            <div style={{ color: '#888' }}>Seleccione o cree un cliente</div>
                         )}
 
+                        {!order && (
+                            <div style={{ marginTop: 8 }}>
+                                <CartSummary cart={cart} products={products} />
+                                <div style={{ marginTop: 8 }}>
+                                    <button onClick={() => handleValidate({ submit: true })} disabled={!cart.length}>
+                                        {order ? 'Revalidar pedido' : 'Validar pedido'}
+                                    </button>
+                                </div>
+                                {error && <div style={{ color: 'red', marginTop: 10 }}>{error}</div>}
+                            </div>
+                        )}
 
-                        <PaymentSection
-                            cart={cart}
-                            products={products}
-                            order={order}
-                            error={error}
-                            paymentMethod={paymentMethod}
-                            setPaymentMethod={setPaymentMethod}
-                            handleValidate={handleValidate}
-                            handlePrintTicket={handlePrintTicket}
-                            handlePrintLabels={handlePrintLabels}
-                            isValidated={isValidated}
-                            selectedUser={selectedUser}
-                            quickFirstName={quickFirstName}
-                            quickLastName={quickLastName}
-                            quickClientPhone={quickClientPhone}
-                            isValidSpanishPhone={isValidSpanishPhone}
-                            onCashStart={() => {
-                                setReceivedAmount(''); // reset
-                                setShowCashModal(true);
-                                setPaymentMethod('cash');
-                            }}
-                            onCardPay={handleCardPay}
-                        />
-
+                        {order && (
+                            <div style={{ marginTop: 12 }}>
+                                <PaymentSection
+                                    token={token}
+                                    orderId={order.id}
+                                    onPaid={async () => {
+                                        try {
+                                            const updated = await fetchOrder(token, order.id);
+                                            setOrder(updated);
+                                        } catch (e) {
+                                            console.error('Error refrescando pedido tras pago:', e);
+                                        }
+                                    }}
+                                />
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
@@ -347,14 +353,11 @@ export default function POS({token}) {
                     order={order}
                     receivedAmount={receivedAmount}
                     setReceivedAmount={setReceivedAmount}
-                    change={parseFloat(receivedAmount || 0) - order.total}
+                    change={parseFloat(receivedAmount || 0) - (order?.total || 0)}
                     onConfirm={handleCashConfirm}
                     onClose={() => setShowCashModal(false)}
                 />
             )}
-
-
         </div>
-    )
-        ;
+    );
 }

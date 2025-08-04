@@ -150,7 +150,6 @@ export default function Tasks({token, products}) {
                                 <PaymentSection
                                     token={token}
                                     orderId={t.order.id}
-                                    products={products}
                                     onPaid={() => load(query)}
                                 />
 
