@@ -103,3 +103,26 @@ export function updateUser(token, id, data) {
     });
 }
 
+export function payWithCard(token, orderId) {
+    return request(`/orders/${orderId}/pay`, token, {
+        method: 'POST',
+        body: JSON.stringify({ method: 'card' }),
+    });
+}
+
+export function payWithCash(token, orderId, receivedAmount) {
+    return request(`/orders/${orderId}/pay`, token, {
+        method: 'POST',
+        body: JSON.stringify({
+            method: 'cash',
+            receivedAmount: parseFloat(receivedAmount),
+        }),
+    });
+}
+
+// helper para refrescar un pedido existente (asume que tu backend tiene GET /orders/:id)
+export function fetchOrder(token, orderId) {
+    return request(`/orders/${orderId}`, token);
+}
+
+

@@ -1,13 +1,19 @@
-import React, { useEffect, useState, useRef } from 'react';
-import { fetchTasks, updateTask } from '../api.js';
-import { printSaleTicket, printWashLabels } from '../utils/printUtils.js';
+import React, {useEffect, useState, useRef} from 'react';
+import {fetchTasks, updateTask, payWithCard, payWithCash} from '../api.js';
+import {printSaleTicket, printWashLabels} from '../utils/printUtils.js';
+import PaymentSection from '../components/PaymentSection.jsx';
+import CashModal from '../components/CashModal.jsx'; // asegúrate de que existe
 
-export default function Tasks({ token, products }) {
+export default function Tasks({token, products}) {
     const [tasks, setTasks] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [query, setQuery] = useState('');
     const debounceRef = useRef(null);
+
+    const [showCashModalForTask, setShowCashModalForTask] = useState(null); // task.id que está pagando
+    const [receivedAmount, setReceivedAmount] = useState('');
+    const [isPaying, setIsPaying] = useState(false);
 
     const load = async (search = '') => {
         setLoading(true);
@@ -27,7 +33,6 @@ export default function Tasks({ token, products }) {
         load();
     }, [token]);
 
-    // debounce para búsqueda
     useEffect(() => {
         if (debounceRef.current) clearTimeout(debounceRef.current);
         debounceRef.current = setTimeout(() => {
@@ -38,8 +43,8 @@ export default function Tasks({ token, products }) {
 
     const markReady = async (task) => {
         try {
-            await updateTask(token, task.id, { state: 'ready' });
-            await load();
+            await updateTask(token, task.id, {state: 'ready'});
+            await load(query);
         } catch (e) {
             console.error(e);
         }
@@ -47,8 +52,8 @@ export default function Tasks({ token, products }) {
 
     const markCollected = async (task) => {
         try {
-            await updateTask(token, task.id, { state: 'collected' });
-            await load();
+            await updateTask(token, task.id, {state: 'collected'});
+            await load(query);
         } catch (e) {
             console.error(e);
         }
@@ -56,15 +61,12 @@ export default function Tasks({ token, products }) {
 
     const handlePrintTicket = (task) => {
         if (!task.order) return;
-        printSaleTicket(task.order, products);
+        printSaleTicket(task.order, products, 'CLIENTE');
     };
 
     const handlePrintLabels = (task) => {
         if (!task.order) return;
-        const totalItems = task.order.lines.reduce(
-            (sum, l) => sum + (l.quantity || 1),
-            0
-        );
+        const totalItems = task.order.lines.reduce((sum, l) => sum + (l.quantity || 1), 0);
         printWashLabels({
             orderNum: task.order.orderNum,
             clientFirstName: task.order.client?.firstName || '',
@@ -73,21 +75,62 @@ export default function Tasks({ token, products }) {
         });
     };
 
+    const handleCardPay = async (task) => {
+        if (!task?.order) return;
+        setIsPaying(true);
+        try {
+            await payWithCard(token, task.order.id);
+            await load(query);
+        } catch (e) {
+            console.error('Error pago tarjeta:', e);
+            setError(e.error || 'Error en pago con tarjeta');
+        } finally {
+            setIsPaying(false);
+        }
+    };
+
+    const handleCashStart = (task) => {
+        setReceivedAmount('');
+        setError('');
+        setShowCashModalForTask(task.id);
+    };
+
+    const handleCashConfirm = async (task) => {
+        if (!task?.order) return;
+        const received = parseFloat(receivedAmount);
+        if (isNaN(received) || received < task.order.total) {
+            setError('Cantidad recibida insuficiente');
+            return;
+        }
+        setIsPaying(true);
+        try {
+            const {order: updatedOrder, change} = await payWithCash(token, task.order.id, received);
+            console.log('Vuelta:', change);
+            setShowCashModalForTask(null);
+            await load(query);
+        } catch (e) {
+            console.error('Error pago efectivo:', e);
+            setError(e.error || 'Error en pago en efectivo');
+        } finally {
+            setIsPaying(false);
+        }
+    };
+
     return (
         <div>
             <h2>Tareas</h2>
-            <div style={{ marginBottom: 12, display: 'flex', gap: 12, alignItems: 'center' }}>
-                <h2 style={{ margin: 0 }}>Tareas</h2>
+            <div style={{marginBottom: 12, display: 'flex', gap: 12, alignItems: 'center'}}>
+                <h2 style={{margin: 0}}>Tareas</h2>
                 <div>
                     <input
                         placeholder="Buscar por pedido o cliente..."
                         value={query}
                         onChange={(e) => setQuery(e.target.value)}
-                        style={{ padding: 6, width: 300 }}
+                        style={{padding: 6, width: 300}}
                     />
                 </div>
             </div>
-            {error && <div style={{ color: 'red' }}>{error}</div>}
+            {error && <div style={{color: 'red'}}>{error}</div>}
             {loading && <div>Cargando...</div>}
             {!loading && tasks.length === 0 && <div>No hay tareas.</div>}
             {tasks.map((t) => {
@@ -96,122 +139,58 @@ export default function Tasks({ token, products }) {
                         ? `${t.order.client.firstName} ${t.order.client.lastName}`.trim()
                         : 'Cliente rápido'
                     : '-';
-                return (
 
+                return (
                     <div
                         key={t.id}
-                        style={{
-                            border: '1px solid #aaa',
-                            padding: 12,
-                            marginBottom: 12,
-                            borderRadius: 6,
-                            background:
-                                t.state === 'ready'
-                                    ? '#e6ffe6'
-                                    : t.state === 'collected'
-                                        ? '#ececec'
-                                        : '#fff',
-                            position: 'relative',
-                        }}
                     >
+                        {/* PaymentSection en lugar de la vista manual */}
+                        {t.order ? (
+                            <div style={{marginTop: 12}}>
+                                <PaymentSection
+                                    token={token}
+                                    orderId={t.order.id}
+                                    products={products}
+                                    onPaid={() => load(query)}
+                                />
 
-
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                            <div>
-                                <div style={{ fontWeight: 'bold', fontSize: 16 }}>
-                                    {t.name} ({t.state})
-                                </div>
-                                <div>
-                                    <strong>Pedido:</strong> {t.order?.orderNum || '-'}
-                                </div>
-                                <div>
-                                    <strong>Cliente:</strong> {clientName}
-                                </div>
-                                {t.order?.client?.phone && (
-                                    <div>
-                                        <strong>Teléfono:</strong> {t.order.client.phone}
-                                    </div>
+                                {/* Modal de efectivo para esta tarea */}
+                                {showCashModalForTask === t.id && t.order && (
+                                    <CashModal
+                                        order={t.order}
+                                        receivedAmount={receivedAmount}
+                                        setReceivedAmount={setReceivedAmount}
+                                        change={
+                                            receivedAmount
+                                                ? Math.max(0, parseFloat(receivedAmount) - t.order.total).toFixed(2)
+                                                : '0.00'
+                                        }
+                                        onConfirm={() => handleCashConfirm(t)}
+                                        onClose={() => setShowCashModalForTask(null)}
+                                        isProcessing={isPaying}
+                                        error={error}
+                                    />
                                 )}
-                                <div>
-                                    <strong>Asignado a:</strong>{' '}
-                                    {t.worker
-                                        ? `${t.worker.firstName || ''} ${t.worker.lastName || ''}`.trim()
-                                        : '—'}
-                                </div>
                             </div>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                                <button onClick={() => handlePrintTicket(t)}>Imprimir ticket</button>
-                                <button onClick={() => handlePrintLabels(t)}>
-                                    Imprimir etiquetas lavado
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* Líneas del pedido */}
-                        {t.order?.lines && (
-                            <div style={{ marginTop: 10 }}>
-                                <div style={{ fontWeight: 'bold' }}>Líneas:</div>
-                                {t.order.lines.map((l) => {
-                                    let name = l.productName;
-                                    if (!name) {
-                                        const prod = products.find((p) => p.id === l.productId);
-                                        name = prod ? prod.name : `#${l.productId}`;
-                                    }
-                                    return (
-                                        <div
-                                            key={l.id}
-                                            style={{
-                                                display: 'flex',
-                                                justifyContent: 'space-between',
-                                                fontSize: 13,
-                                                marginTop: 2,
-                                            }}
-                                        >
-                                            <div>
-                                                {l.quantity}x {name}
-                                            </div>
-                                            <div>{(l.unitPrice * l.quantity).toFixed(2)}€</div>
-                                        </div>
-                                    );
-                                })}
-                                <div
-                                    style={{
-                                        marginTop: 6,
-                                        display: 'flex',
-                                        justifyContent: 'space-between',
-                                        fontWeight: 'bold',
-                                    }}
-                                >
-                                    <div>Total:</div>
-                                    <div>{t.order.total.toFixed(2)}€</div>
-                                </div>
-                            </div>
+                        ) : (
+                            <div style={{marginTop: 12}}>Pedido no disponible</div>
                         )}
 
-                        {/* Acciones */}
-                        <div style={{ marginTop: 12, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                            {t.state !== 'ready' && (
-                                <button onClick={() => markReady(t)}>Marcar como listo</button>
-                            )}
-                            {t.state !== 'collected' && (
-                                <button onClick={() => markCollected(t)}>Marcar como recogido</button>
-                            )}
-                        </div>
 
                         {/* Notificaciones */}
                         {t.notifications?.length > 0 && (
-                            <div style={{ marginTop: 10 }}>
-                                <div style={{ fontWeight: 'bold' }}>Notificaciones:</div>
+                            <div style={{marginTop: 10}}>
+                                <div style={{fontWeight: 'bold'}}>Notificaciones:</div>
                                 {t.notifications.map((n) => (
                                     <div
                                         key={n.id}
-                                        style={{ fontSize: 12, marginTop: 4, display: 'flex', gap: 6 }}
+                                        style={{fontSize: 12, marginTop: 4, display: 'flex', gap: 6}}
                                     >
                                         <div>
                                             <strong>{n.type}</strong> — {n.status}
                                         </div>
                                         {n.createdAt && (
-                                            <div style={{ color: '#555' }}>
+                                            <div style={{color: '#555'}}>
                                                 {new Date(n.createdAt).toLocaleString()}
                                             </div>
                                         )}

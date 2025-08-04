@@ -48,6 +48,8 @@ model Order {
   total         Float
   paid          Boolean  @default(false)
   paymentMethod String?
+  observaciones String?
+  fechaLimite   DateTime?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 

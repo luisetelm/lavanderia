@@ -1,0 +1,34 @@
+.ticket-no-pagado {
+    border: 2px solid #f5c6cb;
+    padding: 10px 2px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+body {
+    font-family: monospace;
+    padding: 10px 0;
+    max-width: 70mm;
+}
+
+.section {
+    margin-bottom: 8px;
+}
+
+.bold {
+    font-weight: bold;
+}
+
+hr {
+    border: none;
+    border-bottom: 1px dashed #000;
+    margin: 6px 0;
+}
+
+.cut {
+    /* después de la línea de corte, hacer salto */
+    break-after: page;
+    page-break-after: always;
+}

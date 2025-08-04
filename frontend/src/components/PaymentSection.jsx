@@ -1,35 +1,244 @@
-import React from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { fetchOrder, payWithCard, payWithCash } from '../api.js';
 
-export default function PaymentSection({
-                                           isValidated,
-                                           order,
-                                           paymentMethod,
-                                           setPaymentMethod,
-                                           onCardPay,
-                                           onCashClick,
-                                       }) {
-    if (!isValidated || !order) return null;
+/**
+ * PaymentSection para un pedido concreto.
+ * Props:
+ *  - token: string (auth)
+ *  - orderId: número o string
+ *  - onPaid?: callback que se llama cuando se completa el pago exitosamente
+ */
+export default function PaymentSection({ token, orderId, onPaid }) {
+    const [order, setOrder] = useState(null);
+    const [loading, setLoading] = useState(!!orderId);
+    const [error, setError] = useState('');
+    const [isProcessing, setIsProcessing] = useState(false);
+    const [receivedAmount, setReceivedAmount] = useState('');
+    const [localError, setLocalError] = useState('');
+
+    const loadOrder = useCallback(async () => {
+        if (!orderId) return;
+        setLoading(true);
+        setError('');
+        try {
+            const o = await fetchOrder(token, orderId);
+            setOrder(o);
+        } catch (e) {
+            console.error('Error cargando pedido:', e);
+            setError(e.error || 'Error cargando pedido');
+        } finally {
+            setLoading(false);
+        }
+    }, [token, orderId]);
+
+    useEffect(() => {
+        loadOrder();
+    }, [loadOrder]);
+
+    const handleCardPay = async () => {
+        if (!order) return;
+        const confirmed = window.prompt(
+            `Confirmar pago con tarjeta por ${order.total.toFixed(2)} €. Escribe "OK" para continuar.`
+        );
+        if (!(confirmed && confirmed.toUpperCase() === 'OK')) return;
+
+        setIsProcessing(true);
+        setLocalError('');
+        try {
+            const { order: updatedOrder } = await payWithCard(token, order.id);
+            setOrder(updatedOrder);
+            onPaid?.();
+        } catch (e) {
+            console.error('Error pago con tarjeta:', e);
+            setLocalError(e.error || 'Error en pago con tarjeta');
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
+    const handleCashPay = async () => {
+        if (!order) return;
+        const received = parseFloat(receivedAmount);
+        if (isNaN(received) || received < order.total) {
+            setLocalError('Cantidad recibida insuficiente');
+            return;
+        }
+
+        setIsProcessing(true);
+        setLocalError('');
+        try {
+            const { order: updatedOrder, change } = await payWithCash(
+                token,
+                order.id,
+                received
+            );
+            setOrder(updatedOrder);
+            onPaid?.();
+            // Opcional: mostrar vuelta en UI o toast
+            console.log('Vuelta:', change.toFixed(2));
+        } catch (e) {
+            console.error('Error pago en efectivo:', e);
+            setLocalError(e.error || 'Error en pago en efectivo');
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
+    if (loading) return <div>Cargando pedido...</div>;
+    if (error) return <div style={{ color: 'red' }}>{error}</div>;
+    if (!order) return <div>Pedido no encontrado</div>;
+
+    const clienteDisplay = () => {
+        if (order.client) return `${order.client.firstName} ${order.client.lastName}`;
+        return 'Cliente rápido';
+    };
+
+    const telefonoDisplay = () => {
+        return order.client?.phone || null;
+    };
 
     return (
-        <div style={{ marginTop: 20, borderTop: '1px solid #ccc', paddingTop: 12 }}>
-            <h3>Pago</h3>
-            <div style={{ display: 'flex', gap: 12 }}>
-                <button onClick={() => setPaymentMethod('cash')}>Efectivo</button>
-                <button onClick={() => setPaymentMethod('card')}>Tarjeta</button>
-            </div>
-            <div style={{ marginTop: 8 }}>
-                Método seleccionado: {paymentMethod === 'cash' ? 'Efectivo' : 'Tarjeta'}
+        <div
+            style={{
+                marginTop: 10,
+                border: '1px solid #ccc',
+                padding: 12,
+                borderRadius: 6,
+                background: '#f9f9f9',
+                position: 'relative',
+            }}
+        >
+            <div style={{ fontWeight: 'bold', marginBottom: 8 }}>Resumen del pedido</div>
+
+            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                <div style={{ flex: 1, minWidth: 250 }}>
+                    <div>
+                        <strong>Pedido:</strong> {order.orderNum}
+                    </div>
+                    <div>
+                        <strong>Cliente:</strong> {clienteDisplay()}
+                    </div>
+                    {telefonoDisplay() && (
+                        <div>
+                            <strong>Teléfono:</strong> {telefonoDisplay()}
+                        </div>
+                    )}
+                    <div>
+                        <strong>Estado pago:</strong> {order.paid ? 'Pagado' : 'Pendiente de pago'}
+                    </div>
+                    <div>
+                        <strong>Método de pago:</strong>{' '}
+                        {order.paymentMethod
+                            ? order.paymentMethod === 'cash'
+                                ? 'Efectivo'
+                                : 'Tarjeta'
+                            : 'No seleccionado'}
+                    </div>
+                    <div>
+                        <strong>Observaciones:</strong> {order.observaciones || '—'}
+                    </div>
+                    <div>
+                        <strong>Fecha límite:</strong>{' '}
+                        {order.fechaLimite
+                            ? new Date(order.fechaLimite).toLocaleDateString('es-ES')
+                            : '—'}
+                    </div>
+                </div>
+
+                <div style={{ flex: 1, minWidth: 250 }}>
+                    <div style={{ fontWeight: 'bold' }}>Líneas:</div>
+                    {order.lines.map((l) => {
+                        const name = l.productName || l.product?.name || `#${l.productId}`;
+                        return (
+                            <div
+                                key={l.id}
+                                style={{
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    fontSize: 12,
+                                    marginTop: 2,
+                                }}
+                            >
+                                <div>
+                                    {l.quantity}x {name}
+                                </div>
+                                <div>{(l.unitPrice * l.quantity).toFixed(2)}€</div>
+                            </div>
+                        );
+                    })}
+                    <div
+                        style={{
+                            marginTop: 10,
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            fontWeight: 'bold',
+                        }}
+                    >
+                        <div>Total:</div>
+                        <div>{order.total.toFixed(2)}€</div>
+                    </div>
+                </div>
             </div>
 
-            {paymentMethod === 'cash' && (
-                <div style={{ marginTop: 12 }}>
-                    <button onClick={onCashClick}>Cobrar en efectivo</button>
+            {!order.paid && (
+                <div
+                    style={{
+                        marginTop: 16,
+                        borderTop: '1px solid #ddd',
+                        paddingTop: 12,
+                        display: 'flex',
+                        gap: 24,
+                        flexWrap: 'wrap',
+                    }}
+                >
+                    <div>
+                        <button
+                            onClick={handleCardPay}
+                            disabled={isProcessing}
+                            style={{ padding: '8px 16px', cursor: isProcessing ? 'not-allowed' : 'pointer' }}
+                        >
+                            {isProcessing ? 'Procesando...' : 'Pagar con tarjeta'}
+                        </button>
+                    </div>
+                    <div style={{ minWidth: 180 }}>
+                        <div style={{ marginBottom: 6 }}>
+                            <label>
+                                <strong>Recibido:</strong>{' '}
+                                <input
+                                    type="number"
+                                    value={receivedAmount}
+                                    onChange={(e) => setReceivedAmount(e.target.value)}
+                                    disabled={isProcessing}
+                                    style={{ width: 100 }}
+                                    placeholder="€"
+                                />
+                            </label>
+                        </div>
+                        <div style={{ marginBottom: 6 }}>
+                            <button
+                                onClick={handleCashPay}
+                                disabled={isProcessing}
+                                style={{ padding: '8px 16px', cursor: isProcessing ? 'not-allowed' : 'pointer' }}
+                            >
+                                {isProcessing ? 'Procesando...' : 'Pagar en efectivo'}
+                            </button>
+                        </div>
+                        <div>
+                            <small>
+                                Vuelta:{' '}
+                                {receivedAmount
+                                    ? Math.max(0, parseFloat(receivedAmount) - order.total).toFixed(2)
+                                    : '0.00'}
+                                €
+                            </small>
+                        </div>
+                    </div>
                 </div>
             )}
 
-            {paymentMethod === 'card' && (
-                <div style={{ marginTop: 12 }}>
-                    <button onClick={onCardPay}>Confirmar tarjeta</button>
+            {(localError || error) && (
+                <div style={{ color: 'red', marginTop: 8 }}>
+                    {localError || error}
                 </div>
             )}
         </div>

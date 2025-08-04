@@ -1,14 +1,23 @@
-import React, { useEffect, useState } from 'react';
+import React, {useEffect, useState} from 'react';
 import {
     fetchProducts,
     fetchUsers,
     createOrder,
+    payWithCard,
+    payWithCash,
+    fetchOrder
 } from '../api.js';
-import { printWashLabels, printSaleTicket } from '../utils/printUtils.js';
+import {printWashLabels, printSaleTicket} from '../utils/printUtils.js';
+import CustomerSelector from '../components/CustomerSelector.jsx';
+import ProductList from '../components/ProductList.jsx';
+import CartSummary from '../components/CartSummary.jsx';
+import DateCarousel from '../components/DateCarousel.jsx';
+import PaymentSection from '../components/PaymentSection.jsx';
+import CashModal from '../components/CashModal.jsx';
 
 const isValidSpanishPhone = (phone) => /^[6789]\d{8}$/.test(phone);
 
-export default function POS({ token }) {
+export default function POS({token}) {
     const [products, setProducts] = useState([]);
     const [users, setUsers] = useState([]);
     const [cart, setCart] = useState([]);
@@ -17,67 +26,129 @@ export default function POS({ token }) {
     const [searchUser, setSearchUser] = useState('');
     const [searchProduct, setSearchProduct] = useState('');
     const [error, setError] = useState('');
-
-    // Cliente rápido
     const [quickFirstName, setQuickFirstName] = useState('');
     const [quickLastName, setQuickLastName] = useState('');
     const [quickClientPhone, setQuickClientPhone] = useState('');
     const [quickClientEmail, setQuickClientEmail] = useState('');
 
-    // Pago
-    const [paymentMethod, setPaymentMethod] = useState('cash'); // 'cash' | 'card'
+    // nuevas
+    const [paymentMethod, setPaymentMethod] = useState('cash');
+    const [observaciones, setObservaciones] = useState('');
+    const [fechaLimite, setFechaLimite] = useState(null);
+    const [showCashModal, setShowCashModal] = useState(false);
+    const [receivedAmount, setReceivedAmount] = useState('');
+    const [isValidated, setIsValidated] = useState(false);
+    const [loadByDay, setLoadByDay] = useState({});
 
     useEffect(() => {
-        fetchProducts(token)
-            .then(setProducts)
-            .catch(() => setError('No se pudieron cargar productos'));
-        fetchUsers(token)
-            .then(setUsers)
-            .catch(() => setError('No se pudieron cargar clientes'));
+        fetchProducts(token).then(setProducts).catch(() => setError('No se pudieron cargar productos'));
+        fetchUsers(token).then(setUsers).catch(() => setError('No se pudieron cargar clientes'));
     }, [token]);
+
+    // carga por día
+    useEffect(() => {
+
+        const fetchLoads = async () => {
+            try {
+                const getNextBusinessDays = (count = 12) => {
+                    const days = [];
+                    let cursor = new Date();
+                    while (days.length < count) {
+                        cursor = new Date(cursor);
+                        cursor.setDate(cursor.getDate() + 1);
+                        const wd = cursor.getDay();
+                        if (wd !== 0 && wd !== 6) days.push(new Date(cursor));
+                    }
+                    return days;
+                };
+                const formatKey = (d) => d.toISOString().split('T')[0];
+
+                const days = getNextBusinessDays(12);
+                if (days.length === 0) return;
+
+                const from = formatKey(days[0]);
+                const to = formatKey(days[days.length - 1]);
+
+                const res = await fetch(
+                    `/api/orders?fechaLimite_gte=${from}&fechaLimite_lte=${to}`,
+                    {
+                        headers: { Authorization: `Bearer ${token}` },
+                    }
+                );
+
+                if (!res.ok) {
+                    console.error('Error cargando órdenes de carga:', await res.text());
+                    return;
+                }
+
+                const orders = await res.json();
+                if (!Array.isArray(orders)) {
+                    console.warn('Respuesta inesperada de /api/orders:', orders);
+                    return;
+                }
+
+                const grouped = {};
+                days.forEach((d) => {
+                    grouped[formatKey(d)] = [];
+                });
+
+                orders.forEach((o) => {
+                    if (o.fechaLimite) {
+                        const key = o.fechaLimite.split('T')[0];
+                        if (grouped[key]) grouped[key].push(o);
+                    }
+                });
+
+                setLoadByDay(grouped);
+            } catch (e) {
+                console.error('fetchLoads falló:', e);
+            }
+        };
+
+
+        fetchLoads();
+    }, [token, isValidated, order]);
 
     const add = (p) => {
         setCart((prev) => {
             const exists = prev.find((c) => c.productId === p.id);
             if (exists) {
                 return prev.map((c) =>
-                    c.productId === p.id ? { ...c, quantity: c.quantity + 1 } : c
+                    c.productId === p.id ? {...c, quantity: c.quantity + 1} : c
                 );
             }
-            return [...prev, { productId: p.id, quantity: 1 }];
+            return [...prev, {productId: p.id, quantity: 1}];
         });
     };
 
-    const checkout = async () => {
+    const handleValidate = async ({submit, observaciones: obs}) => {
+        if (obs !== undefined) {
+            setObservaciones(obs);
+            return;
+        }
         if (!cart.length) {
             setError('El carrito está vacío');
             return;
         }
-
         if (!selectedUser && (!quickFirstName || !quickLastName)) {
-            setError('Nombre y apellidos del cliente rápido son obligatorios');
+            setError('Nombre y apellidos obligatorios');
             return;
         }
-
         const phone = selectedUser ? selectedUser.phone : quickClientPhone;
         if (!phone || !isValidSpanishPhone(phone)) {
-            setError('Teléfono válido obligatorio (ej: 600123456)');
+            setError('Teléfono válido obligatorio');
             return;
         }
-
         setError('');
-
         const linesPayload = cart.map((c) => ({
             productId: c.productId,
             quantity: c.quantity,
         }));
-
         const payload = {
-            paid: true,
-            paymentMethod,
             lines: linesPayload,
+            observaciones,
+            fechaLimite: fechaLimite || undefined,
         };
-
         if (selectedUser) {
             payload.clientId = selectedUser.id;
         } else {
@@ -90,21 +161,55 @@ export default function POS({ token }) {
         try {
             const o = await createOrder(token, payload);
             setOrder(o);
-            setCart([]);
-            fetchUsers(token).then(setUsers).catch(() => {});
-            setSelectedUser(null);
-            setQuickFirstName('');
-            setQuickLastName('');
-            setQuickClientPhone('');
-            setQuickClientEmail('');
+            setIsValidated(true);
         } catch (err) {
             setError(err.error || 'Error al crear pedido');
         }
     };
 
+    const [isPaying, setIsPaying] = useState(false);
+
+    const handleCardPay = async () => {
+        if (!order) return;
+        setIsPaying(true);
+        try {
+            const { order: updated } = await payWithCard(token, order.id);
+            setOrder(updated);
+        } catch (e) {
+            setError(e.error || 'Error en pago con tarjeta');
+        } finally {
+            setIsPaying(false);
+        }
+    };
+
+    const handleCashStart = () => {
+        setReceivedAmount('');
+        setShowCashModal(true);
+    };
+
+    const handleCashConfirm = async () => {
+        if (!order) return;
+        const received = parseFloat(receivedAmount);
+        if (isNaN(received) || received < order.total) return;
+        try {
+            const data = await payWithCash(token, order.id, receivedAmount);
+            setOrder(data.order || data);
+            const vuelta = data.change; // si el backend la incluye
+            console.log('Vuelta:', vuelta);
+        } catch (e) {
+            setError('Error en pago efectivo');
+        }
+
+    };
+
+    const total = cart.reduce((sum, c) => {
+        const p = products.find((prod) => prod.id === c.productId);
+        return sum + (p?.basePrice || 0) * c.quantity;
+    }, 0);
+
     const handlePrintTicket = () => {
         if (!order) return;
-        printSaleTicket(order, products); // le pasas products para fallback
+        printSaleTicket(order, products);
     };
 
     const handlePrintLabels = () => {
@@ -118,258 +223,138 @@ export default function POS({ token }) {
         });
     };
 
-    const filteredUsers = users.filter((u) =>
-        `${u.firstName} ${u.lastName}`.toLowerCase().includes(searchUser.toLowerCase())
-    );
-    const filteredProducts = products.filter((p) =>
-        p.name.toLowerCase().includes(searchProduct.toLowerCase())
-    );
-    const total = cart.reduce((sum, c) => {
-        const p = products.find((prod) => prod.id === c.productId);
-        return sum + (p?.basePrice || 0) * c.quantity;
-    }, 0);
-
     return (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 30 }}>
-            {/* Izquierda: cliente + ticket + acciones */}
+        <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 30}}>
             <div>
                 <h2>Clientes</h2>
-                <div style={{ display: 'flex', gap: 12 }}>
-                    {/* Cliente existente */}
-                    <div style={{ flex: 1 }}>
-                        <label>Buscar cliente existente</label>
-                        <input
-                            placeholder="Buscar cliente..."
-                            value={searchUser}
-                            onChange={(e) => setSearchUser(e.target.value)}
-                            style={{ width: '100%' }}
-                        />
-                        <div
-                            style={{
-                                maxHeight: 180,
-                                overflowY: 'auto',
-                                marginTop: 6,
-                                border: '1px solid #ccc',
-                                borderRadius: 4,
-                            }}
-                        >
-                            {filteredUsers.map((u) => (
-                                <div
-                                    key={u.id}
-                                    onClick={() => {
-                                        setSelectedUser(u);
-                                        setQuickFirstName('');
-                                        setQuickLastName('');
-                                        setQuickClientPhone('');
-                                        setQuickClientEmail('');
-                                    }}
-                                    style={{
-                                        padding: 6,
-                                        cursor: 'pointer',
-                                        background: selectedUser?.id === u.id ? '#e0e0e0' : '#fff',
-                                    }}
-                                >
-                                    {u.firstName} {u.lastName} ({u.role})
-                                    <div style={{ fontSize: 12, color: '#555' }}>
-                                        {u.phone}
-                                    </div>
-                                </div>
-                            ))}
-                            {filteredUsers.length === 0 && (
-                                <div style={{ padding: 6, color: '#888' }}>Ningún cliente encontrado</div>
-                            )}
-                        </div>
-                    </div>
+                <CustomerSelector
+                    users={users}
+                    searchUser={searchUser}
+                    setSearchUser={setSearchUser}
+                    selectedUser={selectedUser}
+                    setSelectedUser={setSelectedUser}
+                    quickFirstName={quickFirstName}
+                    quickLastName={quickLastName}
+                    quickClientPhone={quickClientPhone}
+                    quickClientEmail={quickClientEmail}
+                    setQuickFirstName={setQuickFirstName}
+                    setQuickLastName={setQuickLastName}
+                    setQuickClientPhone={setQuickClientPhone}
+                    setQuickClientEmail={setQuickClientEmail}
+                />
 
-                    {/* Cliente rápido */}
-                    <div style={{ flex: 1 }}>
-                        <label>O crear cliente rápido</label>
-                        <div style={{ display: 'grid', gap: 6 }}>
-                            <input
-                                placeholder="Nombre"
-                                value={quickFirstName}
-                                onChange={(e) => {
-                                    setQuickFirstName(e.target.value);
-                                    setSelectedUser(null);
-                                }}
-                            />
-                            <input
-                                placeholder="Apellidos"
-                                value={quickLastName}
-                                onChange={(e) => {
-                                    setQuickLastName(e.target.value);
-                                    setSelectedUser(null);
-                                }}
-                            />
-                            <input
-                                placeholder="Teléfono (obligatorio)"
-                                value={quickClientPhone}
-                                onChange={(e) => setQuickClientPhone(e.target.value)}
-                            />
-                            <input
-                                placeholder="Email (opcional)"
-                                value={quickClientEmail}
-                                onChange={(e) => setQuickClientEmail(e.target.value)}
-                            />
-                        </div>
+                <div style={{marginTop: 12, display: 'flex', gap: 16, alignItems: 'flex-start'}}>
+                    {/* Carrusel existente */}
+                    <div style={{flex: 2}}>
+                        <DateCarousel
+                            loadByDay={loadByDay}
+                            fechaLimite={fechaLimite}
+                            setFechaLimite={setFechaLimite}
+                        />
                     </div>
                 </div>
 
-                {/* Ticket / pago */}
-                <div style={{ marginTop: 30, borderTop: '1px solid #ccc', paddingTop: 20 }}>
-                    <h2>Ticket</h2>
-                    {selectedUser ? (
-                        <div>
-                            Cliente: {selectedUser.firstName} {selectedUser.lastName} - {selectedUser.phone}
-                        </div>
-                    ) : quickFirstName ? (
-                        <div>
-                            Cliente rápido: {quickFirstName} {quickLastName} - {quickClientPhone}
-                        </div>
-                    ) : (
-                        <div style={{ color: '#888' }}>Seleccione o cree un cliente</div>
-                    )}
-
-                    <div style={{ marginTop: 10 }}>
-                        <label>Método de pago:</label>
-                        <div>
-                            <label style={{ marginRight: 10 }}>
-                                <input
-                                    type="radio"
-                                    name="payment"
-                                    value="cash"
-                                    checked={paymentMethod === 'cash'}
-                                    onChange={() => setPaymentMethod('cash')}
-                                />{' '}
-                                Efectivo
-                            </label>
-                            <label>
-                                <input
-                                    type="radio"
-                                    name="payment"
-                                    value="card"
-                                    checked={paymentMethod === 'card'}
-                                    onChange={() => setPaymentMethod('card')}
-                                />{' '}
-                                Tarjeta
-                            </label>
+                <div>
+                    {/* Fecha libre */}
+                    <div style={{flex: 1, minWidth: 180}}>
+                        <label>O elegir otra fecha</label>
+                        <input
+                            type="date"
+                            value={fechaLimite || ''}
+                            onChange={(e) => {
+                                const picked = e.target.value; // formato YYYY-MM-DD
+                                setFechaLimite(picked);
+                            }}
+                            style={{width: '100%', padding: 6}}
+                            min={new Date().toISOString().split('T')[0]} // opcional: no permitir pasado
+                        />
+                        <div style={{fontSize: 12, marginTop: 4}}>
+                            {fechaLimite
+                                ? `Entrega: ${new Date(fechaLimite).toLocaleDateString('es-ES', {
+                                    weekday: 'long',
+                                    day: 'numeric',
+                                    month: 'long',
+                                })}`
+                                : 'Se propondrá una fecha por defecto'}
                         </div>
                     </div>
 
-                    <div style={{ marginTop: 12 }}>
-                        <div>
-                            {cart.map((c, i) => {
-                                const p = products.find((prod) => prod.id === c.productId);
-                                return (
-                                    <div key={i}>
-                                        {p?.name} x{c.quantity} — {((p?.basePrice || 0) * c.quantity).toFixed(2)} €
-                                    </div>
-                                );
-                            })}
-                        </div>
-                        <h3 style={{ marginTop: 10 }}>Total: {total.toFixed(2)} €</h3>
-                        <button
-                            onClick={checkout}
-                            disabled={
-                                !cart.length ||
-                                (!selectedUser && (!quickFirstName || !quickLastName)) ||
-                                !isValidSpanishPhone(selectedUser ? selectedUser.phone : quickClientPhone)
-                            }
-                            style={{ marginTop: 10 }}
-                        >
-                            Cobrar
-                        </button>
-                        {error && <div style={{ color: 'red', marginTop: 10 }}>{error}</div>}
 
-                        {order && (
-                            <div style={{ marginTop: 16, border: '1px solid #ccc', padding: 12, borderRadius: 6, background: '#f9f9f9' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: 12 }}>
-                                    <div style={{ flex: 1 }}>
-                                        <div style={{ fontWeight: 'bold', marginBottom: 4 }}>Último pedido: {order.orderNum}</div>
-                                        <div>
-                                            <strong>Cliente:</strong>{' '}
-                                            {order.client
-                                                ? `${order.client.firstName} ${order.client.lastName}`
-                                                : 'Cliente rápido'}
-                                        </div>
-                                        {order.client?.phone && (
-                                            <div>
-                                                <strong>Teléfono:</strong> {order.client.phone}
-                                            </div>
-                                        )}
-                                        <div>
-                                            <strong>Pago:</strong>{' '}
-                                            {order.paymentMethod === 'cash' ? 'Efectivo' : 'Tarjeta'}
-                                        </div>
-                                        <div style={{ marginTop: 8 }}>
-                                            <div style={{ fontWeight: 'bold' }}>Líneas:</div>
-                                            {order.lines.map((l) => {
-                                                // fallback buscando nombre en lista de productos si no viene en la línea
-                                                let name = l.productName;
-                                                if (!name) {
-                                                    const prod = products.find((p) => p.id === l.productId);
-                                                    name = prod ? prod.name : `#${l.productId}`;
-                                                }
-                                                return (
-                                                    <div
-                                                        key={l.id || `${l.productId}-${Math.random()}`}
-                                                        style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}
-                                                    >
-                                                        <div>
-                                                            {l.quantity}x {name}
-                                                        </div>
-                                                        <div>{(l.unitPrice * l.quantity).toFixed(2)}€</div>
-                                                    </div>
-                                                );
-                                            })}
+                    <div style={{marginTop: 12}}>
+                        <label>Observaciones:</label>
+                        <textarea
+                            placeholder="Prenda en mal estado, petición especial..."
+                            value={observaciones}
+                            onChange={(e) => setObservaciones(e.target.value)}
+                            style={{width: '100%', minHeight: 60}}
+                        />
+                    </div>
 
-                                        </div>
-                                        <div style={{ marginTop: 6, display: 'flex', justifyContent: 'space-between' }}>
-                                            <div style={{ fontWeight: 'bold' }}>Total:</div>
-                                            <div style={{ fontWeight: 'bold' }}>{order.total.toFixed(2)}€</div>
-                                        </div>
-                                    </div>
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                                        <button onClick={handlePrintTicket}>Imprimir ticket</button>
-                                        <button onClick={handlePrintLabels}>Imprimir etiquetas lavado</button>
-                                    </div>
-                                </div>
+                    <div style={{marginTop: 10}}>
+                        <h2>Ticket</h2>
+                        {selectedUser ? (
+                            <div>
+                                Cliente: {selectedUser.firstName} {selectedUser.lastName} - {selectedUser.phone}
                             </div>
+                        ) : quickFirstName ? (
+                            <div>
+                                Cliente rápido: {quickFirstName} {quickLastName} - {quickClientPhone}
+                            </div>
+                        ) : (
+                            <div style={{color: '#888'}}>Seleccione o cree un cliente</div>
                         )}
 
+
+                        <PaymentSection
+                            cart={cart}
+                            products={products}
+                            order={order}
+                            error={error}
+                            paymentMethod={paymentMethod}
+                            setPaymentMethod={setPaymentMethod}
+                            handleValidate={handleValidate}
+                            handlePrintTicket={handlePrintTicket}
+                            handlePrintLabels={handlePrintLabels}
+                            isValidated={isValidated}
+                            selectedUser={selectedUser}
+                            quickFirstName={quickFirstName}
+                            quickLastName={quickLastName}
+                            quickClientPhone={quickClientPhone}
+                            isValidSpanishPhone={isValidSpanishPhone}
+                            onCashStart={() => {
+                                setReceivedAmount(''); // reset
+                                setShowCashModal(true);
+                                setPaymentMethod('cash');
+                            }}
+                            onCardPay={handleCardPay}
+                        />
+
                     </div>
                 </div>
             </div>
 
-            {/* Derecha: productos */}
             <div>
-                <h2>Productos</h2>
-                <input
-                    placeholder="Buscar producto..."
-                    value={searchProduct}
-                    onChange={(e) => setSearchProduct(e.target.value)}
+                <ProductList
+                    products={products}
+                    searchProduct={searchProduct}
+                    setSearchProduct={setSearchProduct}
+                    onAdd={add}
                 />
-                <div style={{ marginTop: 10 }}>
-                    {filteredProducts.map((p) => (
-                        <div
-                            key={p.id}
-                            style={{
-                                border: '1px solid #ddd',
-                                padding: 8,
-                                marginBottom: 6,
-                                borderRadius: 4,
-                            }}
-                        >
-                            <div>{p.name}</div>
-                            <div>{p.basePrice.toFixed(2)} €</div>
-                            <button onClick={() => add(p)}>Añadir</button>
-                        </div>
-                    ))}
-                    {filteredProducts.length === 0 && (
-                        <div style={{ color: '#888' }}>No hay productos.</div>
-                    )}
-                </div>
             </div>
+
+            {showCashModal && order && (
+                <CashModal
+                    order={order}
+                    receivedAmount={receivedAmount}
+                    setReceivedAmount={setReceivedAmount}
+                    change={parseFloat(receivedAmount || 0) - order.total}
+                    onConfirm={handleCashConfirm}
+                    onClose={() => setShowCashModal(false)}
+                />
+            )}
+
+
         </div>
-    );
+    )
+        ;
 }
