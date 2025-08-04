@@ -192,7 +192,7 @@ hr {
   `;
 
     try {
-        await sendToPrinter(printerName, buildRawHtml(fullHtml));
+        await sendToPrinter('CLIENTE', buildRawHtml(fullHtml));
     } catch (e) {
         console.warn('QZ Tray falló, recayendo a window.print()', e);
         const w = window.open('', 'print_ticket_fallback');
