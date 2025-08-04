@@ -38,9 +38,15 @@ export async function printWashLabels({
                                           orderNum,
                                           clientFirstName,
                                           clientLastName,
-                                          totalItems// añade el nombre de impresora aquí
+                                          totalItems,
+                                          fechaLimite = '',
                                       }) {
     const clientName = `${clientFirstName} ${clientLastName}`.trim();
+    const fechaLimiteFormatted = new Date(fechaLimite).toLocaleDateString('es-ES', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+    });
 
     let labelsHtml = '';
     for (let i = 1; i <= totalItems; i++) {
@@ -49,6 +55,7 @@ export async function printWashLabels({
         <div>Cliente: ${clientName}</div>
         <div>Pedido: ${orderNum}</div>
         <div>Prendas: ${i} de ${totalItems}</div>
+        <div>Fecha: ${fechaLimiteFormatted}</div>
       </div>
       <div class="cut"></div>
     `;
@@ -59,28 +66,17 @@ export async function printWashLabels({
       <head>
         <title>Etiquetas ${orderNum}</title>
         <style>
-          body {
-            font-family: sans-serif;
-            padding: 8px;
-            margin: 0;
-          }
-          .label {
-            width: 220px;
-            padding: 8px;
-            margin-bottom: 12px;
-            border: 1px solid #000;
-            box-sizing: border-box;
-            page-break-inside: avoid;
-          }
-          .label div { margin: 4px 0; }
-
-
-          
-          .cut {
-    /* después de la línea de corte, hacer salto */
-    break-after: page;
-    page-break-after: always;
-}
+            body {
+                font-size: 1.2em;º
+                font-family: monospace;
+                padding: 0 10px 20px 10px;
+                max-width: 70mm;
+            }
+            .cut {
+                /* después de la línea de corte, hacer salto */
+                break-after: page;
+                page-break-after: always;
+            }
         </style>
       </head>
       <body>
@@ -139,7 +135,7 @@ export async function printSaleTicket(order, products = [], printerName) {
 
 body {
     font-family: monospace;
-    margin: 0 20px 30px 20px;
+    padding: 0 10px 20px 10px;
     max-width: 70mm;
 }
 

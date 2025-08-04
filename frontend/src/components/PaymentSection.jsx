@@ -98,6 +98,7 @@ export default function PaymentSection({ token, orderId, onPaid }) {
     };
 
     const handlePrintLabels = async () => {
+        console.log(order)
         if (!order) return;
         setIsPrinting(true);
         try {
@@ -107,6 +108,7 @@ export default function PaymentSection({ token, orderId, onPaid }) {
                 clientFirstName: order.client?.firstName || '',
                 clientLastName: order.client?.lastName || '',
                 totalItems,
+                fechaLimite: order.fechaLimite,
             });
         } catch (e) {
             console.error('Error imprimiendo etiquetas:', e);

@@ -65,6 +65,8 @@ export default function Tasks({token, products}) {
     };
 
     const handlePrintLabels = (task) => {
+        console.log(task)
+
         if (!task.order) return;
         const totalItems = task.order.lines.reduce((sum, l) => sum + (l.quantity || 1), 0);
         printWashLabels({
@@ -72,6 +74,7 @@ export default function Tasks({token, products}) {
             clientFirstName: task.order.client?.firstName || '',
             clientLastName: task.order.client?.lastName || '',
             totalItems,
+            fechaLimite: task.order.fechaLimite,
         });
     };
 
