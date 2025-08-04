@@ -45,9 +45,10 @@ export async function printWashLabels({
     let labelsHtml = '';
     for (let i = 1; i <= totalItems; i++) {
         labelsHtml += `
-      <div class="label">
+      <div>
         <div>Cliente: ${clientName}</div>
-        <div>Pedido: ${orderNum}/${i} de ${totalItems}</div>
+        <div>Pedido: ${orderNum}</div>
+        <div>Prendas: ${i} de ${totalItems}</div>
       </div>
       <div class="cut"></div>
     `;
@@ -72,15 +73,14 @@ export async function printWashLabels({
             page-break-inside: avoid;
           }
           .label div { margin: 4px 0; }
+
+
+          
           .cut {
-            height: 1px;
-            background: #000;
-            margin: 8px 0 12px;
-          }
-          @media print {
-            .label { page-break-after: always; }
-            body { margin: 0; }
-          }
+    /* después de la línea de corte, hacer salto */
+    break-after: page;
+    page-break-after: always;
+}
         </style>
       </head>
       <body>
@@ -139,7 +139,7 @@ export async function printSaleTicket(order, products = [], printerName) {
 
 body {
     font-family: monospace;
-    padding: 10px 0;
+    padding: 0 10px 20px 10px;
     max-width: 70mm;
 }
 
