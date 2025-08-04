@@ -197,6 +197,12 @@ hr {
         console.warn('QZ Tray falló, recayendo a window.print()', e);
         const w = window.open('', 'print_ticket_fallback');
         w.document.write(fullHtml);
+        w.document.close();
+        w.focus();
+        setTimeout(() => {
+            w.print();
+            w.close();
+        }, 300);
 
     }
 }
