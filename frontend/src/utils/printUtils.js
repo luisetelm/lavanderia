@@ -66,9 +66,17 @@ export async function printWashLabels({
       <head>
         <title>Etiquetas ${orderNum}</title>
         <style>
+        
+        @page {
+  margin: 0;
+  size: auto; /* deja que la impresora decida la altura, ancho adaptado */
+}
+
+
             body {
                 font-size: 1.2em;
                 font-family: monospace;
+                margin-top: 0;
                 padding: 0 20px 20px 20px;
                 max-width: 70mm;
             }
