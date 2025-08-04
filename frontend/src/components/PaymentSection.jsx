@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { fetchOrder, payWithCard, payWithCash } from '../api.js';
+import { printSaleTicket, printWashLabels } from '../utils/printUtils.js';
 
 /**
  * PaymentSection para un pedido concreto.
@@ -15,6 +16,7 @@ export default function PaymentSection({ token, orderId, onPaid }) {
     const [isProcessing, setIsProcessing] = useState(false);
     const [receivedAmount, setReceivedAmount] = useState('');
     const [localError, setLocalError] = useState('');
+    const [isPrinting, setIsPrinting] = useState(false);
 
     const loadOrder = useCallback(async () => {
         if (!orderId) return;
@@ -74,13 +76,42 @@ export default function PaymentSection({ token, orderId, onPaid }) {
             );
             setOrder(updatedOrder);
             onPaid?.();
-            // Opcional: mostrar vuelta en UI o toast
             console.log('Vuelta:', change.toFixed(2));
         } catch (e) {
             console.error('Error pago en efectivo:', e);
             setLocalError(e.error || 'Error en pago en efectivo');
         } finally {
             setIsProcessing(false);
+        }
+    };
+
+    const handlePrintTicket = async () => {
+        if (!order) return;
+        setIsPrinting(true);
+        try {
+            await printSaleTicket(order, [], 'LAVADORA');
+        } catch (e) {
+            console.error('Error imprimiendo ticket:', e);
+        } finally {
+            setIsPrinting(false);
+        }
+    };
+
+    const handlePrintLabels = async () => {
+        if (!order) return;
+        setIsPrinting(true);
+        try {
+            const totalItems = order.lines.reduce((sum, l) => sum + (l.quantity || 1), 0);
+            await printWashLabels({
+                orderNum: order.orderNum,
+                clientFirstName: order.client?.firstName || '',
+                clientLastName: order.client?.lastName || '',
+                totalItems,
+            });
+        } catch (e) {
+            console.error('Error imprimiendo etiquetas:', e);
+        } finally {
+            setIsPrinting(false);
         }
     };
 
@@ -195,7 +226,10 @@ export default function PaymentSection({ token, orderId, onPaid }) {
                         <button
                             onClick={handleCardPay}
                             disabled={isProcessing}
-                            style={{ padding: '8px 16px', cursor: isProcessing ? 'not-allowed' : 'pointer' }}
+                            style={{
+                                padding: '8px 16px',
+                                cursor: isProcessing ? 'not-allowed' : 'pointer',
+                            }}
                         >
                             {isProcessing ? 'Procesando...' : 'Pagar con tarjeta'}
                         </button>
@@ -218,7 +252,10 @@ export default function PaymentSection({ token, orderId, onPaid }) {
                             <button
                                 onClick={handleCashPay}
                                 disabled={isProcessing}
-                                style={{ padding: '8px 16px', cursor: isProcessing ? 'not-allowed' : 'pointer' }}
+                                style={{
+                                    padding: '8px 16px',
+                                    cursor: isProcessing ? 'not-allowed' : 'pointer',
+                                }}
                             >
                                 {isProcessing ? 'Procesando...' : 'Pagar en efectivo'}
                             </button>
@@ -236,10 +273,27 @@ export default function PaymentSection({ token, orderId, onPaid }) {
                 </div>
             )}
 
+            {/* impresión siempre disponible */}
+            <div
+                className="print-buttons"
+                style={{
+                    marginTop: 16,
+                    display: 'flex',
+                    gap: 12,
+                    flexWrap: 'wrap',
+                    alignItems: 'center',
+                }}
+            >
+                <button onClick={handlePrintTicket} disabled={!order || isPrinting}>
+                    {isPrinting ? 'Imprimiendo...' : 'Imprimir ticket'}
+                </button>
+                <button onClick={handlePrintLabels} disabled={!order || isPrinting}>
+                    {isPrinting ? 'Imprimiendo...' : 'Imprimir etiquetas'}
+                </button>
+            </div>
+
             {(localError || error) && (
-                <div style={{ color: 'red', marginTop: 8 }}>
-                    {localError || error}
-                </div>
+                <div style={{ color: 'red', marginTop: 8 }}>{localError || error}</div>
             )}
         </div>
     );

@@ -211,21 +211,6 @@ export default function POS({ token }) {
         return sum + (p?.basePrice || 0) * c.quantity;
     }, 0);
 
-    const handlePrintTicket = () => {
-        if (!order) return;
-        printSaleTicket(order, products);
-    };
-
-    const handlePrintLabels = () => {
-        if (!order) return;
-        const totalItems = order.lines.reduce((sum, l) => sum + (l.quantity || 1), 0);
-        printWashLabels({
-            orderNum: order.orderNum,
-            clientFirstName: order.client?.firstName || '',
-            clientLastName: order.client?.lastName || '',
-            totalItems,
-        });
-    };
 
     return (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 30 }}>
