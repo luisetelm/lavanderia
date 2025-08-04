@@ -139,7 +139,7 @@ export async function printSaleTicket(order, products = [], printerName) {
 
 body {
     font-family: monospace;
-    padding: 0 10px 20px 10px;
+    margin: 0 20px 30px 20px;
     max-width: 70mm;
 }
 
