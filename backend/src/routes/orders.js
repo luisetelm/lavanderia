@@ -1,5 +1,5 @@
 // backend/src/routes/orders.js
-//import nextOrderNum from '../utils/generateOrderNum.js';
+import nextOrderNum from '../utils/generateOrderNum.js';
 import {isValidSpanishPhone} from '../utils/validatePhone.js';
 
 export default async function (fastify, opts) {
@@ -391,9 +391,6 @@ export default async function (fastify, opts) {
             return reply.status(500).send({ error: 'Error al obtener el pedido' });
         }
     });
-
-
-
 
 }
 
