@@ -67,9 +67,9 @@ export async function printWashLabels({
         <title>Etiquetas ${orderNum}</title>
         <style>
             body {
-                font-size: 1.2em;º
+                font-size: 1.2em;
                 font-family: monospace;
-                padding: 0 10px 20px 10px;
+                padding: 0 20px 20px 20px;
                 max-width: 70mm;
             }
             .cut {
