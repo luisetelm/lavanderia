@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { fetchOrder, payWithCard, payWithCash } from '../api.js';
-import { printSaleTicket, printWashLabels } from '../utils/printUtils.js';
+import React, {useState, useEffect, useCallback} from 'react';
+import {fetchOrder, payWithCard, payWithCash, updateTask} from '../api.js';
+import {printSaleTicket, printWashLabels} from '../utils/printUtils.js';
 
 /**
  * PaymentSection para un pedido concreto.
@@ -9,7 +9,7 @@ import { printSaleTicket, printWashLabels } from '../utils/printUtils.js';
  *  - orderId: número o string
  *  - onPaid?: callback que se llama cuando se completa el pago exitosamente
  */
-export default function PaymentSection({ token, orderId, onPaid }) {
+export default function PaymentSection({token, orderId, onPaid}) {
     const [order, setOrder] = useState(null);
     const [loading, setLoading] = useState(!!orderId);
     const [error, setError] = useState('');
@@ -47,7 +47,7 @@ export default function PaymentSection({ token, orderId, onPaid }) {
         setIsProcessing(true);
         setLocalError('');
         try {
-            const { order: updatedOrder } = await payWithCard(token, order.id);
+            const {order: updatedOrder} = await payWithCard(token, order.id);
             setOrder(updatedOrder);
             onPaid?.();
         } catch (e) {
@@ -69,7 +69,7 @@ export default function PaymentSection({ token, orderId, onPaid }) {
         setIsProcessing(true);
         setLocalError('');
         try {
-            const { order: updatedOrder, change } = await payWithCash(
+            const {order: updatedOrder, change} = await payWithCash(
                 token,
                 order.id,
                 received
@@ -82,6 +82,24 @@ export default function PaymentSection({ token, orderId, onPaid }) {
             setLocalError(e.error || 'Error en pago en efectivo');
         } finally {
             setIsProcessing(false);
+        }
+    };
+
+    const markReady = async (task) => {
+        try {
+            await updateTask(token, order.id, {state: 'ready'});
+            await loadOrder();
+        } catch (e) {
+            console.error(e);
+        }
+    };
+
+    const markCollected = async (task) => {
+        try {
+            await updateTask(token, task.id, {state: 'collected'});
+            await load(query);
+        } catch (e) {
+            console.error(e);
         }
     };
 
@@ -118,8 +136,10 @@ export default function PaymentSection({ token, orderId, onPaid }) {
     };
 
     if (loading) return <div>Cargando pedido...</div>;
-    if (error) return <div style={{ color: 'red' }}>{error}</div>;
+    if (error) return <div style={{color: 'red'}}>{error}</div>;
     if (!order) return <div>Pedido no encontrado</div>;
+
+    console.log(order);
 
     const clienteDisplay = () => {
         if (order.client) return `${order.client.firstName} ${order.client.lastName}`;
@@ -129,6 +149,7 @@ export default function PaymentSection({ token, orderId, onPaid }) {
     const telefonoDisplay = () => {
         return order.client?.phone || null;
     };
+
 
     return (
         <div
@@ -141,10 +162,10 @@ export default function PaymentSection({ token, orderId, onPaid }) {
                 position: 'relative',
             }}
         >
-            <div style={{ fontWeight: 'bold', marginBottom: 8 }}>Resumen del pedido</div>
+            <div style={{fontWeight: 'bold', marginBottom: 8}}>Resumen del pedido</div>
 
-            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-                <div style={{ flex: 1, minWidth: 250 }}>
+            <div style={{display: 'flex', gap: 32, flexWrap: 'wrap'}}>
+                <div style={{flex: 2, minWidth: 250}}>
                     <div>
                         <strong>Pedido:</strong> {order.orderNum}
                     </div>
@@ -178,8 +199,8 @@ export default function PaymentSection({ token, orderId, onPaid }) {
                     </div>
                 </div>
 
-                <div style={{ flex: 1, minWidth: 250 }}>
-                    <div style={{ fontWeight: 'bold' }}>Líneas:</div>
+                <div style={{flex: 2, minWidth: 250}}>
+                    <div style={{fontWeight: 'bold'}}>Líneas:</div>
                     {order.lines.map((l) => {
                         const name = l.productName || l.product?.name || `#${l.productId}`;
                         return (
@@ -211,6 +232,32 @@ export default function PaymentSection({ token, orderId, onPaid }) {
                         <div>{order.total.toFixed(2)}€</div>
                     </div>
                 </div>
+
+                <div style={{flex: 1}}>
+                    {/* impresión siempre disponible */}
+                    <div
+                        className="print-buttons"
+                        style={{
+                            marginTop: 16,
+                            display: 'flex',
+                            gap: 12,
+                            flexWrap: 'wrap',
+                            alignItems: 'flex-end',
+                            flexDirection: 'column',
+                            width: '100%',
+                        }}
+                    >
+                        <button onClick={handlePrintTicket} style={{ width: '100%'}} disabled={!order || isPrinting}>
+                            {isPrinting ? 'Imprimiendo...' : 'Imprimir ticket'}
+                        </button>
+                        <button onClick={handlePrintLabels}  style={{ width: '100%'}}  disabled={!order || isPrinting}>
+                            {isPrinting ? 'Imprimiendo...' : 'Imprimir etiquetas'}
+                        </button>
+
+                        <button onClick={markReady}>Notificar listo</button>
+                    </div>
+
+                </div>
             </div>
 
             {!order.paid && (
@@ -220,50 +267,40 @@ export default function PaymentSection({ token, orderId, onPaid }) {
                         borderTop: '1px solid #ddd',
                         paddingTop: 12,
                         display: 'flex',
-                        gap: 24,
+                        gap: 36,
                         flexWrap: 'wrap',
                     }}
                 >
-                    <div>
+                    <div style={{flex: 2, minWidth: 250}}>
+                        <h3>Pago con tarjeta</h3>
                         <button
                             onClick={handleCardPay}
                             disabled={isProcessing}
                             style={{
                                 padding: '8px 16px',
                                 cursor: isProcessing ? 'not-allowed' : 'pointer',
+                                width: '100%',
                             }}
                         >
                             {isProcessing ? 'Procesando...' : 'Pagar con tarjeta'}
                         </button>
                     </div>
-                    <div style={{ minWidth: 180 }}>
-                        <div style={{ marginBottom: 6 }}>
+                    <div style={{flex: 2, minWidth: 250, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' , height: '100%'}}>
+                        <h3>Pago en efectivo</h3>
+                        <div style={{marginBottom: 6}}>
                             <label>
-                                <strong>Recibido:</strong>{' '}
                                 <input
                                     type="number"
                                     value={receivedAmount}
                                     onChange={(e) => setReceivedAmount(e.target.value)}
                                     disabled={isProcessing}
-                                    style={{ width: 100 }}
+                                    style={{width: '100%', paddingLeft: 0, paddingRight: 0}}
                                     placeholder="€"
                                 />
                             </label>
                         </div>
-                        <div style={{ marginBottom: 6 }}>
-                            <button
-                                onClick={handleCashPay}
-                                disabled={isProcessing}
-                                style={{
-                                    padding: '8px 16px',
-                                    cursor: isProcessing ? 'not-allowed' : 'pointer',
-                                }}
-                            >
-                                {isProcessing ? 'Procesando...' : 'Pagar en efectivo'}
-                            </button>
-                        </div>
                         <div>
-                            <small>
+                            <small style={{textAlign: 'center', width: '100%'}}>
                                 Vuelta:{' '}
                                 {receivedAmount
                                     ? Math.max(0, parseFloat(receivedAmount) - order.total).toFixed(2)
@@ -271,31 +308,28 @@ export default function PaymentSection({ token, orderId, onPaid }) {
                                 €
                             </small>
                         </div>
+                        <div style={{marginBottom: 6}}>
+                            <button
+                                onClick={handleCashPay}
+                                disabled={isProcessing}
+                                style={{
+                                    padding: '8px 16px',
+                                    cursor: isProcessing ? 'not-allowed' : 'pointer',
+                                    width: '100%',
+                                }}
+                            >
+                                {isProcessing ? 'Procesando...' : 'Pagar en efectivo'}
+                            </button>
+                        </div>
+
                     </div>
+                    <div style={{flex: 10}}></div>
                 </div>
             )}
 
-            {/* impresión siempre disponible */}
-            <div
-                className="print-buttons"
-                style={{
-                    marginTop: 16,
-                    display: 'flex',
-                    gap: 12,
-                    flexWrap: 'wrap',
-                    alignItems: 'center',
-                }}
-            >
-                <button onClick={handlePrintTicket} disabled={!order || isPrinting}>
-                    {isPrinting ? 'Imprimiendo...' : 'Imprimir ticket'}
-                </button>
-                <button onClick={handlePrintLabels} disabled={!order || isPrinting}>
-                    {isPrinting ? 'Imprimiendo...' : 'Imprimir etiquetas'}
-                </button>
-            </div>
 
             {(localError || error) && (
-                <div style={{ color: 'red', marginTop: 8 }}>{localError || error}</div>
+                <div style={{color: 'red', marginTop: 8}}>{localError || error}</div>
             )}
         </div>
     );

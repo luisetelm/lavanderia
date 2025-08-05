@@ -350,6 +350,7 @@ export default async function (fastify, opts) {
                             phone: true,
                         },
                     },
+                    noti
                 },
             });
 

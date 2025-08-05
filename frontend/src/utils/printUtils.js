@@ -110,6 +110,11 @@ export async function printWashLabels({
 }
 
 export async function printSaleTicket(order, products = [], printerName) {
+    const fechaLimiteFormatted = new Date(order.fechaLimite).toLocaleDateString('es-ES', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+    });
     const client = order.client || {};
     const clientName = client.firstName
         ? `${client.firstName} ${client.lastName}`.trim()
@@ -186,6 +191,7 @@ hr {
         <div class="section bold">
           Total: ${order.total.toFixed(2)}€
         </div>
+        <div>Fecha estimada: ${fechaLimiteFormatted}</div>
         <div>Observaciones: ${order.observaciones ? order.observaciones : 'Ninguna'}</div>
         <div style="margin-top:8px; text-align:center; font-size:10px;">
           ¡Gracias por su confianza!
