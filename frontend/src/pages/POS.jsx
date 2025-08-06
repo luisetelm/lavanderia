@@ -211,6 +211,23 @@ export default function POS({ token }) {
         return sum + (p?.basePrice || 0) * c.quantity;
     }, 0);
 
+    const updateQuantity = (productId, newQuantity) => {
+        setCart(prev => {
+            if (newQuantity <= 0) {
+                return prev.filter(item => item.productId !== productId);
+            }
+            return prev.map(item => 
+                item.productId === productId 
+                    ? { ...item, quantity: newQuantity }
+                    : item
+            );
+        });
+    };
+
+    const removeFromCart = (productId) => {
+        setCart(prev => prev.filter(item => item.productId !== productId));
+    };
+
 
     return (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 30 }}>
@@ -294,7 +311,12 @@ export default function POS({ token }) {
 
                         {!order && (
                             <div style={{ marginTop: 8 }}>
-                                <CartSummary cart={cart} products={products} />
+                                <CartSummary 
+                                    cart={cart} 
+                                    products={products} 
+                                    onUpdateQuantity={updateQuantity}
+                                    onRemove={removeFromCart}
+                                />
                                 <div style={{ marginTop: 8 }}>
                                     <button onClick={() => handleValidate({ submit: true })} disabled={!cart.length}>
                                         {order ? 'Revalidar pedido' : 'Validar pedido'}

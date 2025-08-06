@@ -25,7 +25,7 @@ export default function DateCarousel({
     fechaLimite,
     setFechaLimite,
 }) {
-    const days = getNextBusinessDays(12);
+    const days = getNextBusinessDays(10);
     const [hoveredDay, setHoveredDay] = useState(null);
 
     return (
