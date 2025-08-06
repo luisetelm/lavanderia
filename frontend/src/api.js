@@ -11,15 +11,20 @@ async function request(path, token, opts = {}) {
     });
     if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw { status: res.status, ...err };
+        if (res.status === 401) {
+            // Emitir un evento personalizado cuando se recibe un 401
+            window.dispatchEvent(new CustomEvent('unauthorized'));
+        }
+        throw {status: res.status, ...err};
     }
+
     return res.json();
 }
 
 export function login(email, password) {
     return request('/auth/login', null, {
         method: 'POST',
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({email, password}),
     });
 }
 
@@ -48,6 +53,13 @@ export function updateProduct(token, id, data) {
     });
 }
 
+export function importProducts(token, formData) {
+    return request(`/csv/products`, token, {
+        method: 'POST',
+        body: formData
+    });
+}
+
 
 export function createOrder(token, order) {
     return request('/orders', token, {
@@ -62,7 +74,7 @@ export function fetchTasks(token) {
 
 export async function fetchTask(token, taskId) {
     const res = await fetch(`/api/tasks/${taskId}`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: {Authorization: `Bearer ${token}`},
     });
     if (!res.ok) throw await res.json();
     return res.json();
@@ -106,7 +118,7 @@ export function updateUser(token, id, data) {
 export function payWithCard(token, orderId) {
     return request(`/orders/${orderId}/pay`, token, {
         method: 'POST',
-        body: JSON.stringify({ method: 'card' }),
+        body: JSON.stringify({method: 'card'}),
     });
 }
 
