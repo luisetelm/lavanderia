@@ -35,7 +35,6 @@ export default function DateCarousel({
                 display: 'grid',
                 gridTemplateColumns: "repeat(5, 1fr)",
                 gap: 8,
-                overflowX: 'auto',
                 maxWidth: '60vw'
             }}>
                 {days.map((d) => {
