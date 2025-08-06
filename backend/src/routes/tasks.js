@@ -1,5 +1,5 @@
 // backend/src/routes/tasks.js
-import { sendSMS, sendWhatsApp } from '../services/twilio.js';
+import {sendSMS, sendWhatsApp} from '../services/twilio.js';
 
 export default async function (fastify, opts) {
     const prisma = fastify.prisma;
@@ -7,78 +7,63 @@ export default async function (fastify, opts) {
     // Listar tareas (más recientes primero)
     // dentro de fastify.get('/', ...)
     fastify.get('/', async (req, reply) => {
-        const { q } = req.query;
+        const {q} = req.query;
         // Construir filtro condicional
         const where = {};
         if (q) {
             const term = q.toString();
-            where.OR = [
-                { name: { contains: term, mode: 'insensitive' } }, // si quieres buscar por nombre de tarea
+            where.OR = [{name: {contains: term, mode: 'insensitive'}}, // si quieres buscar por nombre de tarea
                 {
                     order: {
-                        orderNum: { contains: term, mode: 'insensitive' },
+                        orderNum: {contains: term, mode: 'insensitive'},
                     },
-                },
-                {
+                }, {
                     order: {
                         client: {
-                            OR: [
-                                { firstName: { contains: term, mode: 'insensitive' } },
-                                { lastName: { contains: term, mode: 'insensitive' } },
-                            ],
+                            OR: [{firstName: {contains: term, mode: 'insensitive'}}, {
+                                lastName: {
+                                    contains: term,
+                                    mode: 'insensitive'
+                                }
+                            },],
                         },
                     },
-                },
-            ];
+                },];
         }
 
         const tasks = await prisma.task.findMany({
-            where,
-            orderBy: { assignedAt: 'desc' },
-            include: {
+            where, orderBy: {assignedAt: 'desc'}, include: {
                 order: {
                     include: {
                         client: {
                             select: {
-                                id: true,
-                                firstName: true,
-                                lastName: true,
-                                phone: true,
+                                id: true, firstName: true, lastName: true, phone: true,
                             },
-                        },
-                        lines: {
-                            include: { product: true },
+                        }, lines: {
+                            include: {product: true},
                         },
                     },
-                },
-                worker: {
+                }, worker: {
                     select: {
-                        id: true,
-                        firstName: true,
-                        lastName: true,
+                        id: true, firstName: true, lastName: true,
                     },
-                },
-                notifications: true,
+                }, notifications: true,
             },
         });
 
         const serialized = tasks.map((t) => ({
-            ...t,
-            order: t.order
-                ? {
-                    ...t.order,
-                    lines: t.order.lines.map((l) => ({
-                        id: l.id,
-                        productId: l.productId,
-                        variantId: l.variantId,
-                        quantity: l.quantity,
-                        unitPrice: l.unitPrice,
-                        totalPrice: l.totalPrice,
-                        notes: l.notes,
-                        productName: l.product?.name || '',
-                    })),
-                }
-                : null,
+            ...t, order: t.order ? {
+                ...t.order, lines: t.order.lines.map((l) => ({
+                    id: l.id,
+                    productId: l.productId,
+                    variantId: l.variantId,
+                    quantity: l.quantity,
+                    unitPrice: l.unitPrice,
+                    totalPrice: l.totalPrice,
+                    notes: l.notes,
+                    productName: l.product?.name || '',
+                })),
+            } : null,
         }));
 
         return reply.send(serialized);
@@ -87,36 +72,27 @@ export default async function (fastify, opts) {
 
     // Obtener una tarea concreta
     fastify.get('/:id', async (req, reply) => {
-        const { id } = req.params;
+        const {id} = req.params;
         const task = await prisma.task.findUnique({
-            where: { id: Number(id) },
-            include: {
+            where: {id: Number(id)}, include: {
                 order: {
                     include: {
                         client: {
                             select: {
-                                id: true,
-                                firstName: true,
-                                lastName: true,
-                                phone: true,
+                                id: true, firstName: true, lastName: true, phone: true,
                             },
-                        },
-                        lines: {
-                            include: { product: true },
+                        }, lines: {
+                            include: {product: true},
                         },
                     },
-                },
-                worker: {
+                }, worker: {
                     select: {
-                        id: true,
-                        firstName: true,
-                        lastName: true,
+                        id: true, firstName: true, lastName: true,
                     },
-                },
-                notifications: true,
+                }, notifications: true,
             },
         });
-        if (!task) return reply.status(404).send({ error: 'Tarea no encontrada' });
+        if (!task) return reply.status(404).send({error: 'Tarea no encontrada'});
 
         // Serializar líneas con productName
         if (task.order?.lines) {
@@ -137,8 +113,8 @@ export default async function (fastify, opts) {
 
     // Actualizar tarea (estado, asignar trabajador, descripción)
     fastify.patch('/:id', async (req, reply) => {
-        const { id } = req.params;
-        const { state, workerId, description } = req.body;
+        const {id} = req.params;
+        const {state, workerId, description} = req.body;
 
         const data = {};
         if (state) {
@@ -152,36 +128,26 @@ export default async function (fastify, opts) {
         let task;
         try {
             task = await prisma.task.update({
-                where: { id: Number(id) },
-                data,
-                include: {
+                where: {id: Number(id)}, data, include: {
                     order: {
                         include: {
                             client: {
                                 select: {
-                                    id: true,
-                                    firstName: true,
-                                    lastName: true,
-                                    phone: true,
+                                    id: true, firstName: true, lastName: true, phone: true,
                                 },
-                            },
-                            lines: {
-                                include: { product: true },
+                            }, lines: {
+                                include: {product: true},
                             },
                         },
-                    },
-                    worker: {
+                    }, worker: {
                         select: {
-                            id: true,
-                            firstName: true,
-                            lastName: true,
+                            id: true, firstName: true, lastName: true,
                         },
-                    },
-                    notifications: true,
+                    }, notifications: true,
                 },
             });
         } catch (e) {
-            return reply.status(400).send({ error: 'No se pudo actualizar la tarea', details: e.message });
+            return reply.status(400).send({error: 'No se pudo actualizar la tarea', details: e.message});
         }
 
         // Serializar líneas con productName
@@ -210,48 +176,17 @@ export default async function (fastify, opts) {
                 await sendSMS(client.phone, message);
                 await prisma.notification.create({
                     data: {
-                        taskId: task.id,
-                        type: 'sms',
-                        recipient: client.phone,
-                        content: message,
-                        status: 'sent',
+                        taskId: task.id, type: 'sms', recipient: client.phone, content: message, status: 'sent',
                     },
                 });
             } catch (err) {
                 await prisma.notification.create({
                     data: {
-                        taskId: task.id,
-                        type: 'sms',
-                        recipient: client.phone,
-                        content: message,
-                        status: 'failed',
+                        taskId: task.id, type: 'sms', recipient: client.phone, content: message, status: 'failed',
                     },
                 });
             }
 
-            // WhatsApp opcional
-            try {
-                await sendWhatsApp(client.phone, message);
-                await prisma.notification.create({
-                    data: {
-                        taskId: task.id,
-                        type: 'whatsapp',
-                        recipient: client.phone,
-                        content: message,
-                        status: 'sent',
-                    },
-                });
-            } catch (err) {
-                await prisma.notification.create({
-                    data: {
-                        taskId: task.id,
-                        type: 'whatsapp',
-                        recipient: client.phone,
-                        content: message,
-                        status: 'failed',
-                    },
-                });
-            }
         }
 
         return reply.send(task);

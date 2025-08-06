@@ -255,7 +255,13 @@ export default function PaymentSection({token, orderId, onPaid}) {
                         </button>
 
                         <button onClick={markReady}>Notificar listo</button>
+                        {(localError || error) && (
+                            <div style={{color: 'red', marginTop: 8}}>{localError || error}</div>
+                        )}                   {(localError || error) && (
+                            <div style={{color: 'red', marginTop: 8}}>{localError || error}</div>
+                        )}
                     </div>
+
 
                 </div>
             </div>
@@ -328,9 +334,7 @@ export default function PaymentSection({token, orderId, onPaid}) {
             )}
 
 
-            {(localError || error) && (
-                <div style={{color: 'red', marginTop: 8}}>{localError || error}</div>
-            )}
+
         </div>
     );
 }
