@@ -1,35 +1,123 @@
-/* less */
-/* src/styles/uikit-theme.less */
+/* 2) Importa UIkit desde las fuentes Less */
+@import "uikit/src/less/uikit.less";
+@import "uikit/src/less/uikit.theme.less";
 
-@color-primary: #4f46e5;
-@color-secondary: #4338ca;
+@color-primary: #048ABF;
+@color-secondary: #5AB5BF;
 
-/* 1) Sobrescribe variables ANTES de importar UIkit */
-@global-primary-background: #4f46e5;  /* color primario */
-@global-primary-color: #ffffff;       /* texto en primario */
-@global-link-color: #4f46e5;
+/* Colores globales de texto */
+@global-color: #333333;
+@base-body-color: #333333;
+
+/* 1) Variables ANTES de importar UIkit */
+/* Marca (fondo primario) */
+@global-primary-background: @color-primary;
+/* Fondo secundario (ej. barras, nav) */
+@global-secondary-background: #F0F0F2;
+
+/* Color de texto sobre fondos primarios (debe tener contraste) */
+@global-primary-color: #ffffff;
+
+/* Links */
+@global-link-color: @color-primary;
 @global-link-hover-color: #4338ca;
-@global-border-radius: 8px;           /* radio global */
 
+/* Tipografía (UI general y body) */
+@global-font-family: "Noto Sans", sans-serif;
+@base-body-font-family: "Noto Sans", sans-serif;
+
+/* Bordes y controles */
+@global-border-radius: 4px;
 @global-control-height: 32px;
 
+/* Botones */
 @button-default-background: #ffffff;
 @button-default-border: #e5e7eb;
+
+/* Usa el fondo de marca para el primario y texto blanco para contraste */
 @button-primary-background: @global-primary-background;
-@button-primary-color: @global-primary-color;
+@button-primary-color: #ffffff;
 
-/* Tipografía */
-@global-font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial;
 
-/* 2) Importa las fuentes de UIkit para compilar con tus variables */
-@import "uikit/src/less/uikit.less";
-@import "uikit/src/less/uikit.theme.less"; /* tema por defecto, opcional pero habitual */
+/* Estilos base extra (opcional) */
+html {
+  font-family: @base-body-font-family;
+  font-weight: 400;
+  font-style: normal;
+  color: @base-body-color;
+}
 
-.uk-button-group {
-  border-radius: @global-border-radius; /* ya lo tienes a 20px */
-  overflow: hidden;                      /* importante para recortar esquinas internas */
+body {
+  background: #fafafa;
+  margin: 0;
+}
+
+/* Encabezados: si quieres una fuente distinta para títulos, cámbiala aquí */
+h1, h2, h3, h4, h5, h6 {
+  font-family: @global-font-family;
+  font-weight: 700;
+  margin: 0;
+}
+
+/* Ejemplos UI extra */
+nav {
+  background-color: @global-secondary-background;
+  color: @global-color;
+  width: 220px;
+
+  > div {
+    padding: 10px 0;
+  }
+
+  .logo {
+    padding: 0 10px;
+    height: 100px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .uk-nav > li > a {
+    color: @global-color;
+    padding: 10px 15px;
+    font-size: 1.2rem;
+  }
+
+  .uk-nav > li > a.active {
+    background-color: @color-primary;
+    color: @global-primary-color;
+  }
+
+  > div.logout {
+    padding: 15px 10px;
+  }
+
 }
 
 .uk-button {
   line-height: 30px;
+  border-radius: @global-border-radius;
 }
+
+.uk-button-group {
+  border-radius: @global-border-radius;
+  overflow: hidden;
+
+  .uk-button {
+    border-radius: 0;
+  }
+}
+
+.uk-button-default {
+  background-color: @button-default-background;
+  color: @global-color;
+  border: 1px solid @button-default-border;
+}
+
+.uk-button-primary {
+  background-color: @button-primary-background;
+  color: @button-primary-color; /* blanco */
+  border: none;
+}
+

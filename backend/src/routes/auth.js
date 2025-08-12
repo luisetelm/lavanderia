@@ -22,6 +22,6 @@ export default async function (fastify, opts) {
         const valid = await compare(password, user.password);
         if (!valid) return reply.status(401).send({ error: 'Invalid credentials' });
         const token = jwt.sign({ userId: user.id, role: user.role, email: user.email }, process.env.JWT_SECRET, { expiresIn: '8h' });
-        return reply.send({ token, user: { id: user.id, name: user.name, role: user.role } });
+        return reply.send({ token, user: { id: user.id, name: user.firstName, role: user.role } });
     });
 }

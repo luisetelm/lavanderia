@@ -285,30 +285,47 @@ export default async function (fastify, opts) {
 
     fastify.get('/', async (req, reply) => {
         const prisma = fastify.prisma;
+        const { q, status } = req.query || {};
 
-        // Puedes ampliar filtros aquí si quieres
-        try {
-            const orders = await prisma.order.findMany({
-                include: {
-                    lines: {
-                        include: {product: true},
-                    },
+
+        const where = {};
+
+        if (status && status !== 'all') {
+            where.status = status; // admite ya en mayúsculas
+        }
+
+        if (q && String(q).trim()) {
+            const term = String(q).trim();
+            where.OR = [
+                { orderNum: { contains: term, mode: 'insensitive' } },
+                {
                     client: {
-                        select: {
-                            id: true,
-                            firstName: true,
-                            lastName: true,
-                            phone: true,
-                            email: true,
-                        },
+                        OR: [
+                            { firstName: { contains: term, mode: 'insensitive' } },
+                            { lastName: { contains: term, mode: 'insensitive' } },
+                            { email: { contains: term, mode: 'insensitive' } },
+                            { phone: { contains: term } },
+                        ],
                     },
                 },
-                orderBy: {fechaLimite: 'desc'},
+            ];
+        }
+
+        try {
+            const orders = await prisma.order.findMany({
+                where,
+                include: {
+                    lines: { include: { product: true } },
+                    client: {
+                        select: { id: true, firstName: true, lastName: true, phone: true, email: true },
+                    },
+                },
+                orderBy: { fechaLimite: 'desc' },
             });
             return reply.send(orders);
         } catch (err) {
             console.error('Error en GET /api/orders:', err);
-            return reply.status(500).send({error: 'Error al obtener pedidos'});
+            return reply.status(500).send({ error: 'Error al obtener pedidos' });
         }
     });
 

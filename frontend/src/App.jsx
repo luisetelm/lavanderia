@@ -26,92 +26,52 @@ export default function App() {
         localStorage.removeItem('user');
     };
 
+    console.log(user);
+
     if (!token) {
         return <Login onLogin={handleLogin}/>;
     }
 
-    return (
-        <AuthRedirect>
-            <div style={{display: 'flex', minHeight: '100vh', fontFamily: 'system-ui, sans-serif'}}>
-                <nav style={{
-                    width: 220,
-                    borderRight: '1px solid #ddd',
-                    padding: 16,
-                    background: '#f9f9f9',
-                    boxSizing: 'border-box'
-                }}>
-                    <h2 style={{marginTop: 0}}>Lavandería</h2>
-                    <div style={{marginBottom: 16}}>
-                        <div><strong>{user?.name}</strong></div>
-                        <div style={{fontSize: 12, color: '#555'}}>{user?.role}</div>
-                    </div>
-                    <ul style={{
-                        listStyle: 'none',
-                        padding: 0,
-                        margin: 0,
-                        gap: 8,
-                        display: 'flex',
-                        flexDirection: 'column'
-                    }}>
+    return (<AuthRedirect>
+        <div style={{display: 'flex', minHeight: '100vh', fontFamily: 'system-ui, sans-serif'}}>
+            <nav>
+                <div className={'logo'}>
+                    <img src="/logo.png" alt="Logo lavandería"/>
+                </div>
+                <div className={'menu'}>
+                    <ul className={'uk-nav uk-nav-primary uk-nav-divider'}>
                         <li>
-                            <NavLink to="/pos" style={({isActive}) => ({
-                                display: 'block',
-                                padding: '8px 12px',
-                                borderRadius: 4,
-                                textDecoration: 'none',
-                                background: isActive ? '#e0e7ff' : 'transparent',
-                                color: '#1f2956'
-                            })}>POS</NavLink>
+                            <NavLink to="/pos">POS</NavLink>
                         </li>
                         <li>
-                            <NavLink to="/productos" style={({isActive}) => ({
-                                display: 'block',
-                                padding: '8px 12px',
-                                borderRadius: 4,
-                                textDecoration: 'none',
-                                background: isActive ? '#e0e7ff' : 'transparent',
-                                color: '#1f2956'
-                            })}>Productos</NavLink>
+                            <NavLink to="/productos">Productos</NavLink>
                         </li>
                         <li>
-                            <NavLink to="/tareas" style={({isActive}) => ({
-                                display: 'block',
-                                padding: '8px 12px',
-                                borderRadius: 4,
-                                textDecoration: 'none',
-                                background: isActive ? '#e0e7ff' : 'transparent',
-                                color: '#1f2956'
-                            })}>Tareas</NavLink>
+                            <NavLink to="/tareas">Tareas</NavLink>
                         </li>
                         <li>
-                            <NavLink to="/usuarios" style={({isActive}) => ({ /* mismo estilo */
-                                display: 'block',
-                                padding: '8px 12px',
-                                borderRadius: 4,
-                                textDecoration: 'none',
-                                background: isActive ? '#e0e7ff' : 'transparent',
-                                color: '#1f2956'
-                            })}>
+                            <NavLink to="/usuarios">
                                 Usuarios
                             </NavLink>
                         </li>
                     </ul>
-                    <div style={{marginTop: 'auto'}}>
-                        <button onClick={handleLogout} style={{marginTop: 16}}>Salir</button>
-                    </div>
-                </nav>
-                <main style={{flex: 1, padding: 20}}>
-                    <Routes>
-                        <Route path="/" element={<Navigate to="/pos" replace/>}/>
-                        <Route path="/pos" element={<POS token={token}/>}/>
-                        <Route path="/productos" element={<Inventory token={token}/>}/>
-                        <Route path="/tareas" element={<Tasks token={token}/>}/>
-                        <Route path="/usuarios" element={<Users token={token}/>}/>
-                        <Route path="*" element={<div>Ruta no encontrada</div>}/>
-                        <Route path="/login" element={<Login onLogin={handleLogin}/>}/>
-                    </Routes>
-                </main>
-            </div>
-        </AuthRedirect>
-    );
+                </div>
+                <div className={'logout'}>
+                    <button onClick={handleLogout}
+                            className={'uk-button uk-button-default uk-width-1-1'}>Salir {user?.firstName}</button>
+                </div>
+            </nav>
+            <main style={{flex: 1, padding: 20}}>
+                <Routes>
+                    <Route path="/" element={<Navigate to="/pos" replace/>}/>
+                    <Route path="/pos" element={<POS token={token}/>}/>
+                    <Route path="/productos" element={<Inventory token={token}/>}/>
+                    <Route path="/tareas" element={<Tasks token={token}/>}/>
+                    <Route path="/usuarios" element={<Users token={token}/>}/>
+                    <Route path="*" element={<div>Ruta no encontrada</div>}/>
+                    <Route path="/login" element={<Login onLogin={handleLogin}/>}/>
+                </Routes>
+            </main>
+        </div>
+    </AuthRedirect>);
 }

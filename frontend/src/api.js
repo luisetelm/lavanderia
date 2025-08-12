@@ -68,11 +68,20 @@ export function createOrder(token, order) {
     });
 }
 
-export function fetchOrders(token) {
+export function fetchOrdersOld(token) {
     return request('/orders', token, {
         method: 'GET',
     });
 }
+
+export function fetchOrders(token, { q, status } = {}) {
+    const params = new URLSearchParams();
+    if (q) params.set('q', q);
+    if (status && status !== 'all') params.set('status', status);
+    const qs = params.toString();
+    return request(`/orders${qs ? `?${qs}` : ''}`, token, { method: 'GET' });
+}
+
 
 
 export async function updateOrder(token, taskId, data) {

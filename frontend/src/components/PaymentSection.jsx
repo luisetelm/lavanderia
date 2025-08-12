@@ -85,7 +85,7 @@ export default function PaymentSection({token, orderId, onPaid}) {
         }
     };
 
-    const markReady = async (task) => {
+    const markReady = async () => {
         try {
             await updateOrder(token, order.id, {status: 'ready'});
             await loadOrder();
@@ -94,10 +94,10 @@ export default function PaymentSection({token, orderId, onPaid}) {
         }
     };
 
-    const markCollected = async (task) => {
+    const markCollected = async () => {
         try {
-            await updateTask(token, task.id, {status: 'collected'});
-            await load(query);
+            await updateOrder(token, order.id, {status: 'collected'});
+            await loadOrder();
         } catch (e) {
             console.error(e);
         }
@@ -152,26 +152,23 @@ export default function PaymentSection({token, orderId, onPaid}) {
 
 
     return (
-        <div
-            style={{
-                marginTop: 10,
-                border: '1px solid #ccc',
-                padding: 12,
-                borderRadius: 6,
-                background: '#f9f9f9',
-                position: 'relative',
-            }}
-        >
-            <div style={{fontWeight: 'bold', marginBottom: 8}}>Resumen del pedido</div>
+        <div className={'uk-card uk-card-body  ' +
+            'uk-card-default'} >
+            <div className={'uk-card-badge'}>{order.status}</div>
+            <h3 className={'uk-card-title'}>{clienteDisplay()} {order.orderNum}</h3>
+            <div className={'uk-badge uk-text-bolder'}>
+                {order.fechaLimite
+                    ? new Date(order.createdAt).toLocaleDateString('es-ES')
+                    : '—'} <icon className="uk-icon" uk-icon="arrow-right"></icon>
+                {order.fechaLimite
+                    ? new Date(order.fechaLimite).toLocaleDateString('es-ES')
+                    : '—'}
+            </div>
 
-            <div style={{display: 'flex', gap: 32, flexWrap: 'wrap'}}>
-                <div style={{flex: 2, minWidth: 250}}>
-                    <div>
-                        <strong>Pedido:</strong> {order.orderNum} <div className="uk-badge">{order.status}</div>
-                    </div>
-                    <div>
-                        <strong>Cliente:</strong> {clienteDisplay()}
-                    </div>
+
+            <div className={'uk-grid uk-child-width-1-3@l uk-margin-top'}>
+                <div>
+
                     {telefonoDisplay() && (
                         <div>
                             <strong>Teléfono:</strong> {telefonoDisplay()}
@@ -191,15 +188,10 @@ export default function PaymentSection({token, orderId, onPaid}) {
                     <div>
                         <strong>Observaciones:</strong> {order.observaciones || '—'}
                     </div>
-                    <div>
-                        <strong>Fecha límite:</strong>{' '}
-                        {order.fechaLimite
-                            ? new Date(order.fechaLimite).toLocaleDateString('es-ES')
-                            : '—'}
-                    </div>
+
                 </div>
 
-                <div style={{flex: 2, minWidth: 250}}>
+                <div>
                     <div style={{fontWeight: 'bold'}}>Líneas:</div>
                     {order.lines.map((l) => {
                         const name = l.productName || l.product?.name || `#${l.productId}`;
@@ -233,7 +225,7 @@ export default function PaymentSection({token, orderId, onPaid}) {
                     </div>
                 </div>
 
-                <div style={{flex: 1}}>
+                <div>
                     {/* impresión siempre disponible */}
                     <div
                         className="print-buttons"
@@ -247,23 +239,30 @@ export default function PaymentSection({token, orderId, onPaid}) {
                             width: '100%',
                         }}
                     >
-                        <button onClick={handlePrintTicket} style={{ width: '100%'}} disabled={!order || isPrinting}>
+                        <button onClick={handlePrintTicket} style={{width: '100%'}} disabled={!order || isPrinting}>
                             {isPrinting ? 'Imprimiendo...' : 'Imprimir ticket'}
                         </button>
-                        <button onClick={handlePrintLabels}  style={{ width: '100%'}}  disabled={!order || isPrinting}>
+                        <button onClick={handlePrintLabels} style={{width: '100%'}} disabled={!order || isPrinting}>
                             {isPrinting ? 'Imprimiendo...' : 'Imprimir etiquetas'}
                         </button>
 
-                        <button onClick={markReady}>Notificar listo</button>
+
+                        {order.status === 'pending' && (
+                            <button type="button"
+                                    className="uk-button uk-button-default"
+                                    onClick={markReady}
+                                    aria-label="Marcar como listo"
+                                    uk-icon="check">Marcar como listo
+                            </button>
+                        )}
 
                         {/* Acciones de estado */}
-                        {order.state === 'ready' && (
+                        {order.status === 'ready' && (
                             <div className="uk-margin-small-top">
-                                <button
-                                    type="button"
-                                    className="uk-button uk-button-primary"
-                                    onClick={() => markCollected(t)}
-                                    aria-label="Marcar como recogido"
+                                <button type="button"
+                                        className="uk-button uk-button-default"
+                                        onClick={markCollected}
+                                        aria-label="Marcar como recogido"
                                 >
                                     Marcar como recogido
                                 </button>
@@ -271,17 +270,20 @@ export default function PaymentSection({token, orderId, onPaid}) {
                         )}
 
 
-
                         {(localError || error) && (
                             <div style={{color: 'red', marginTop: 8}}>{localError || error}</div>
-                        )}                   {(localError || error) && (
-                            <div style={{color: 'red', marginTop: 8}}>{localError || error}</div>
-                        )}
+                        )} {(localError || error) && (
+                        <div style={{color: 'red', marginTop: 8}}>{localError || error}</div>
+                    )}
                     </div>
 
 
                 </div>
+
             </div>
+
+
+
 
             {!order.paid && (
                 <div
@@ -308,7 +310,14 @@ export default function PaymentSection({token, orderId, onPaid}) {
                             {isProcessing ? 'Procesando...' : 'Pagar con tarjeta'}
                         </button>
                     </div>
-                    <div style={{flex: 2, minWidth: 250, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' , height: '100%'}}>
+                    <div style={{
+                        flex: 2,
+                        minWidth: 250,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'space-between',
+                        height: '100%'
+                    }}>
                         <h3>Pago en efectivo</h3>
                         <div style={{marginBottom: 6}}>
                             <label>
@@ -349,7 +358,6 @@ export default function PaymentSection({token, orderId, onPaid}) {
                     <div style={{flex: 10}}></div>
                 </div>
             )}
-
 
 
         </div>
