@@ -9,6 +9,7 @@ export default function Tasks({token, products}) {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [query, setQuery] = useState('');
+    const [filterStatus, setFilterStatus] = useState('all'); // nuevo estado para el filtro
     const debounceRef = useRef(null);
 
     const [showCashModalForTask, setShowCashModalForTask] = useState(null); // task.id que está pagando
@@ -28,6 +29,20 @@ export default function Tasks({token, products}) {
             setLoading(false);
         }
     };
+
+    // Filtrar tareas según el estado seleccionado
+    const filteredTasks = tasks.filter(task => {
+        switch (filterStatus) {
+            case 'pending':
+                return task.state === 'pending';
+            case 'ready':
+                return task.state === 'ready';
+            case 'collected':
+                return task.state === 'collected';
+            default:
+                return true;
+        }
+    });
 
     useEffect(() => {
         load();
@@ -65,8 +80,6 @@ export default function Tasks({token, products}) {
     };
 
     const handlePrintLabels = (task) => {
-        console.log(task)
-
         if (!task.order) return;
         const totalItems = task.order.lines.reduce((sum, l) => sum + (l.quantity || 1), 0);
         printWashLabels({
@@ -119,91 +132,101 @@ export default function Tasks({token, products}) {
         }
     };
 
-    return (
-        <div>
-            <h2>Tareas</h2>
-            <div style={{marginBottom: 12, display: 'flex', gap: 12, alignItems: 'center'}}>
-                <h2 style={{margin: 0}}>Tareas</h2>
-                <div>
-                    <input
-                        placeholder="Buscar por pedido o cliente..."
-                        value={query}
-                        onChange={(e) => setQuery(e.target.value)}
-                        style={{padding: 6, width: 300}}
-                    />
-                </div>
-            </div>
-            {error && <div style={{color: 'red'}}>{error}</div>}
-            {loading && <div>Cargando...</div>}
-            {!loading && tasks.length === 0 && <div>No hay tareas.</div>}
-            {tasks.map((t) => {
-                const clientName = t.order
-                    ? t.order.client
-                        ? `${t.order.client.firstName} ${t.order.client.lastName}`.trim()
-                        : 'Cliente rápido'
-                    : '-';
+    return (<div>
+        <div style={{
+            marginBottom: 20, display: 'flex', gap: 16, alignItems: 'center', justifyContent: 'space-between'
+        }}>
+            <h2 style={{margin: 0}}>Tareas</h2>
+            <FilterBar value={filterStatus} onChange={setFilterStatus} query={query} setQuery={setQuery}/>
+        </div>
 
-                return (
-                    <div
-                        key={t.id}
-                    >
-                        {/* PaymentSection en lugar de la vista manual */}
-                        {t.order ? (
-                            <div style={{marginTop: 12}}>
-                                <PaymentSection
-                                    token={token}
-                                    orderId={t.order.id}
-                                    onPaid={() => load(query)}
-                                />
+        {error && <div style={{color: 'red'}}>{error}</div>}
+        {loading && <div>Cargando...</div>}
+        {!loading && filteredTasks.length === 0 && (<div style={{
+            padding: '20px', textAlign: 'center', color: '#666', backgroundColor: '#f9f9f9', borderRadius: '8px'
+        }}>
+            No hay
+            tareas {filterStatus !== 'all' ? (filterStatus === 'pending' ? 'pendientes' : filterStatus === 'ready' ? 'listas' : 'recogidas') : ''}.
+        </div>)}
 
-                                {/* Modal de efectivo para esta tarea */}
-                                {showCashModalForTask === t.id && t.order && (
-                                    <CashModal
-                                        order={t.order}
-                                        receivedAmount={receivedAmount}
-                                        setReceivedAmount={setReceivedAmount}
-                                        change={
-                                            receivedAmount
-                                                ? Math.max(0, parseFloat(receivedAmount) - t.order.total).toFixed(2)
-                                                : '0.00'
-                                        }
-                                        onConfirm={() => handleCashConfirm(t)}
-                                        onClose={() => setShowCashModalForTask(null)}
-                                        isProcessing={isPaying}
-                                        error={error}
-                                    />
-                                )}
+        <div style={{
+            display: 'grid', gap: '16px', marginTop: '16px'
+        }}>
+            {filteredTasks.map((t) => {
+                const clientName = t.order ? t.order.client ? `${t.order.client.firstName} ${t.order.client.lastName}`.trim() : 'Cliente rápido' : '-';
+
+                return (<div key={t.id}>
+                    {/* PaymentSection en lugar de la vista manual */}
+                    {t.order ? (<div style={{marginTop: 12}}>
+                        <PaymentSection
+                            token={token}
+                            orderId={t.order.id}
+                            onPaid={() => load(query)}
+                        />
+                        {/* Modal de efectivo para esta tarea */}
+                        {showCashModalForTask === t.id && (<CashModal
+                            order={t.order}
+                            receivedAmount={receivedAmount}
+                            setReceivedAmount={setReceivedAmount}
+                            change={receivedAmount ? Math.max(0, parseFloat(receivedAmount) - t.order.total).toFixed(2) : '0.00'}
+                            onConfirm={() => handleCashConfirm(t)}
+                            onClose={() => setShowCashModalForTask(null)}
+                            isProcessing={isPaying}
+                            error={error}
+                        />)}
+                    </div>) : (<div style={{marginTop: 12}}>Pedido no disponible</div>)}
+
+                    {/* Notificaciones */}
+                    {t.notifications?.length > 0 && (<div style={{marginTop: 10}}>
+                        <div style={{fontWeight: 'bold'}}>Notificaciones:</div>
+                        {t.notifications.map((n) => (<div
+                            key={n.id}
+                            style={{fontSize: 12, marginTop: 4, display: 'flex', gap: 6}}
+                        >
+                            <div>
+                                <strong>{n.type}</strong> — {n.status}
                             </div>
-                        ) : (
-                            <div style={{marginTop: 12}}>Pedido no disponible</div>
-                        )}
-
-
-                        {/* Notificaciones */}
-                        {t.notifications?.length > 0 && (
-                            <div style={{marginTop: 10}}>
-                                <div style={{fontWeight: 'bold'}}>Notificaciones:</div>
-                                {t.notifications.map((n) => (
-                                    <div
-                                        key={n.id}
-                                        style={{fontSize: 12, marginTop: 4, display: 'flex', gap: 6}}
-                                    >
-                                        <div>
-                                            <strong>{n.type}</strong> — {n.status}
-                                        </div>
-                                        {n.createdAt && (
-                                            <div style={{color: '#555'}}>
-                                                {new Date(n.createdAt).toLocaleString()}
-                                            </div>
-                                        )}
-                                        <div>{n.content}</div>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                );
+                            {n.createdAt && (<div style={{color: '#555'}}>
+                                {new Date(n.createdAt).toLocaleString()}
+                            </div>)}
+                            <div>{n.content}</div>
+                        </div>))}
+                    </div>)}
+                </div>);
             })}
         </div>
-    );
+    </div>);
+}
+
+// javascript
+function FilterBar({value, onChange, query, setQuery}) {
+    const Btn = ({val, children}) => (<button
+        type="button"
+        className={`uk-button ${value === val ? 'uk-button-primary' : 'uk-button-default'}`}
+        aria-pressed={value === val}
+        onClick={() => onChange(val)}
+    >
+        {children}
+    </button>);
+
+    return (<div className="uk-flex uk-flex-between uk-flex-middle uk-margin-small">
+        <div className="uk-flex uk-flex-middle uk-grid-small" data-uk-grid>
+            <div>
+                <input
+                    className="uk-input uk-form-width-medium"
+                    placeholder="Buscar por pedido o cliente..."
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                />
+            </div>
+            <div>
+                <div className="uk-button-group">
+                    <Btn val="all">Todas</Btn>
+                    <Btn val="pending">Pendientes</Btn>
+                    <Btn val="ready">Listas</Btn>
+                    <Btn val="collected">Recogidas</Btn>
+                </div>
+            </div>
+        </div>
+    </div>);
 }

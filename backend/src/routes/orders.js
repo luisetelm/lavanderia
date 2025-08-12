@@ -314,7 +314,7 @@ export default async function (fastify, opts) {
                         },
                     },
                 },
-                orderBy: {fechaLimite: 'asc'},
+                orderBy: {fechaLimite: 'desc'},
             });
             return reply.send(orders);
         } catch (err) {

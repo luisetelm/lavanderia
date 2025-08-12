@@ -1,0 +1,35 @@
+/* less */
+/* src/styles/uikit-theme.less */
+
+@color-primary: #4f46e5;
+@color-secondary: #4338ca;
+
+/* 1) Sobrescribe variables ANTES de importar UIkit */
+@global-primary-background: #4f46e5;  /* color primario */
+@global-primary-color: #ffffff;       /* texto en primario */
+@global-link-color: #4f46e5;
+@global-link-hover-color: #4338ca;
+@global-border-radius: 8px;           /* radio global */
+
+@global-control-height: 32px;
+
+@button-default-background: #ffffff;
+@button-default-border: #e5e7eb;
+@button-primary-background: @global-primary-background;
+@button-primary-color: @global-primary-color;
+
+/* Tipografía */
+@global-font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial;
+
+/* 2) Importa las fuentes de UIkit para compilar con tus variables */
+@import "uikit/src/less/uikit.less";
+@import "uikit/src/less/uikit.theme.less"; /* tema por defecto, opcional pero habitual */
+
+.uk-button-group {
+  border-radius: @global-border-radius; /* ya lo tienes a 20px */
+  overflow: hidden;                      /* importante para recortar esquinas internas */
+}
+
+.uk-button {
+  line-height: 30px;
+}

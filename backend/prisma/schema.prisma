@@ -44,6 +44,7 @@ model ProductVariant {
 model Order {
   id            Int         @id @default(autoincrement())
   orderNum      String      @unique
+  status        String      @default("pending")
   clientId      Int?
   total         Float
   paid          Boolean     @default(false)
