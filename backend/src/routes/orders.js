@@ -159,16 +159,6 @@ export default async function (fastify, opts) {
             },
         });
 
-        // Crear tarea automática si lo usas (como antes)
-        await prisma.task.create({
-            data: {
-                name: `${order.orderNum} – ${client.firstName} ${client.lastName}`.trim(),
-                orderId: order.id,
-                state: 'pending',
-                description: lines.map((l) => `Producto ${l.productId} x${l.quantity || 1}`).join('\n'),
-            },
-        });
-
         // Serializar como hacías
         const serialized = {
             ...order,
@@ -190,9 +180,18 @@ export default async function (fastify, opts) {
     fastify.patch('/:id', async (req, reply) => {
         const prisma = fastify.prisma;
         const orderId = Number(req.params.id);
-        const {observaciones, fechaLimite: fechaLimiteRaw} = req.body;
+        const {status, observaciones, fechaLimite: fechaLimiteRaw} = req.body;
+
 
         const data = {};
+
+        if (status) {
+            data.status = status;
+            data.updatedAt = new Date();
+        } else {
+            data.status = 'pending';
+        }
+
         if (observaciones !== undefined) data.observaciones = observaciones;
         if (fechaLimiteRaw !== undefined) {
             const fechaLimite = new Date(fechaLimiteRaw);
@@ -286,20 +285,10 @@ export default async function (fastify, opts) {
 
     fastify.get('/', async (req, reply) => {
         const prisma = fastify.prisma;
-        const {fechaLimite_gte, fechaLimite_lte} = req.query;
-
-        const where = {};
-
-        if (fechaLimite_gte || fechaLimite_lte) {
-            where.fechaLimite = {};
-            if (fechaLimite_gte) where.fechaLimite.gte = new Date(fechaLimite_gte);
-            if (fechaLimite_lte) where.fechaLimite.lte = new Date(fechaLimite_lte);
-        }
 
         // Puedes ampliar filtros aquí si quieres
         try {
             const orders = await prisma.order.findMany({
-                where,
                 include: {
                     lines: {
                         include: {product: true},

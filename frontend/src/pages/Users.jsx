@@ -139,7 +139,7 @@ export default function Users({token}) {
                 {users.map(u => (
                     <div key={u.id} style={{border: '1px solid #ccc', padding: 10, marginBottom: 6, borderRadius: 4}}>
                         <div>
-                            <strong>{u.name}</strong> ({u.role}) – {u.email}
+                            <strong>{u.firstName} {u.lastName}</strong> ({u.role}) – {u.email}
                         </div>
                         <div>Tel: {u.phone || '-'}</div>
                         <div>Activo: {u.isActive ? 'Sí' : 'No'}</div>

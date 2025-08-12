@@ -1,5 +1,5 @@
 import React, {useState, useEffect, useCallback} from 'react';
-import {fetchOrder, payWithCard, payWithCash, updateTask} from '../api.js';
+import {fetchOrder, payWithCard, payWithCash, updateOrder} from '../api.js';
 import {printSaleTicket, printWashLabels} from '../utils/printUtils.js';
 
 /**
@@ -87,7 +87,7 @@ export default function PaymentSection({token, orderId, onPaid}) {
 
     const markReady = async (task) => {
         try {
-            await updateTask(token, order.id, {state: 'ready'});
+            await updateOrder(token, order.id, {status: 'ready'});
             await loadOrder();
         } catch (e) {
             console.error(e);
@@ -96,7 +96,7 @@ export default function PaymentSection({token, orderId, onPaid}) {
 
     const markCollected = async (task) => {
         try {
-            await updateTask(token, task.id, {state: 'collected'});
+            await updateTask(token, task.id, {status: 'collected'});
             await load(query);
         } catch (e) {
             console.error(e);
@@ -167,7 +167,7 @@ export default function PaymentSection({token, orderId, onPaid}) {
             <div style={{display: 'flex', gap: 32, flexWrap: 'wrap'}}>
                 <div style={{flex: 2, minWidth: 250}}>
                     <div>
-                        <strong>Pedido:</strong> {order.orderNum}
+                        <strong>Pedido:</strong> {order.orderNum} <div className="uk-badge">{order.status}</div>
                     </div>
                     <div>
                         <strong>Cliente:</strong> {clienteDisplay()}
@@ -255,6 +255,23 @@ export default function PaymentSection({token, orderId, onPaid}) {
                         </button>
 
                         <button onClick={markReady}>Notificar listo</button>
+
+                        {/* Acciones de estado */}
+                        {order.state === 'ready' && (
+                            <div className="uk-margin-small-top">
+                                <button
+                                    type="button"
+                                    className="uk-button uk-button-primary"
+                                    onClick={() => markCollected(t)}
+                                    aria-label="Marcar como recogido"
+                                >
+                                    Marcar como recogido
+                                </button>
+                            </div>
+                        )}
+
+
+
                         {(localError || error) && (
                             <div style={{color: 'red', marginTop: 8}}>{localError || error}</div>
                         )}                   {(localError || error) && (

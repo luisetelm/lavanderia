@@ -114,13 +114,13 @@ export default async function (fastify, opts) {
     // Actualizar tarea (estado, asignar trabajador, descripción)
     fastify.patch('/:id', async (req, reply) => {
         const {id} = req.params;
-        const {state, workerId, description} = req.body;
+        const {status, workerId, description} = req.body;
 
         const data = {};
-        if (state) {
-            data.state = state;
-            if (state === 'ready') data.completedAt = new Date();
-            if (state === 'collected') data.collectedAt = new Date();
+        if (status) {
+            data.status = status;
+            if (status === 'ready') data.completedAt = new Date();
+            if (status === 'collected') data.collectedAt = new Date();
         }
         if (workerId !== undefined) data.workerId = workerId;
         if (description !== undefined) data.description = description;
@@ -165,7 +165,7 @@ export default async function (fastify, opts) {
         }
 
         // Si se marca como ready, notificar al cliente
-        if (state === 'ready' && task.order && task.order.client?.phone) {
+        if (status === 'ready' && task.order && task.order.client?.phone) {
             const client = task.order.client;
             const orderNum = task.order.orderNum || '';
             const clientName = `${client.firstName || ''} ${client.lastName || ''}`.trim();

@@ -1,8 +1,6 @@
 import React, {useEffect, useState, useRef} from 'react';
-import {fetchTasks, updateTask, payWithCard, payWithCash} from '../api.js';
-import {printSaleTicket, printWashLabels} from '../utils/printUtils.js';
+import {fetchOrders, payWithCard, payWithCash} from '../api.js';
 import PaymentSection from '../components/PaymentSection.jsx';
-import CashModal from '../components/CashModal.jsx'; // asegúrate de que existe
 
 export default function Tasks({token, products}) {
     const [tasks, setTasks] = useState([]);
@@ -20,7 +18,7 @@ export default function Tasks({token, products}) {
         setLoading(true);
         try {
             const url = search ? `/api/tasks?q=${encodeURIComponent(search)}` : '/api/tasks';
-            const t = await fetchTasks(token, url);
+            const t = await fetchOrders(token, url);
             setTasks(t);
             setError('');
         } catch (e) {
@@ -34,11 +32,11 @@ export default function Tasks({token, products}) {
     const filteredTasks = tasks.filter(task => {
         switch (filterStatus) {
             case 'pending':
-                return task.state === 'pending';
+                return task.status === "pending";
             case 'ready':
-                return task.state === 'ready';
+                return task.status === "ready";
             case 'collected':
-                return task.state === 'collected';
+                return task.status === "collected";
             default:
                 return true;
         }
@@ -55,41 +53,6 @@ export default function Tasks({token, products}) {
         }, 300);
         return () => clearTimeout(debounceRef.current);
     }, [query, token]);
-
-    const markReady = async (task) => {
-        try {
-            await updateTask(token, task.id, {state: 'ready'});
-            await load(query);
-        } catch (e) {
-            console.error(e);
-        }
-    };
-
-    const markCollected = async (task) => {
-        try {
-            await updateTask(token, task.id, {state: 'collected'});
-            await load(query);
-        } catch (e) {
-            console.error(e);
-        }
-    };
-
-    const handlePrintTicket = (task) => {
-        if (!task.order) return;
-        printSaleTicket(task.order, products, 'CLIENTE');
-    };
-
-    const handlePrintLabels = (task) => {
-        if (!task.order) return;
-        const totalItems = task.order.lines.reduce((sum, l) => sum + (l.quantity || 1), 0);
-        printWashLabels({
-            orderNum: task.order.orderNum,
-            clientFirstName: task.order.client?.firstName || '',
-            clientLastName: task.order.client?.lastName || '',
-            totalItems,
-            fechaLimite: task.order.fechaLimite,
-        });
-    };
 
     const handleCardPay = async (task) => {
         if (!task?.order) return;
@@ -157,24 +120,14 @@ export default function Tasks({token, products}) {
 
                 return (<div key={t.id}>
                     {/* PaymentSection en lugar de la vista manual */}
-                    {t.order ? (<div style={{marginTop: 12}}>
+                    {t.id ? (<div style={{marginTop: 12}}>
                         <PaymentSection
                             token={token}
-                            orderId={t.order.id}
+                            orderId={t.id}
                             onPaid={() => load(query)}
                         />
-                        {/* Modal de efectivo para esta tarea */}
-                        {showCashModalForTask === t.id && (<CashModal
-                            order={t.order}
-                            receivedAmount={receivedAmount}
-                            setReceivedAmount={setReceivedAmount}
-                            change={receivedAmount ? Math.max(0, parseFloat(receivedAmount) - t.order.total).toFixed(2) : '0.00'}
-                            onConfirm={() => handleCashConfirm(t)}
-                            onClose={() => setShowCashModalForTask(null)}
-                            isProcessing={isPaying}
-                            error={error}
-                        />)}
                     </div>) : (<div style={{marginTop: 12}}>Pedido no disponible</div>)}
+
 
                     {/* Notificaciones */}
                     {t.notifications?.length > 0 && (<div style={{marginTop: 10}}>

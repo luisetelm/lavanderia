@@ -44,7 +44,6 @@ model ProductVariant {
 model Order {
   id            Int         @id @default(autoincrement())
   orderNum      String      @unique
-  status        String      @default("pending")
   clientId      Int?
   total         Float
   paid          Boolean     @default(false)
@@ -53,9 +52,10 @@ model Order {
   fechaLimite   DateTime?
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
+  status        String?     @default("PENDING")
   client        User?       @relation("client_orders", fields: [clientId], references: [id])
   lines         OrderLine[]
-  tasks         Task[]
+  Task          Task[]
 }
 
 model OrderLine {
@@ -73,33 +73,18 @@ model OrderLine {
 }
 
 model User {
-  id            Int      @id @default(autoincrement())
-  firstName     String
-  lastName      String
-  email         String?  @unique
-  password      String?
-  role          String   @default("cashier")
-  phone         String?  @unique
-  isActive      Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  orders        Order[]  @relation("client_orders")
-  tasksAssigned Task[]   @relation("WorkerTasks")
-}
-
-model Task {
-  id            Int            @id @default(autoincrement())
-  name          String
-  description   String?
-  state         String
-  orderId       Int?
-  workerId      Int?
-  assignedAt    DateTime?
-  completedAt   DateTime?
-  collectedAt   DateTime?
-  notifications Notification[]
-  order         Order?         @relation(fields: [orderId], references: [id])
-  worker        User?          @relation("WorkerTasks", fields: [workerId], references: [id])
+  id        Int      @id @default(autoincrement())
+  firstName String
+  lastName  String
+  email     String?  @unique
+  password  String?
+  role      String   @default("cashier")
+  phone     String?  @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  orders    Order[]  @relation("client_orders")
+  Task      Task[]
 }
 
 model Notification {
@@ -110,5 +95,20 @@ model Notification {
   content   String
   status    String
   sentAt    DateTime @default(now())
-  task      Task     @relation(fields: [taskId], references: [id])
+  order     Task     @relation(fields: [taskId], references: [id])
+}
+
+model Task {
+  id           Int            @id @default(autoincrement())
+  name         String
+  description  String?
+  state        String
+  orderId      Int?
+  workerId     Int?
+  assignedAt   DateTime?
+  completedAt  DateTime?
+  collectedAt  DateTime?
+  Notification Notification[]
+  Order        Order?         @relation(fields: [orderId], references: [id])
+  User         User?          @relation(fields: [workerId], references: [id])
 }

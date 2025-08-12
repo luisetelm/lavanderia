@@ -68,20 +68,15 @@ export function createOrder(token, order) {
     });
 }
 
-export function fetchTasks(token) {
-    return request('/tasks', token);
-}
-
-export async function fetchTask(token, taskId) {
-    const res = await fetch(`/api/tasks/${taskId}`, {
-        headers: {Authorization: `Bearer ${token}`},
+export function fetchOrders(token) {
+    return request('/orders', token, {
+        method: 'GET',
     });
-    if (!res.ok) throw await res.json();
-    return res.json();
 }
 
-export async function updateTask(token, taskId, data) {
-    const res = await fetch(`/api/tasks/${taskId}`, {
+
+export async function updateOrder(token, taskId, data) {
+    const res = await fetch(`/api/orders/${taskId}`, {
         method: 'PATCH',
         headers: {
             Authorization: `Bearer ${token}`,

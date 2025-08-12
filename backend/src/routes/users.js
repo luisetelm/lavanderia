@@ -6,8 +6,10 @@ const isValidSpanishPhone = (phone) => /^[6789]\d{8}$/.test(phone);
 export default async function (fastify, opts) {
     const prisma = fastify.prisma;
 
+
     // Listar usuarios
     fastify.get('/', async (req, reply) => {
+
         const users = await prisma.user.findMany({
             select: {
                 id: true,
