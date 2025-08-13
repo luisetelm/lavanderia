@@ -42,20 +42,20 @@ model ProductVariant {
 }
 
 model Order {
-  id            Int         @id @default(autoincrement())
-  orderNum      String      @unique
+  id            Int            @id @default(autoincrement())
+  orderNum      String         @unique
   clientId      Int?
   total         Float
-  paid          Boolean     @default(false)
+  paid          Boolean        @default(false)
   paymentMethod String?
   observaciones String?
   fechaLimite   DateTime?
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
-  status        String?     @default("PENDING")
-  client        User?       @relation("client_orders", fields: [clientId], references: [id])
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  status        String?        @default("pending")
+  client        User?          @relation("client_orders", fields: [clientId], references: [id])
   lines         OrderLine[]
-  Task          Task[]
+  notification  Notification[]
 }
 
 model OrderLine {
@@ -84,31 +84,15 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   orders    Order[]  @relation("client_orders")
-  Task      Task[]
 }
 
 model Notification {
   id        Int      @id @default(autoincrement())
-  taskId    Int
   type      String
   recipient String
   content   String
   status    String
   sentAt    DateTime @default(now())
-  order     Task     @relation(fields: [taskId], references: [id])
-}
-
-model Task {
-  id           Int            @id @default(autoincrement())
-  name         String
-  description  String?
-  state        String
-  orderId      Int?
-  workerId     Int?
-  assignedAt   DateTime?
-  completedAt  DateTime?
-  collectedAt  DateTime?
-  Notification Notification[]
-  Order        Order?         @relation(fields: [orderId], references: [id])
-  User         User?          @relation(fields: [workerId], references: [id])
+  orderid   Int?
+  order     Order?   @relation(fields: [orderid], references: [id])
 }

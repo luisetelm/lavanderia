@@ -39,9 +39,7 @@ export default function PaymentSection({token, orderId, onPaid}) {
 
     const handleCardPay = async () => {
         if (!order) return;
-        const confirmed = window.prompt(
-            `Confirmar pago con tarjeta por ${order.total.toFixed(2)} €. Escribe "OK" para continuar.`
-        );
+        const confirmed = window.prompt(`Confirmar pago con tarjeta por ${order.total.toFixed(2)} €. Escribe "OK" para continuar.`);
         if (!(confirmed && confirmed.toUpperCase() === 'OK')) return;
 
         setIsProcessing(true);
@@ -69,11 +67,7 @@ export default function PaymentSection({token, orderId, onPaid}) {
         setIsProcessing(true);
         setLocalError('');
         try {
-            const {order: updatedOrder, change} = await payWithCash(
-                token,
-                order.id,
-                received
-            );
+            const {order: updatedOrder, change} = await payWithCash(token, order.id, received);
             setOrder(updatedOrder);
             onPaid?.();
             console.log('Vuelta:', change.toFixed(2));
@@ -151,215 +145,179 @@ export default function PaymentSection({token, orderId, onPaid}) {
     };
 
 
-    return (
-        <div className={'uk-card uk-card-body  ' +
-            'uk-card-default'} >
-            <div className={'uk-card-badge'}>{order.status}</div>
-            <h3 className={'uk-card-title'}>{clienteDisplay()} {order.orderNum}</h3>
-            <div className={'uk-badge uk-text-bolder'}>
-                {order.fechaLimite
-                    ? new Date(order.createdAt).toLocaleDateString('es-ES')
-                    : '—'} <icon className="uk-icon" uk-icon="arrow-right"></icon>
-                {order.fechaLimite
-                    ? new Date(order.fechaLimite).toLocaleDateString('es-ES')
-                    : '—'}
+    return (<div className={'uk-card uk-card-body  ' + 'uk-card-default'}>
+        <div className={'uk-card-badge'}>{order.status}</div>
+        <h3 className={'uk-card-title'}>{clienteDisplay()} {order.orderNum}</h3>
+        <div className={'uk-badge uk-text-bolder'}>
+            {order.fechaLimite ? new Date(order.createdAt).toLocaleDateString('es-ES') : '—'}
+            <icon className="uk-icon" uk-icon="arrow-right"></icon>
+            {order.fechaLimite ? new Date(order.fechaLimite).toLocaleDateString('es-ES') : '—'}
+        </div>
+
+
+        <div className={'uk-grid uk-child-width-1-3@l uk-margin-top'}>
+            <div>
+
+                {telefonoDisplay() && (<div>
+                    <strong>Teléfono:</strong> {telefonoDisplay()}
+                </div>)}
+                <div>
+                    <strong>Estado pago:</strong> {order.paid ? 'Pagado' : 'Pendiente de pago'}
+                </div>
+                <div>
+                    <strong>Método de pago:</strong>{' '}
+                    {order.paymentMethod ? order.paymentMethod === 'cash' ? 'Efectivo' : 'Tarjeta' : 'No seleccionado'}
+                </div>
+                <div>
+                    <strong>Observaciones:</strong> {order.observaciones || '—'}
+                </div>
+
             </div>
 
-
-            <div className={'uk-grid uk-child-width-1-3@l uk-margin-top'}>
-                <div>
-
-                    {telefonoDisplay() && (
+            <div>
+                <div style={{fontWeight: 'bold'}}>Líneas:</div>
+                {order.lines.map((l) => {
+                    const name = l.productName || l.product?.name || `#${l.productId}`;
+                    return (<div
+                        key={l.id}
+                        style={{
+                            display: 'flex', justifyContent: 'space-between', fontSize: 12, marginTop: 2,
+                        }}
+                    >
                         <div>
-                            <strong>Teléfono:</strong> {telefonoDisplay()}
+                            {l.quantity}x {name}
                         </div>
-                    )}
-                    <div>
-                        <strong>Estado pago:</strong> {order.paid ? 'Pagado' : 'Pendiente de pago'}
-                    </div>
-                    <div>
-                        <strong>Método de pago:</strong>{' '}
-                        {order.paymentMethod
-                            ? order.paymentMethod === 'cash'
-                                ? 'Efectivo'
-                                : 'Tarjeta'
-                            : 'No seleccionado'}
-                    </div>
-                    <div>
-                        <strong>Observaciones:</strong> {order.observaciones || '—'}
-                    </div>
-
-                </div>
-
-                <div>
-                    <div style={{fontWeight: 'bold'}}>Líneas:</div>
-                    {order.lines.map((l) => {
-                        const name = l.productName || l.product?.name || `#${l.productId}`;
-                        return (
-                            <div
-                                key={l.id}
-                                style={{
-                                    display: 'flex',
-                                    justifyContent: 'space-between',
-                                    fontSize: 12,
-                                    marginTop: 2,
-                                }}
-                            >
-                                <div>
-                                    {l.quantity}x {name}
-                                </div>
-                                <div>{(l.unitPrice * l.quantity).toFixed(2)}€</div>
-                            </div>
-                        );
-                    })}
-                    <div
-                        style={{
-                            marginTop: 10,
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            fontWeight: 'bold',
-                        }}
-                    >
-                        <div>Total:</div>
-                        <div>{order.total.toFixed(2)}€</div>
-                    </div>
-                </div>
-
-                <div>
-                    {/* impresión siempre disponible */}
-                    <div
-                        className="print-buttons"
-                        style={{
-                            marginTop: 16,
-                            display: 'flex',
-                            gap: 12,
-                            flexWrap: 'wrap',
-                            alignItems: 'flex-end',
-                            flexDirection: 'column',
-                            width: '100%',
-                        }}
-                    >
-                        <button onClick={handlePrintTicket} style={{width: '100%'}} disabled={!order || isPrinting}>
-                            {isPrinting ? 'Imprimiendo...' : 'Imprimir ticket'}
-                        </button>
-                        <button onClick={handlePrintLabels} style={{width: '100%'}} disabled={!order || isPrinting}>
-                            {isPrinting ? 'Imprimiendo...' : 'Imprimir etiquetas'}
-                        </button>
-
-
-                        {order.status === 'pending' && (
-                            <button type="button"
-                                    className="uk-button uk-button-default"
-                                    onClick={markReady}
-                                    aria-label="Marcar como listo"
-                                    uk-icon="check">Marcar como listo
-                            </button>
-                        )}
-
-                        {/* Acciones de estado */}
-                        {order.status === 'ready' && (
-                            <div className="uk-margin-small-top">
-                                <button type="button"
-                                        className="uk-button uk-button-default"
-                                        onClick={markCollected}
-                                        aria-label="Marcar como recogido"
-                                >
-                                    Marcar como recogido
-                                </button>
-                            </div>
-                        )}
-
-
-                        {(localError || error) && (
-                            <div style={{color: 'red', marginTop: 8}}>{localError || error}</div>
-                        )} {(localError || error) && (
-                        <div style={{color: 'red', marginTop: 8}}>{localError || error}</div>
-                    )}
-                    </div>
-
-
-                </div>
-
-            </div>
-
-
-
-
-            {!order.paid && (
+                        <div>{(l.unitPrice * l.quantity).toFixed(2)}€</div>
+                    </div>);
+                })}
                 <div
                     style={{
-                        marginTop: 16,
-                        borderTop: '1px solid #ddd',
-                        paddingTop: 12,
-                        display: 'flex',
-                        gap: 36,
-                        flexWrap: 'wrap',
+                        marginTop: 10, display: 'flex', justifyContent: 'space-between', fontWeight: 'bold',
                     }}
                 >
-                    <div style={{flex: 2, minWidth: 250}}>
-                        <h3>Pago con tarjeta</h3>
-                        <button
-                            onClick={handleCardPay}
-                            disabled={isProcessing}
-                            style={{
-                                padding: '8px 16px',
-                                cursor: isProcessing ? 'not-allowed' : 'pointer',
-                                width: '100%',
-                            }}
-                        >
-                            {isProcessing ? 'Procesando...' : 'Pagar con tarjeta'}
-                        </button>
-                    </div>
-                    <div style={{
-                        flex: 2,
-                        minWidth: 250,
-                        display: 'flex',
-                        flexDirection: 'column',
-                        justifyContent: 'space-between',
-                        height: '100%'
-                    }}>
-                        <h3>Pago en efectivo</h3>
-                        <div style={{marginBottom: 6}}>
-                            <label>
-                                <input
-                                    type="number"
-                                    value={receivedAmount}
-                                    onChange={(e) => setReceivedAmount(e.target.value)}
-                                    disabled={isProcessing}
-                                    style={{width: '100%', paddingLeft: 0, paddingRight: 0}}
-                                    placeholder="€"
-                                />
-                            </label>
-                        </div>
-                        <div>
-                            <small style={{textAlign: 'center', width: '100%'}}>
-                                Vuelta:{' '}
-                                {receivedAmount
-                                    ? Math.max(0, parseFloat(receivedAmount) - order.total).toFixed(2)
-                                    : '0.00'}
-                                €
-                            </small>
-                        </div>
-                        <div style={{marginBottom: 6}}>
-                            <button
-                                onClick={handleCashPay}
-                                disabled={isProcessing}
-                                style={{
-                                    padding: '8px 16px',
-                                    cursor: isProcessing ? 'not-allowed' : 'pointer',
-                                    width: '100%',
-                                }}
-                            >
-                                {isProcessing ? 'Procesando...' : 'Pagar en efectivo'}
-                            </button>
-                        </div>
-
-                    </div>
-                    <div style={{flex: 10}}></div>
+                    <div>Total:</div>
+                    <div>{order.total.toFixed(2)}€</div>
                 </div>
-            )}
+            </div>
 
+            <div>
+                {/* impresión siempre disponible */}
+                <div
+                    className="print-buttons"
+                    style={{
+                        marginTop: 16,
+                        display: 'flex',
+                        gap: 12,
+                        flexWrap: 'wrap',
+                        alignItems: 'flex-end',
+                        flexDirection: 'column',
+                        width: '100%',
+                    }}
+                >
+                    <button className={'uk-button uk-button-default uk-width-1-1@l'} uk-icon={'print'}
+                            onClick={handlePrintTicket}
+                            disabled={!order || isPrinting}>
+                        {isPrinting ? 'Imprimiendo...' : 'Imprimir ticket'}
+                    </button>
+
+                    <button className={'uk-button uk-button-default uk-width-1-1@l'} uk-icon={'print'}
+                            onClick={handlePrintLabels}
+                            disabled={!order || isPrinting}>
+                        {isPrinting ? 'Imprimiendo...' : 'Imprimir etiquetas'}
+                    </button>
+
+
+                    {order.status === 'pending' && (<button type="button"
+                                                            className="uk-button uk-button-default  uk-width-1-1@l"
+                                                            onClick={() => {
+                                                                const confirmed = window.confirm('¿Seguro que quieres marcar el pedido como listo? Haz clic en "Aceptar" para continuar.');
+                                                                if (confirmed) markReady();
+                                                            }} aria-label="Marcar como listo"
+                                                            uk-icon="check">Marcar como listo
+                    </button>)}
+
+                    {/* Acciones de estado */}
+                    {order.status === 'ready' && (<button type="button"
+                                                          className="uk-button uk-button-default uk-width-1-1@l"
+                                                          onClick={() => {
+                                                              const confirmed = window.confirm('¿Seguro que quieres marcar el pedido como recogido? Haz clic en "Aceptar" para continuar.');
+                                                              if (confirmed) markCollected();
+                                                          }} aria-label="Marcar como recogido"
+                    >
+                        Marcar como recogido
+                    </button>)}
+
+
+                    {(localError || error) && (<div style={{color: 'red', marginTop: 8}}>{localError || error}</div>)}
+                </div>
+
+
+            </div>
 
         </div>
-    );
+
+        {Array.isArray(order.notification) && order.notification.length > 0 && (<div style={{marginTop: 16}}>
+            <h6>Notificaciones:</h6>
+            <ul className="uk-list uk-list-divider">
+                {order.notification.map((n) => (<li key={n.id} style={{fontSize: 12, marginBottom: 6}}>
+                    <strong>{n.type}</strong> — {n.status} <br/>
+                    {n.content} <br/>
+                    {n.createdAt && (<span style={{color: '#555'}}>
+                            {new Date(n.createdAt).toLocaleString('es-ES')}
+                        </span>)}
+                </li>))}
+            </ul>
+        </div>)}
+
+
+        {!order.paid && (<div className={'uk-grid uk-grid-divider'}>
+            <h4 className={'uk-width-1-1 uk-margin'}>Pendiente de pago</h4>
+            <div className={'uk-width-1-2@l uk-grid'}>
+                <p className={'uk-text-bold uk-width-1-1'}>Pago con tarjeta</p>
+                <div>
+                    <button
+                        onClick={handleCardPay}
+                        disabled={isProcessing}
+                        className={'uk-button uk-button-primary uk-margin-top'}
+
+                    >
+                        {isProcessing ? 'Procesando...' : 'Pagar con tarjeta'}
+                    </button>
+
+                </div>
+            </div>
+            <div className={'uk-width-1-2@l uk-grid'}>
+                <p className={'uk-text-bold uk-width-1-1'}>Pago en efectivo</p>
+                <div className={'uk-grid uk-child-width-1-2 uk-margin-top'}>
+                    <label>
+                        <input
+                            type="number"
+                            className={'uk-input uk-width-1-1'}
+                            value={receivedAmount}
+                            onChange={(e) => setReceivedAmount(e.target.value)}
+                            disabled={isProcessing}
+                            placeholder="€"
+                        />
+                        <small style={{textAlign: 'center', width: '100%'}}>
+                            Vuelta:{' '}
+                            {receivedAmount ? Math.max(0, parseFloat(receivedAmount) - order.total).toFixed(2) : '0.00'}
+                            €
+                        </small>
+                    </label>
+                    <div>
+                        <button
+                            onClick={handleCashPay}
+                            disabled={isProcessing}
+                            className={'uk-button uk-button-primary uk-margin'}>
+                            {isProcessing ? 'Procesando...' : 'Pagar en efectivo'}
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+        </div>)}
+
+
+    </div>)
+        ;
 }

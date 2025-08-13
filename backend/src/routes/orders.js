@@ -1,6 +1,7 @@
 // backend/src/routes/orders.js
 //import nextOrderNum from '../utils/generateOrderNum.js';
 import {isValidSpanishPhone} from '../utils/validatePhone.js';
+import {sendSMS} from "../services/twilio.js";
 
 export default async function (fastify, opts) {
     const prisma = fastify.prisma;
@@ -10,9 +11,7 @@ export default async function (fastify, opts) {
 
         console.log('Entrando a /api/orders, body:', req.body, 'query:', req.query);
         console.log('Modelos Prisma:', {
-            order: !!prisma.order,
-            user: !!prisma.user,
-            product: !!prisma.product,
+            order: !!prisma.order, user: !!prisma.user, product: !!prisma.product,
         });
 
 
@@ -45,14 +44,9 @@ export default async function (fastify, opts) {
 
             if (clientEmail) {
                 client = await prisma.user.upsert({
-                    where: {email: clientEmail},
-                    update: {
-                        firstName: clientFirstName,
-                        lastName: clientLastName,
-                        phone: clientPhone,
-                        role: 'customer',
-                    },
-                    create: {
+                    where: {email: clientEmail}, update: {
+                        firstName: clientFirstName, lastName: clientLastName, phone: clientPhone, role: 'customer',
+                    }, create: {
                         firstName: clientFirstName,
                         lastName: clientLastName,
                         email: clientEmail,
@@ -142,18 +136,12 @@ export default async function (fastify, opts) {
                 observaciones: observaciones || null,
                 fechaLimite,
                 lines: {create: lineCreates},
-            },
-            include: {
+            }, include: {
                 lines: {
                     include: {product: true},
-                },
-                client: {
+                }, client: {
                     select: {
-                        id: true,
-                        firstName: true,
-                        lastName: true,
-                        email: true,
-                        phone: true,
+                        id: true, firstName: true, lastName: true, email: true, phone: true,
                     },
                 },
             },
@@ -161,8 +149,7 @@ export default async function (fastify, opts) {
 
         // Serializar como hacías
         const serialized = {
-            ...order,
-            lines: order.lines.map((l) => ({
+            ...order, lines: order.lines.map((l) => ({
                 id: l.id,
                 productId: l.productId,
                 variantId: l.variantId,
@@ -208,23 +195,66 @@ export default async function (fastify, opts) {
         }
 
         const updated = await prisma.order.update({
-            where: {id: orderId},
-            data,
-            include: {
+            where: {id: orderId}, data, include: {
                 lines: {
                     include: {product: true},
-                },
-                client: {
+                }, client: {
                     select: {
-                        id: true,
-                        firstName: true,
-                        lastName: true,
-                        email: true,
-                        phone: true,
+                        id: true, firstName: true, lastName: true, email: true, phone: true,
                     },
                 },
             },
         });
+
+        // Si se marca como ready, notificar al cliente
+        if (status === 'ready' && updated.client?.phone) {
+            const client = updated.client;
+            const orderNum = updated.orderNum || '';
+            const clientName = `${client.firstName || ''} ${client.lastName || ''}`.trim();
+            const message = `Hola ${clientName}, tu pedido ${orderNum} está listo para recoger. Consulta nuestro horario de apertura: https://share.google/d4uMKGaiCaBywfRt2`;
+
+            // SMS
+            try {
+                await sendSMS(client.phone, message);
+                await prisma.notification.create({
+                    data: {
+                        orderid: updated.id, type: 'sms', recipient: client.phone, content: message, status: 'sent',
+                    },
+                });
+            } catch (err) {
+                await prisma.notification.create({
+                    data: {
+                        orderid: updated.id, type: 'sms', recipient: client.phone, content: message, status: 'failed',
+                    },
+                });
+            }
+
+        }
+
+        if (status === 'collected' && updated.client?.phone) {
+            const client = updated.client;
+            const orderNum = updated.orderNum || '';
+            const clientName = `${client.firstName || ''} ${client.lastName || ''}`.trim();
+            const message = `Hola ${clientName}, esperamos que todo haya ido perfecto 😊 Si puedes, déjanos una reseña: https://g.page/r/Cau9_6UCpQ8ZEBI/review`;
+
+            // SMS
+            try {
+                await sendSMS(client.phone, message);
+                await prisma.notification.create({
+                    data: {
+                        orderid: updated.id, type: 'sms', recipient: client.phone, content: message, status: 'sent',
+                    },
+                });
+            } catch (err) {
+                await prisma.notification.create({
+                    data: {
+                        orderid: updated.id, type: 'sms', recipient: client.phone, content: message, status: 'failed',
+                    },
+                });
+            }
+
+        }
+
 
         return reply.send(updated);
     });
@@ -247,8 +277,7 @@ export default async function (fastify, opts) {
             }
 
             const updateData = {
-                paymentMethod: method,
-                paid: true,
+                paymentMethod: method, paid: true,
             };
 
             let change = 0;
@@ -264,11 +293,8 @@ export default async function (fastify, opts) {
             }
 
             const updated = await prisma.order.update({
-                where: {id: orderId},
-                data: updateData,
-                include: {
-                    lines: {include: {product: true}},
-                    client: {
+                where: {id: orderId}, data: updateData, include: {
+                    lines: {include: {product: true}}, client: {
                         select: {id: true, firstName: true, lastName: true, email: true, phone: true},
                     },
                 },
@@ -285,7 +311,7 @@ export default async function (fastify, opts) {
 
     fastify.get('/', async (req, reply) => {
         const prisma = fastify.prisma;
-        const { q, status } = req.query || {};
+        const {q, status} = req.query || {};
 
 
         const where = {};
@@ -296,36 +322,31 @@ export default async function (fastify, opts) {
 
         if (q && String(q).trim()) {
             const term = String(q).trim();
-            where.OR = [
-                { orderNum: { contains: term, mode: 'insensitive' } },
-                {
-                    client: {
-                        OR: [
-                            { firstName: { contains: term, mode: 'insensitive' } },
-                            { lastName: { contains: term, mode: 'insensitive' } },
-                            { email: { contains: term, mode: 'insensitive' } },
-                            { phone: { contains: term } },
-                        ],
-                    },
+            where.OR = [{orderNum: {contains: term, mode: 'insensitive'}}, {
+                client: {
+                    OR: [{firstName: {contains: term, mode: 'insensitive'}}, {
+                        lastName: {
+                            contains: term, mode: 'insensitive'
+                        }
+                    }, {email: {contains: term, mode: 'insensitive'}}, {phone: {contains: term}},],
                 },
-            ];
+            },];
         }
 
         try {
             const orders = await prisma.order.findMany({
-                where,
-                include: {
-                    lines: { include: { product: true } },
-                    client: {
-                        select: { id: true, firstName: true, lastName: true, phone: true, email: true },
-                    },
-                },
-                orderBy: { fechaLimite: 'desc' },
+                where, include: {
+                    lines: {include: {product: true}}, client: {
+                        select: {id: true, firstName: true, lastName: true, phone: true, email: true},
+                    }, notification: {
+                        select: {id: true, type: true, sentAt: true, status: true, content: true}
+                    }
+                }, orderBy: {fechaLimite: 'desc'},
             });
             return reply.send(orders);
         } catch (err) {
             console.error('Error en GET /api/orders:', err);
-            return reply.status(500).send({ error: 'Error al obtener pedidos' });
+            return reply.status(500).send({error: 'Error al obtener pedidos'});
         }
     });
 
@@ -338,23 +359,18 @@ export default async function (fastify, opts) {
 
         try {
             const order = await prisma.order.findUnique({
-                where: {id: orderId},
-                include: {
+                where: {id: orderId}, include: {
                     lines: {
                         include: {
-                            product: true,
-                            // si hay variantes y quieres su detalle, añade:
+                            product: true, // si hay variantes y quieres su detalle, añade:
                             // variant: true
                         },
-                    },
-                    client: {
+                    }, client: {
                         select: {
-                            id: true,
-                            firstName: true,
-                            lastName: true,
-                            email: true,
-                            phone: true,
-                        },
+                            id: true, firstName: true, lastName: true, email: true, phone: true,
+                        }
+                    }, notification: {
+                        select: {id: true, type: true, sentAt: true, status: true, content: true}
                     },
                 },
             });
@@ -382,22 +398,16 @@ export default async function (fastify, opts) {
                     unitPrice: l.unitPrice,
                     totalPrice: l.totalPrice,
                     notes: l.notes || '',
-                    productName,
-                    // incluir info útil de producto si quieres (por ejemplo para imágenes o detalles):
+                    productName, // incluir info útil de producto si quieres (por ejemplo para imágenes o detalles):
                     product: {
-                        id: l.product?.id,
-                        name: l.product?.name,
-                        basePrice: l.product?.basePrice,
-                        // agrega aquí más campos si los usas en UI, como SKU, descripción, etc.
-                    },
-                    // si tienes variantes y las necesitas:
+                        id: l.product?.id, name: l.product?.name, basePrice: l.product?.basePrice, // agrega aquí más campos si los usas en UI, como SKU, descripción, etc.
+                    }, // si tienes variantes y las necesitas:
                     // variant: l.variant ? { id: l.variant.id, name: l.variant.name, priceModifier: l.variant.priceModifier } : null,
                 };
             });
 
             const serialized = {
-                ...order,
-                lines: serializedLines,
+                ...order, lines: serializedLines,
             };
 
             return reply.send(serialized);

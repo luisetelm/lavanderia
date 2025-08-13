@@ -318,7 +318,7 @@ export default function POS({ token }) {
                                     onRemove={removeFromCart}
                                 />
                                 <div style={{ marginTop: 8 }}>
-                                    <button onClick={() => handleValidate({ submit: true })} disabled={!cart.length}>
+                                    <button className={'uk-button uk-button-primary'} onClick={() => handleValidate({ submit: true })} disabled={!cart.length}>
                                         {order ? 'Revalidar pedido' : 'Validar pedido'}
                                     </button>
                                 </div>
