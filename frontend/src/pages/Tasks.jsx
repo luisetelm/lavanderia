@@ -17,7 +17,7 @@ export default function Tasks({token, products}) {
     const load = async (search = '', status = 'all') => {
         setLoading(true);
         try {
-            const list = await fetchOrders(token, { q: search, status });
+            const list = await fetchOrders(token, {q: search, status});
             setTasks(Array.isArray(list) ? list : []);
             setError('');
         } catch (e) {
@@ -50,51 +50,61 @@ export default function Tasks({token, products}) {
     // }, [filterStatus]);
 
     return (<div>
-        <div style={{
-            marginBottom: 20, display: 'flex', gap: 16, alignItems: 'center', justifyContent: 'space-between'
-        }}>
-            <h2 style={{margin: 0}}>Tareas</h2>
+        <div className="section-header">
+            <h2 className="uk-margin-remove">Tareas</h2>
             <FilterBar value={filterStatus} onChange={setFilterStatus} query={query} setQuery={setQuery}/>
         </div>
 
-        {error && <div style={{color: 'red'}}>{error}</div>}
-        {loading && <div>Cargando...</div>}
-        {!loading && tasks.length === 0 && (<div style={{
-            padding: '20px', textAlign: 'center', color: '#666', backgroundColor: '#f9f9f9', borderRadius: '8px'
-        }}>
-            No hay
-            tareas {filterStatus !== 'all' ? (filterStatus === 'pending' ? 'pendientes' : filterStatus === 'ready' ? 'listas' : 'recogidas') : ''}.
+        {error && (<div className="uk-alert-danger" uk-alert="true">
+            <p>{error}</p>
         </div>)}
 
-        <div style={{
-            display: 'grid', gap: '16px', marginTop: '16px'
-        }}>
+        {loading && (<div className="uk-text-center uk-padding">
+            <div uk-spinner="ratio: 1"></div>
+            <p>Cargando...</p>
+        </div>)}
+
+        {!loading && tasks.length === 0 && (<div className="uk-alert uk-alert-primary uk-text-center">
+            No hay tareas
+            {filterStatus !== 'all' ? (filterStatus === 'pending' ? ' pendientes' : filterStatus === 'ready' ? ' listas' : ' recogidas') : ''}.
+        </div>)}
+
+        <div className="section-content">
             {tasks.map((t) => {
                 const clientName = t.order ? t.order.client ? `${t.order.client.firstName} ${t.order.client.lastName}`.trim() : 'Cliente rápido' : '-';
 
                 return (<div key={t.id}>
-                    {t.id ? (<div style={{marginTop: 12}}>
+                    {t.id ? (<div className="uk-margin">
                         <PaymentSection
                             token={token}
                             orderId={t.id}
                             onPaid={() => load(query, filterStatus)}
                         />
-                    </div>) : (<div style={{marginTop: 12}}>Pedido no disponible</div>)}
+                    </div>) : (<div className="uk-alert uk-alert-warning uk-margin">
+                        Pedido no disponible
+                    </div>)}
 
-                    {t.notifications?.length > 0 && (<div style={{marginTop: 10}}>
-                        <div style={{fontWeight: 'bold'}}>Notificaciones:</div>
-                        {t.notifications.map((n) => (<div
-                            key={n.id}
-                            style={{fontSize: 12, marginTop: 4, display: 'flex', gap: 6}}
-                        >
-                            <div>
-                                <strong>{n.type}</strong> — {n.status}
-                            </div>
-                            {n.createdAt && (<div style={{color: '#555'}}>
-                                {new Date(n.createdAt).toLocaleString()}
-                            </div>)}
-                            <div>{n.content}</div>
-                        </div>))}
+                    {t.notifications?.length > 0 && (<div className="uk-margin-top">
+                        <h4 className="uk-heading-bullet uk-margin-small-bottom">
+                            Notificaciones
+                        </h4>
+                        <div className="uk-margin-small-top">
+                            {t.notifications.map((n) => (
+                                <div key={n.id} className="uk-grid-small uk-margin-small" uk-grid="true">
+                                    <div className="uk-width-auto">
+                                                    <span className="uk-label">
+                                                        {n.type}
+                                                    </span>
+                                        <span> — {n.status}</span>
+                                    </div>
+                                    {n.createdAt && (<div className="uk-width-auto uk-text-muted">
+                                        {new Date(n.createdAt).toLocaleString()}
+                                    </div>)}
+                                    <div className="uk-width-expand">
+                                        {n.content}
+                                    </div>
+                                </div>))}
+                        </div>
                     </div>)}
                 </div>);
             })}
@@ -102,7 +112,6 @@ export default function Tasks({token, products}) {
     </div>);
 }
 
-// javascript
 function FilterBar({value, onChange, query, setQuery}) {
     const Btn = ({val, children}) => (<button
         type="button"
@@ -113,23 +122,24 @@ function FilterBar({value, onChange, query, setQuery}) {
         {children}
     </button>);
 
-    return (<div className="uk-flex uk-flex-between uk-flex-middle uk-margin-small">
-        <div className="uk-flex uk-flex-middle uk-grid-small" data-uk-grid>
-            <div>
+    return (<div>
+        <div>
+            <form className="uk-search uk-search-default">
                 <input
-                    className="uk-input uk-form-width-medium"
+                    type="search"
+                    className="uk-search-input uk-width-1-1"
                     placeholder="Buscar por pedido o cliente..."
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                 />
-            </div>
-            <div>
-                <div className="uk-button-group">
-                    <Btn val="all">Todas</Btn>
-                    <Btn val="pending">Pendientes</Btn>
-                    <Btn val="ready">Listas</Btn>
-                    <Btn val="collected">Recogidas</Btn>
-                </div>
+            </form>
+        </div>
+        <div>
+            <div className="uk-button-group">
+                <Btn val="all">Todas</Btn>
+                <Btn val="pending">Pendientes</Btn>
+                <Btn val="ready">Listas</Btn>
+                <Btn val="collected">Recogidas</Btn>
             </div>
         </div>
     </div>);

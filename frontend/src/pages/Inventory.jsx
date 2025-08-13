@@ -28,18 +28,42 @@ function ImportCSVModal({token, onClose, onSuccess}) {
     };
 
     return (
-        <div style={{
-            position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
-            background: 'rgba(0,0,0,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center'
-        }}>
-            <div style={{background: '#fff', padding: 24, borderRadius: 8, minWidth: 320}}>
-                <h4>Importar productos desde CSV</h4>
-                {error && <div style={{color: 'red'}}>{error}</div>}
-                <form onSubmit={handleSubmit}>
-                    <input type="file" accept=".csv" ref={fileInput}/>
-                    <div style={{marginTop: 12, display: 'flex', gap: 8}}>
-                        <button type="submit" disabled={loading}>Importar</button>
-                        <button type="button" onClick={onClose}>Cancelar</button>
+        <div className="uk-modal uk-open" uk-modal="true">
+            <div className="uk-modal-dialog uk-modal-body uk-margin-auto-vertical">
+                <h4 className="uk-modal-title">Importar productos desde CSV</h4>
+                
+                {error && (
+                    <div className="uk-alert-danger" uk-alert="true">
+                        <p>{error}</p>
+                    </div>
+                )}
+                
+                <form onSubmit={handleSubmit} className="uk-form-stacked">
+                    <div className="uk-margin">
+                        <div className="uk-form-controls">
+                            <div className="uk-margin" uk-form-custom="true">
+                                <input type="file" accept=".csv" ref={fileInput} />
+                                <button className="uk-button uk-button-default" type="button" tabIndex="-1">
+                                    Seleccionar archivo
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div className="uk-margin uk-flex uk-flex-right">
+                        <button type="button" className="uk-button uk-button-default uk-margin-small-right" onClick={onClose}>
+                            Cancelar
+                        </button>
+                        <button type="submit" className="uk-button uk-button-primary" disabled={loading}>
+                            {loading ? (
+                                <span>
+                                    <div uk-spinner="ratio: 0.8" className="uk-margin-small-right"></div>
+                                    Importando...
+                                </span>
+                            ) : (
+                                'Importar'
+                            )}
+                        </button>
                     </div>
                 </form>
             </div>
@@ -72,44 +96,92 @@ function ProductForm({onSave, initial = {}, token, onCancel}) {
     };
 
     return (
-        <div style={{border: '1px solid #888', padding: 12, borderRadius: 6, marginBottom: 12}}>
-            <h4>{initial.id ? 'Editar producto' : 'Nuevo producto'}</h4>
-            {error && <div style={{color: 'red'}}>{error}</div>}
-            <form onSubmit={submit} style={{display: 'grid', gap: 8}}>
-                <div>
-                    <label>Nombre</label><br/>
-                    <input value={form.name} onChange={e => setForm(f => ({...f, name: e.target.value}))} required/>
+        <div className="uk-card uk-card-default uk-card-body uk-margin-bottom">
+            <h4 className="uk-card-title">{initial.id ? 'Editar producto' : 'Nuevo producto'}</h4>
+            
+            {error && (
+                <div className="uk-alert-danger" uk-alert="true">
+                    <p>{error}</p>
                 </div>
-                <div>
-                    <label>SKU</label><br/>
-                    <input value={form.sku} onChange={e => setForm(f => ({...f, sku: e.target.value}))}/>
+            )}
+            
+            <form onSubmit={submit} className="uk-form-stacked">
+                <div className="uk-margin">
+                    <label className="uk-form-label">Nombre</label>
+                    <div className="uk-form-controls">
+                        <input 
+                            className="uk-input"
+                            value={form.name} 
+                            onChange={e => setForm(f => ({...f, name: e.target.value}))} 
+                            required
+                        />
+                    </div>
                 </div>
-                <div>
-                    <label>Precio base</label><br/>
-                    <input
-                        type="number"
-                        step="0.01"
-                        value={form.basePrice}
-                        onChange={e => setForm(f => ({...f, basePrice: parseFloat(e.target.value)}))}
-                        required
-                    />
+                
+                <div className="uk-margin">
+                    <label className="uk-form-label">SKU</label>
+                    <div className="uk-form-controls">
+                        <input 
+                            className="uk-input"
+                            value={form.sku} 
+                            onChange={e => setForm(f => ({...f, sku: e.target.value}))}
+                        />
+                    </div>
                 </div>
-                <div>
-                    <label>Tipo</label><br/>
-                    <select value={form.type} onChange={e => setForm(f => ({...f, type: e.target.value}))}>
-                        <option value="service">Servicio</option>
-                        <option value="item">Ítem</option>
-                    </select>
+                
+                <div className="uk-margin">
+                    <label className="uk-form-label">Precio base</label>
+                    <div className="uk-form-controls">
+                        <input
+                            className="uk-input"
+                            type="number"
+                            step="0.01"
+                            value={form.basePrice}
+                            onChange={e => setForm(f => ({...f, basePrice: parseFloat(e.target.value)}))}
+                            required
+                        />
+                    </div>
                 </div>
-                <div>
-                    <label>Descripción</label><br/>
-                    <textarea value={form.description}
-                              onChange={e => setForm(f => ({...f, description: e.target.value}))}/>
+                
+                <div className="uk-margin">
+                    <label className="uk-form-label">Tipo</label>
+                    <div className="uk-form-controls">
+                        <select 
+                            className="uk-select"
+                            value={form.type} 
+                            onChange={e => setForm(f => ({...f, type: e.target.value}))}
+                        >
+                            <option value="service">Servicio</option>
+                            <option value="item">Ítem</option>
+                        </select>
+                    </div>
                 </div>
-                <div style={{display: 'flex', gap: 8}}>
-                    <button type="submit">{initial.id ? 'Guardar cambios' : 'Crear'}</button>
-                    {onCancel &&
-                        <button type="button" onClick={onCancel} style={{background: '#999'}}>Cancelar</button>}
+                
+                <div className="uk-margin">
+                    <label className="uk-form-label">Descripción</label>
+                    <div className="uk-form-controls">
+                        <textarea 
+                            className="uk-textarea" 
+                            rows="3"
+                            value={form.description}
+                            onChange={e => setForm(f => ({...f, description: e.target.value}))}
+                        />
+                    </div>
+                </div>
+                
+                <div className="uk-margin uk-flex">
+                    <button type="submit" className="uk-button uk-button-primary">
+                        {initial.id ? 'Guardar cambios' : 'Crear'}
+                    </button>
+                    {onCancel && (
+                        <button 
+                            type="button" 
+                            className="uk-button uk-button-default uk-margin-small-left" 
+                            onClick={onCancel}
+                        >
+                            Cancelar
+                        </button>
+                    )}
                 </div>
             </form>
         </div>
@@ -122,13 +194,18 @@ export default function Inventory({token}) {
     const [showNew, setShowNew] = useState(false);
     const [error, setError] = useState('');
     const [showImport, setShowImport] = useState(false);
+    const [loading, setLoading] = useState(false);
 
     const load = async () => {
+        setLoading(true);
         try {
             const prods = await fetchProducts(token);
             setProducts(prods);
+            setError('');
         } catch (e) {
             setError('No se pudo cargar el inventario');
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -138,15 +215,27 @@ export default function Inventory({token}) {
 
     return (
         <div>
-            <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+            <div className="section-header">
                 <h2>Inventario</h2>
-                <button onClick={() => {
-                    setShowNew(true);
-                    setEditing(null);
-                }}>Nuevo producto
-                </button>
-                <button onClick={() => setShowImport(true)}>Importar CSV</button>
+                <div>
+                    <button 
+                        className="uk-button uk-button-primary uk-margin-small-right"
+                        onClick={() => {
+                            setShowNew(true);
+                            setEditing(null);
+                        }}
+                    >
+                        <span uk-icon="plus"></span> Nuevo producto
+                    </button>
+                    <button 
+                        className="uk-button uk-button-default"
+                        onClick={() => setShowImport(true)}
+                    >
+                        <span uk-icon="cloud-upload"></span> Importar CSV
+                    </button>
+                </div>
             </div>
+
             {showImport && (
                 <ImportCSVModal
                     token={token}
@@ -155,48 +244,92 @@ export default function Inventory({token}) {
                 />
             )}
 
-            {error && <div style={{color: 'red'}}>{error}</div>}
+            {error && (
+                <div className="uk-alert-danger" uk-alert="true">
+                    <p>{error}</p>
+                </div>
+            )}
+
             {showNew && (
-                <ProductForm
-                    token={token}
-                    onSave={() => {
-                        load();
-                        setShowNew(false);
-                    }}
-                    onCancel={() => setShowNew(false)}
-                />
+                <div className="section-content">
+                    <ProductForm
+                        token={token}
+                        onSave={() => {
+                            load();
+                            setShowNew(false);
+                        }}
+                        onCancel={() => setShowNew(false)}
+                    />
+                </div>
             )}
+
             {editing && (
-                <ProductForm
-                    token={token}
-                    initial={editing}
-                    onSave={() => {
-                        load();
-                        setEditing(null);
-                    }}
-                    onCancel={() => setEditing(null)}
-                />
+                <div className="section-content">
+                    <ProductForm
+                        token={token}
+                        initial={editing}
+                        onSave={() => {
+                            load();
+                            setEditing(null);
+                        }}
+                        onCancel={() => setEditing(null)}
+                    />
+                </div>
             )}
-            <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: 16}}>
-                {products.map(p => (
-                    <div key={p.id}
-                         style={{border: '1px solid #ccc', padding: 12, borderRadius: 6, position: 'relative'}}>
-                        <div><strong>{p.name}</strong> ({p.type})</div>
-                        <div>Precio base: {p.basePrice.toFixed(2)} €</div>
-                        <div>SKU: {p.sku || '-'}</div>
-                        <div style={{marginTop: 6}}>{p.description}</div>
-                        <button
-                            style={{position: 'absolute', top: 8, right: 8, fontSize: 12}}
-                            onClick={() => {
-                                setEditing(p);
-                                setShowNew(false);
-                            }}
-                        >
-                            Editar
-                        </button>
+
+            <div className="section-content">
+                {loading ? (
+                    <div className="uk-text-center uk-padding">
+                        <div uk-spinner="ratio: 1"></div>
+                        <p>Cargando productos...</p>
                     </div>
-                ))}
-                {products.length === 0 && <div>No hay productos.</div>}
+                ) : (
+                    <div className="uk-grid uk-grid-medium uk-child-width-1-3@l uk-child-width-1-2@m uk-child-width-1-1@s" uk-grid="true">
+                        {products.map(p => (
+                            <div key={p.id}>
+                                <div className="uk-card uk-card-default uk-card-body uk-position-relative">
+                                    <button
+                                        className="uk-button uk-button-small uk-position-top-right uk-position-small"
+                                        onClick={() => {
+                                            setEditing(p);
+                                            setShowNew(false);
+                                        }}
+                                    >
+                                        <span uk-icon="pencil"></span>
+                                    </button>
+                                    
+                                    <h3 className="uk-card-title">{p.name}</h3>
+                                    
+                                    <div className="uk-margin-small-top">
+                                        <span className={`uk-label ${p.type === 'service' ? 'uk-label-warning' : 'uk-label-success'}`}>
+                                            {p.type === 'service' ? 'Servicio' : 'Ítem'}
+                                        </span>
+                                    </div>
+                                    
+                                    <div className="uk-margin-small-top">
+                                        <strong>Precio base:</strong> {p.basePrice.toFixed(2)} €
+                                    </div>
+                                    
+                                    <div className="uk-margin-small-top">
+                                        <strong>SKU:</strong> {p.sku || '-'}
+                                    </div>
+                                    
+                                    {p.description && (
+                                        <div className="uk-margin-small-top">
+                                            <p className="uk-text-small">{p.description}</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        ))}
+                        
+                        {products.length === 0 && (
+                            <div className="uk-width-1-1 uk-text-center uk-text-muted uk-margin">
+                                No hay productos.
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
         </div>
     );

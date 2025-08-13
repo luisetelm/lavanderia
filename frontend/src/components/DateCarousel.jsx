@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 const isBusinessDay = (d) => {
     const wd = d.getDay();
@@ -26,98 +26,80 @@ export default function DateCarousel({
     setFechaLimite,
 }) {
     const days = getNextBusinessDays(10);
-    const [hoveredDay, setHoveredDay] = useState(null);
 
     return (
-        <div style={{ marginBottom: 20 }}>
-            <h3>Fecha de entrega</h3>
-            <div style={{
-                display: 'grid',
-                gridTemplateColumns: "repeat(5, 1fr)",
-                gap: 8,
-                maxWidth: '60vw'
-            }}>
+        <div className="uk-margin-medium-bottom">
+            <h4 className="uk-heading-bullet uk-margin-small-bottom">Fecha de entrega</h4>
+            
+            <div className="uk-child-width-1-5@m uk-child-width-1-3@s uk-child-width-1-2 uk-grid-small" uk-grid="true">
                 {days.map((d) => {
                     const key = formatDateKey(d);
                     const ordersForDay = loadByDay[key] || [];
-                    const bg =
+                    
+                    // Determinar la clase de color según la cantidad de pedidos
+                    const colorClass = 
                         ordersForDay.length >= 5
-                            ? '#f8d7da'
+                            ? 'uk-alert-danger' 
                             : ordersForDay.length >= 2
-                                ? '#fff3cd'
-                                : '#d4edda';
+                                ? 'uk-alert-warning'
+                                : 'uk-alert-success';
+                    
                     return (
-                        <div
-                            key={key}
-                            style={{
-                                minWidth: 70,
-                                padding: 8,
-                                borderRadius: 6,
-                                background: bg,
-                                position: 'relative',
-                                cursor: 'pointer',
-                                border: fechaLimite === key ? '2px solid #333' : '1px solid #ccc',
-                            }}
-                            onClick={() => setFechaLimite(key)}
-                            onMouseEnter={() => setHoveredDay(key)}
-                            onMouseLeave={() => setHoveredDay(null)}
-                        >
-                            <div style={{ fontWeight: 'bold' }}>
-                                {new Date(key).toLocaleDateString('es-ES', {
-                                    weekday: 'short',
-                                    day: 'numeric',
-                                    month: 'short',
-                                })}
-                            </div>
-                            <div style={{ fontSize: 12 }}>Pedidos: {ordersForDay.length}</div>
-                            {hoveredDay === key && ordersForDay.length > 0 && (
-                                <div
-                                    style={{
-                                        position: 'absolute',
-                                        top: '100%',
-                                        left: 0,
-                                        zIndex: 10,
-                                        background: '#fff',
-                                        border: '1px solid #ccc',
-                                        borderRadius: 4,
-                                        padding: 8,
-                                        width: 220,
-                                        marginTop: 4,
-                                        fontSize: 12,
-                                        boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-                                    }}
+                        <div key={key}>
+                            <div className="uk-inline uk-display-block">
+                                <div 
+                                    className={`${colorClass} uk-padding-small uk-border-rounded uk-box-shadow-small uk-display-block ${
+                                        fechaLimite === key ? 'uk-box-shadow-medium uk-position-z-index uk-border uk-border-emphasis' : ''
+                                    }`}
+                                    onClick={() => setFechaLimite(key)}
                                 >
-                                    {ordersForDay.map((o) => (
-                                        <div 
-                                            key={o.id} 
-                                            style={{ 
-                                                marginBottom: 8,
-                                                padding: '4px 0',
-                                                borderBottom: '1px solid #eee'
-                                            }}
-                                        >
-                                            <div style={{ 
-                                                fontWeight: 'bold',
-                                                color: '#1f2956'
-                                            }}>
-                                                Pedido: {o.orderNum}
-                                            </div>
-                                            {o.lines.map((l) => (
-                                                <div 
-                                                    key={l.id}
-                                                    style={{
-                                                        fontSize: 11,
-                                                        color: '#4b5563',
-                                                        marginLeft: 4
-                                                    }}
-                                                >
-                                                    {l.quantity}x {l.productName || l.product?.name}
+                                    <div className="uk-text-bold">
+                                        {new Date(key).toLocaleDateString('es-ES', {
+                                            weekday: 'short',
+                                            day: 'numeric',
+                                            month: 'short',
+                                        })}
+                                    </div>
+                                    <div className="uk-text-small">Pedidos: {ordersForDay.length}</div>
+                                </div>
+                                
+                                {ordersForDay.length > 0 && (
+                                    <div 
+                                        className="uk-width-large uk-card uk-card-default uk-card-body uk-padding-small"
+                                        uk-dropdown="mode: hover; delay-hide: 200; pos: bottom-center; boundary: !.uk-grid; boundary-align: true; animation: uk-animation-slide-top-small"
+                                    >
+                                        <h5 className="uk-margin-remove-top uk-margin-small-bottom">
+                                            Pedidos para {new Date(key).toLocaleDateString('es-ES', {
+                                                weekday: 'long',
+                                                day: 'numeric',
+                                                month: 'long',
+                                            })}
+                                        </h5>
+                                        
+                                        <div className="uk-height-medium uk-overflow-auto">
+                                            {ordersForDay.map((o) => (
+                                                <div key={o.id} className="uk-margin-small-bottom">
+                                                    <div className="uk-card-header uk-padding-small">
+                                                        <h5 className="uk-margin-remove">
+                                                            <span className="uk-text-primary">Pedido: {o.orderNum}</span>
+                                                        </h5>
+                                                    </div>
+                                                    <div className="uk-card-body uk-padding-small">
+                                                        <ul className="uk-list uk-list-divider uk-margin-remove">
+                                                            {o.lines.map((l) => (
+                                                                <li key={l.id} className="uk-text-small">
+                                                                    <span className="uk-badge uk-margin-small-right">{l.quantity}</span>
+                                                                    {l.productName || l.product?.name}
+                                                                </li>
+                                                            ))}
+                                                        </ul>
+                                                    </div>
                                                 </div>
                                             ))}
                                         </div>
-                                    ))}
-                                </div>
-                            )}
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     );
                 })}

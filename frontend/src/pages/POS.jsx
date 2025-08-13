@@ -39,6 +39,7 @@ export default function POS({ token }) {
     const [receivedAmount, setReceivedAmount] = useState('');
     const [isValidated, setIsValidated] = useState(false);
     const [loadByDay, setLoadByDay] = useState({});
+    const [showTicketSection, setShowTicketSection] = useState(true);
 
     const [isPaying, setIsPaying] = useState(false);
 
@@ -108,6 +109,13 @@ export default function POS({ token }) {
 
         fetchLoads();
     }, [token, isValidated, order]);
+
+    // Cuando se valida un pedido, oculta la sección de ticket
+    useEffect(() => {
+        if (isValidated) {
+            setShowTicketSection(false);
+        }
+    }, [isValidated]);
 
     const add = (p) => {
         setCart((prev) => {
@@ -228,131 +236,185 @@ export default function POS({ token }) {
         setCart(prev => prev.filter(item => item.productId !== productId));
     };
 
+    const handleNewOrder = () => {
+        // Reiniciar el estado para un nuevo pedido
+        setCart([]);
+        setOrder(null);
+        setSelectedUser(null);
+        setSearchUser('');
+        setQuickFirstName('');
+        setQuickLastName('');
+        setQuickClientPhone('');
+        setQuickClientEmail('');
+        setObservaciones('');
+        setFechaLimite(null);
+        setError('');
+        setIsValidated(false);
+        setShowTicketSection(true);
+    };
 
     return (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 30 }}>
-            <div>
-                <h2>Clientes</h2>
-                <CustomerSelector
-                    users={users}
-                    searchUser={searchUser}
-                    setSearchUser={setSearchUser}
-                    selectedUser={selectedUser}
-                    setSelectedUser={setSelectedUser}
-                    quickFirstName={quickFirstName}
-                    quickLastName={quickLastName}
-                    quickClientPhone={quickClientPhone}
-                    quickClientEmail={quickClientEmail}
-                    setQuickFirstName={setQuickFirstName}
-                    setQuickLastName={setQuickLastName}
-                    setQuickClientPhone={setQuickClientPhone}
-                    setQuickClientEmail={setQuickClientEmail}
-                />
+        <div>
+            <div className="section-header">
+                <h2>Punto de Venta</h2>
+                {isValidated && (
+                    <button 
+                        className="uk-button uk-button-primary"
+                        onClick={handleNewOrder}
+                    >
+                        <span uk-icon="plus"></span> Nuevo pedido
+                    </button>
+                )}
+            </div>
+            
+            <div className="section-content">
+                <div className="uk-grid-large" uk-grid="true">
+                    <div className="uk-width-1-2@m">
+                        <div className="uk-card uk-card-default uk-card-body">
+                            <h3 className="uk-card-title">Clientes</h3>
+                            <CustomerSelector
+                                users={users}
+                                searchUser={searchUser}
+                                setSearchUser={setSearchUser}
+                                selectedUser={selectedUser}
+                                setSelectedUser={setSelectedUser}
+                                quickFirstName={quickFirstName}
+                                quickLastName={quickLastName}
+                                quickClientPhone={quickClientPhone}
+                                quickClientEmail={quickClientEmail}
+                                setQuickFirstName={setQuickFirstName}
+                                setQuickLastName={setQuickLastName}
+                                setQuickClientPhone={setQuickClientPhone}
+                                setQuickClientEmail={setQuickClientEmail}
+                            />
 
-                <div style={{ marginTop: 12, display: 'flex', gap: 16, alignItems: 'flex-start' }}>
-                    {/* Carrusel existente */}
-                    <div style={{ flex: 2 }}>
-                        <DateCarousel
-                            loadByDay={loadByDay}
-                            fechaLimite={fechaLimite}
-                            setFechaLimite={setFechaLimite}
-                        />
-                    </div>
-                </div>
+                            <div className="uk-margin uk-grid-small" uk-grid="true">
+                                <div className="uk-width-2-3@s">
+                                    <DateCarousel
+                                        loadByDay={loadByDay}
+                                        fechaLimite={fechaLimite}
+                                        setFechaLimite={setFechaLimite}
+                                    />
+                                </div>
+                                
+                                <div className="uk-width-1-3@s">
+                                    <label className="uk-form-label">O elegir otra fecha</label>
+                                    <div className="uk-form-controls">
+                                        <input
+                                            type="date"
+                                            className="uk-input"
+                                            value={fechaLimite || ''}
+                                            onChange={(e) => {
+                                                const picked = e.target.value; // formato YYYY-MM-DD
+                                                setFechaLimite(picked);
+                                            }}
+                                            min={new Date().toISOString().split('T')[0]}
+                                        />
+                                    </div>
+                                    <div className="uk-text-small uk-text-muted uk-margin-small-top">
+                                        {fechaLimite
+                                            ? `Entrega: ${new Date(fechaLimite).toLocaleDateString('es-ES', {
+                                                weekday: 'long',
+                                                day: 'numeric',
+                                                month: 'long',
+                                            })}`
+                                            : 'Se propondrá una fecha por defecto'}
+                                    </div>
+                                </div>
+                            </div>
 
-                <div>
-                    {/* Fecha libre */}
-                    <div style={{ flex: 1, minWidth: 180, marginTop: 8 }}>
-                        <label>O elegir otra fecha</label>
-                        <input
-                            type="date"
-                            value={fechaLimite || ''}
-                            onChange={(e) => {
-                                const picked = e.target.value; // formato YYYY-MM-DD
-                                setFechaLimite(picked);
-                            }}
-                            style={{ width: '100%', padding: 6 }}
-                            min={new Date().toISOString().split('T')[0]}
-                        />
-                        <div style={{ fontSize: 12, marginTop: 4 }}>
-                            {fechaLimite
-                                ? `Entrega: ${new Date(fechaLimite).toLocaleDateString('es-ES', {
-                                    weekday: 'long',
-                                    day: 'numeric',
-                                    month: 'long',
-                                })}`
-                                : 'Se propondrá una fecha por defecto'}
+                            <div className="uk-margin">
+                                <label className="uk-form-label">Observaciones:</label>
+                                <div className="uk-form-controls">
+                                    <textarea
+                                        className="uk-textarea"
+                                        rows="3"
+                                        placeholder="Prenda en mal estado, petición especial..."
+                                        value={observaciones}
+                                        onChange={(e) => setObservaciones(e.target.value)}
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Mostrar Ticket solo si showTicketSection es true o si no hay pedido validado */}
+                            {(showTicketSection || !isValidated) && (
+                                <div className="uk-margin">
+                                    <h3 className="uk-heading-divider">Ticket</h3>
+                                    {selectedUser ? (
+                                        <div className="uk-margin-small">
+                                            <span className="uk-label uk-label-success">Cliente</span>: {selectedUser.firstName} {selectedUser.lastName} - {selectedUser.phone}
+                                        </div>
+                                    ) : quickFirstName ? (
+                                        <div className="uk-margin-small">
+                                            <span className="uk-label uk-label-warning">Cliente rápido</span>: {quickFirstName} {quickLastName} - {quickClientPhone}
+                                        </div>
+                                    ) : (
+                                        <div className="uk-text-muted">Seleccione o cree un cliente</div>
+                                    )}
+
+                                    {!order && (
+                                        <div className="uk-margin">
+                                            <CartSummary 
+                                                cart={cart} 
+                                                products={products} 
+                                                onUpdateQuantity={updateQuantity}
+                                                onRemove={removeFromCart}
+                                            />
+                                            <div className="uk-margin">
+                                                <button 
+                                                    className="uk-button uk-button-primary uk-width-1-1" 
+                                                    onClick={() => handleValidate({ submit: true })} 
+                                                    disabled={!cart.length}
+                                                >
+                                                    {order ? 'Revalidar pedido' : 'Validar pedido'}
+                                                </button>
+                                            </div>
+                                            {error && (
+                                                <div className="uk-alert-danger uk-margin-small" uk-alert="true">
+                                                    <p>{error}</p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {order && (
+                                <div className="uk-margin">
+                                    <div className="uk-card uk-card-default uk-card-body uk-padding-small uk-margin-bottom">
+                                        <h3 className="uk-card-title">Pedido #{order.orderNum || order.id}</h3>
+                                        <div className="uk-label uk-label-success uk-margin-small-right">Validado</div>
+                                        <span className="uk-text-muted">Total: {order.total.toFixed(2)} €</span>
+                                    </div>
+                                    
+                                    <PaymentSection
+                                        token={token}
+                                        orderId={order.id}
+                                        onPaid={async () => {
+                                            try {
+                                                const updated = await fetchOrder(token, order.id);
+                                                setOrder(updated);
+                                            } catch (e) {
+                                                console.error('Error refrescando pedido tras pago:', e);
+                                            }
+                                        }}
+                                    />
+                                </div>
+                            )}
                         </div>
                     </div>
 
-                    <div style={{ marginTop: 12 }}>
-                        <label>Observaciones:</label>
-                        <textarea
-                            placeholder="Prenda en mal estado, petición especial..."
-                            value={observaciones}
-                            onChange={(e) => setObservaciones(e.target.value)}
-                            style={{ width: '100%', minHeight: 60 }}
-                        />
-                    </div>
-
-                    <div style={{ marginTop: 10 }}>
-                        <h2>Ticket</h2>
-                        {selectedUser ? (
-                            <div>
-                                Cliente: {selectedUser.firstName} {selectedUser.lastName} - {selectedUser.phone}
-                            </div>
-                        ) : quickFirstName ? (
-                            <div>
-                                Cliente rápido: {quickFirstName} {quickLastName} - {quickClientPhone}
-                            </div>
-                        ) : (
-                            <div style={{ color: '#888' }}>Seleccione o cree un cliente</div>
-                        )}
-
-                        {!order && (
-                            <div style={{ marginTop: 8 }}>
-                                <CartSummary 
-                                    cart={cart} 
-                                    products={products} 
-                                    onUpdateQuantity={updateQuantity}
-                                    onRemove={removeFromCart}
-                                />
-                                <div style={{ marginTop: 8 }}>
-                                    <button className={'uk-button uk-button-primary'} onClick={() => handleValidate({ submit: true })} disabled={!cart.length}>
-                                        {order ? 'Revalidar pedido' : 'Validar pedido'}
-                                    </button>
-                                </div>
-                                {error && <div style={{ color: 'red', marginTop: 10 }}>{error}</div>}
-                            </div>
-                        )}
-
-                        {order && (
-                            <div style={{ marginTop: 12 }}>
-                                <PaymentSection
-                                    token={token}
-                                    orderId={order.id}
-                                    onPaid={async () => {
-                                        try {
-                                            const updated = await fetchOrder(token, order.id);
-                                            setOrder(updated);
-                                        } catch (e) {
-                                            console.error('Error refrescando pedido tras pago:', e);
-                                        }
-                                    }}
-                                />
-                            </div>
-                        )}
+                    <div className="uk-width-1-2@m">
+                        <div className="uk-card uk-card-default uk-card-body">
+                            <ProductList
+                                products={products}
+                                searchProduct={searchProduct}
+                                setSearchProduct={setSearchProduct}
+                                onAdd={add}
+                            />
+                        </div>
                     </div>
                 </div>
-            </div>
-
-            <div>
-                <ProductList
-                    products={products}
-                    searchProduct={searchProduct}
-                    setSearchProduct={setSearchProduct}
-                    onAdd={add}
-                />
             </div>
 
             {showCashModal && order && (

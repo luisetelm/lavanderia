@@ -9,60 +9,47 @@ export default function ProductList({products, searchProduct, setSearchProduct, 
 
     return (
         <div>
-            <h2>Productos</h2>
-            <input
-                placeholder="Buscar producto..."
-                value={searchProduct}
-                onChange={(e) => setSearchProduct(e.target.value)}
-                style={{width: '100%', marginBottom: 8}}
-            />
-            <div style={{
-                display: 'grid',
-                gridTemplateColumns: "repeat(4, 1fr)",
-                gap: 12,
-            }}>
+            <h3 className="uk-card-title">Productos</h3>
+            
+            <div className="uk-margin-small">
+                <div className="uk-search uk-search-default uk-width-1-1">
+                    <span uk-search-icon="true"></span>
+                    <input
+                        className="uk-search-input"
+                        placeholder="Buscar producto..."
+                        value={searchProduct}
+                        onChange={(e) => setSearchProduct(e.target.value)}
+                    />
+                </div>
+            </div>
+            
+            <div className="uk-child-width-1-2@s uk-child-width-1-4@m uk-grid-small" uk-grid="true">
                 {filtered.map((p) => (
-                    <div
-                        key={p.id}
-                        style={{
-                            border: '1px solid #ddd',
-                            padding: 8,
-                            marginBottom: 6,
-                            borderRadius: 4,
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            gap: 8,
-                            cursor: 'pointer',
-                            transition: 'all 0.2s ease',
-                            backgroundColor: hoveredProduct === p.id ? '#f0f4ff' : 'white',
-                            transform: hoveredProduct === p.id ? 'translateY(-2px)' : 'none',
-                            boxShadow: hoveredProduct === p.id 
-                                ? '0 4px 6px rgba(0, 0, 0, 0.1)' 
-                                : '0 1px 3px rgba(0, 0, 0, 0.05)',
-                        }}
-                        onClick={() => onAdd(p)}
-                        onMouseEnter={() => setHoveredProduct(p.id)}
-                        onMouseLeave={() => setHoveredProduct(null)}
-                    >
-                        <div>
-                            <div style={{
-                                fontWeight: hoveredProduct === p.id ? '500' : 'normal',
-                                color: '#1f2956'
-                            }}>
+                    <div key={p.id}>
+                        <div 
+                            className={`uk-card uk-card-small uk-card-hover uk-card-default uk-card-body uk-padding-small ${
+                                hoveredProduct === p.id ? 'uk-box-shadow-medium' : ''
+                            }`}
+                            onClick={() => onAdd(p)}
+                            onMouseEnter={() => setHoveredProduct(p.id)}
+                            onMouseLeave={() => setHoveredProduct(null)}
+                        >
+                            <div className="uk-card-title uk-margin-remove-bottom uk-text-small">
                                 {p.name}
                             </div>
-                            <div style={{
-                                fontSize: 12,
-                                color: hoveredProduct === p.id ? '#4b5563' : '#666'
-                            }}>
+                            <div className={`uk-text-small ${hoveredProduct === p.id ? 'uk-text-primary' : 'uk-text-muted'}`}>
                                 {p.basePrice.toFixed(2)} €
                             </div>
                         </div>
                     </div>
                 ))}
-                {filtered.length === 0 && <div style={{color: '#888'}}>No hay productos.</div>}
             </div>
+            
+            {filtered.length === 0 && (
+                <div className="uk-alert uk-alert-warning uk-margin-top">
+                    <p className="uk-text-center">No hay productos con ese criterio de búsqueda.</p>
+                </div>
+            )}
         </div>
     );
 }

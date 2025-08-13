@@ -33,35 +33,37 @@ export default function App() {
     }
 
     return (<AuthRedirect>
-        <div style={{display: 'flex', minHeight: '100vh', fontFamily: 'system-ui, sans-serif'}}>
-            <nav>
-                <div className={'logo'}>
-                    <img src="/logo.png" alt="Logo lavandería"/>
-                </div>
-                <div className={'menu'}>
-                    <ul className={'uk-nav uk-nav-primary uk-nav-divider'}>
-                        <li>
-                            <NavLink to="/pos">POS</NavLink>
-                        </li>
-                        <li>
-                            <NavLink to="/productos">Productos</NavLink>
-                        </li>
-                        <li>
-                            <NavLink to="/tareas">Tareas</NavLink>
-                        </li>
-                        <li>
-                            <NavLink to="/usuarios">
-                                Usuarios
-                            </NavLink>
-                        </li>
-                    </ul>
-                </div>
-                <div className={'logout'}>
-                    <button onClick={handleLogout}
-                            className={'uk-button uk-button-default uk-width-1-1'}>Salir {user?.firstName}</button>
+        <div className={'uk-container uk-container-expand'} uk-grid="true">
+            <nav className={'uk-width-1-5@l'}>
+                <div uk-sticky="top: 0; media: @l">
+                    <div className={'logo'}>
+                        <img src="/logo.png" alt="Logo lavandería"/>
+                    </div>
+                    <div className={'menu'}>
+                        <ul className={'uk-nav uk-nav-primary uk-nav-divider'}>
+                            <li>
+                                <NavLink to="/pos">POS</NavLink>
+                            </li>
+                            <li>
+                                <NavLink to="/productos">Productos</NavLink>
+                            </li>
+                            <li>
+                                <NavLink to="/tareas">Tareas</NavLink>
+                            </li>
+                            <li>
+                                <NavLink to="/usuarios">
+                                    Usuarios
+                                </NavLink>
+                            </li>
+                        </ul>
+                    </div>
+                    <div className={'logout'}>
+                        <button onClick={handleLogout}
+                                className={'uk-button uk-button-default uk-width-1-1'}>Salir {user?.firstName}</button>
+                    </div>
                 </div>
             </nav>
-            <main style={{flex: 1, padding: 20}}>
+            <main className={'uk-container uk-width-4-5@l uk-container-expand'}>
                 <Routes>
                     <Route path="/" element={<Navigate to="/pos" replace/>}/>
                     <Route path="/pos" element={<POS token={token}/>}/>
