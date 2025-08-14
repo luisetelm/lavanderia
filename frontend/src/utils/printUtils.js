@@ -241,15 +241,15 @@ export async function printSaleTicket(order, products = [], printerName) {
         
         body {
             font-family: 'Open Sans', sans-serif;
-            padding: 0 5mm 0 5mm;
-            margin: 0 0 10mm 0;
-            width: 74mm;
+ padding: 0;
+ margin: 0;
+            width: 70mm;
             color: black;
         }
         
         .ticket-container {
-            padding: 6px 10px 20px;
-        }
+           padding: 0 5mm 0 5mm;
+            margin: 0 0 10mm 0;        }
         
         /* Cabecera */
         .header {
