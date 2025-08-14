@@ -34,51 +34,73 @@ async function sendToPrinter(printerName, data, options = {}) {
     }
 }
 
-const CUT_FULL = '\x1D\x56\x00'; // GS V 0
+export async function printWashLabels({
+                                          orderNum,
+                                          clientFirstName,
+                                          clientLastName,
+                                          totalItems,
+                                          fechaLimite = '',
+                                      }) {
+    const clientName = `${clientFirstName} ${clientLastName}`.trim();
+    const fechaLimiteFormatted = fechaLimite
+        ? new Date(fechaLimite).toLocaleDateString('es-ES', {year:'numeric', month:'2-digit', day:'2-digit'})
+        : '';
 
-async function printSingleLabel({ orderNum, clientName, i, totalItems, fecha }) {
-    const html = `
-    <html><head><meta charset="utf-8" />
-    <style>
-      @page { margin:0; size:72mm auto; }
-      @media print {
-        body { margin:0; font-family: monospace; font-size:12pt; }
-        .label { width:72mm; padding:6mm; }
-      }
-    </style></head>
-    <body>
-      <div class="label">
+    let labelsHtml = '';
+    for (let i = 1; i <= totalItems; i++) {
+        labelsHtml += `
+      <section class="label">
         <div>Cliente: ${clientName}</div>
         <div>Pedido: ${orderNum}</div>
         <div>Prendas: ${i} de ${totalItems}</div>
-        <div>Fecha: ${fecha}</div>
-      </div>
-    </body></html>
+        <div>Fecha: ${fechaLimiteFormatted}</div>
+      </section>
+    `;
+    }
+
+    const fullHtml = `
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <title>Etiquetas ${orderNum}</title>
+        <style>
+          @page { margin: 0; size: 72mm auto; } /* ajusta el ancho a tu rollo */
+          @media print {
+            body { margin: 0; padding: 0; }
+            .label {
+              width: 72mm;           /* ajusta a tu papel */
+              padding: 6mm 6mm 6mm;  /* margen interno */
+              font-family: monospace;
+              font-size: 12pt;
+              /* truco importante: el salto debe aplicarse al bloque */
+              page-break-after: always;  /* legacy */
+              break-after: page;         /* moderno */
+              /* evita que se parta el contenido */
+              page-break-inside: avoid;
+              break-inside: avoid-page;
+            }
+            /* no necesitas un .cut extra */
+          }
+        </style>
+      </head>
+      <body>
+        ${labelsHtml}
+      </body>
+    </html>
   `;
 
-    // Si usas QZ 2.x puedes mezclar “html” (rasterizado) y “raw” (ESC/POS)
-    // dependiendo de tu helper. Conceptualmente:
-    // await qz.print(config, [
-    //   { type: 'pixel', format: 'html', data: html },
-    //   { type: 'raw', format: 'plain', data: CUT_FULL }
-    // ]);
-
-    await sendToPrinter('LAVADORA', [
-        buildRawHtml(html),              // etiqueta
-        { type: 'raw', data: CUT_FULL }, // corte
-    ]);
-}
-
-export async function printWashLabels({ orderNum, clientFirstName, clientLastName, totalItems, fechaLimite = '' }) {
-    const clientName = `${clientFirstName} ${clientLastName}`.trim();
-    const fecha = fechaLimite
-        ? new Date(fechaLimite).toLocaleDateString('es-ES', { year: 'numeric', month: '2-digit', day: '2-digit' })
-        : '';
-
-    for (let i = 1; i <= totalItems; i++) {
-        await printSingleLabel({ orderNum, clientName, i, totalItems, fecha });
+    try {
+        await sendToPrinter('LAVADORA', buildRawHtml(fullHtml));
+    } catch (e) {
+        console.warn('QZ Tray falló, recayendo a window.print()', e);
+        const w = window.open('', 'print_labels_fallback');
+        w.document.write(fullHtml);
+        w.document.close();
+        w.focus();
+        setTimeout(() => { w.print(); w.close(); }, 300);
     }
 }
+
 
 
 export async function printWashLabels0({
