@@ -241,8 +241,8 @@ export async function printSaleTicket(order, products = [], printerName) {
         
         body {
             font-family: 'Open Sans', sans-serif;
-            padding: 5mm 5mm 20mm 5mm;
-            margin: 0;
+            padding: 0 5mm 0 5mm;
+            margin: 0 0 10mm 0;
             width: 74mm;
             color: black;
         }
