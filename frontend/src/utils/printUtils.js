@@ -35,12 +35,12 @@ async function sendToPrinter(printerName, data, options = {}) {
 }
 
 export async function printWashLabels({
-    orderNum,
-    clientFirstName,
-    clientLastName,
-    totalItems,
-    fechaLimite = '',
-}) {
+                                          orderNum,
+                                          clientFirstName,
+                                          clientLastName,
+                                          totalItems,
+                                          fechaLimite = '',
+                                      }) {
     const clientName = `${clientFirstName} ${clientLastName}`.trim();
     const fechaLimiteFormatted = new Date(fechaLimite).toLocaleDateString('es-ES', {
         year: 'numeric',
@@ -48,85 +48,56 @@ export async function printWashLabels({
         day: '2-digit',
     });
 
-    await connectQZ();
-    
+    let labelsHtml = '';
+    for (let i = 1; i <= totalItems; i++) {
+        labelsHtml += `
+      <div>
+        <div>Cliente: ${clientName}</div>
+        <div>Pedido: ${orderNum}</div>
+        <div>Prendas: ${i} de ${totalItems}</div>
+        <div>Fecha: ${fechaLimiteFormatted}</div>
+      </div>
+      <div class="cut"></div>
+    `;
+    }
+
+    const fullHtml = `
+    <html>
+      <head>
+        <title>Etiquetas ${orderNum}</title>
+        <style>
+        
+        @page {
+  margin: 0;
+  size: auto; /* deja que la impresora decida la altura, ancho adaptado */
+}
+
+
+            body {
+                font-size: 1.2em;
+                font-family: monospace;
+                margin-top: 0;
+                padding: 0 20px 20px 20px;
+                max-width: 70mm;
+            }
+            .cut {
+                /* después de la línea de corte, hacer salto */
+                break-after: page;
+                page-break-after: always;
+            }
+        </style>
+      </head>
+      <body>
+        ${labelsHtml}
+      </body>
+    </html>
+  `;
+
     try {
-        // Imprimir cada etiqueta como un trabajo separado
-        for (let i = 1; i <= totalItems; i++) {
-            const labelHtml = `
-            <html>
-              <head>
-                <title>Etiqueta ${orderNum} - ${i}</title>
-                <style>
-                    @page {
-                      margin: 0;
-                      size: auto;
-                    }
-                    body {
-                        font-size: 1.2em;
-                        font-family: monospace;
-                        margin-top: 0;
-                        padding: 0 20px 20px 20px;
-                        max-width: 70mm;
-                    }
-                </style>
-              </head>
-              <body>
-                <div>
-                  <div>Cliente: ${clientName}</div>
-                  <div>Pedido: ${orderNum}</div>
-                  <div>Prendas: ${i} de ${totalItems}</div>
-                  <div>Fecha: ${fechaLimiteFormatted}</div>
-                </div>
-              </body>
-            </html>
-            `;
-            
-            const config = qz.configs.create('LAVADORA');
-            // Opcionalmente añadir configuración de corte según modelo de impresora
-            config.setCutType('full'); // O 'partial' dependiendo de la preferencia
-            
-            await qz.print(config, buildRawHtml(labelHtml));
-        }
+        await sendToPrinter('LAVADORA', buildRawHtml(fullHtml));
     } catch (e) {
         // fallback visual si falla
         console.warn('QZ Tray falló, recayendo a window.print()', e);
-        
-        // Construir todas las etiquetas para el fallback
-        let labelsHtml = '';
-        for (let i = 1; i <= totalItems; i++) {
-            labelsHtml += `
-            <div>
-              <div>Cliente: ${clientName}</div>
-              <div>Pedido: ${orderNum}</div>
-              <div>Prendas: ${i} de ${totalItems}</div>
-              <div>Fecha: ${fechaLimiteFormatted}</div>
-            </div>
-            <div style="page-break-after: always;"></div>
-            `;
-        }
-
-        const fullHtml = `
-        <html>
-          <head>
-            <title>Etiquetas ${orderNum}</title>
-            <style>
-              @page { margin: 0; size: auto; }
-              body {
-                  font-size: 1.2em;
-                  font-family: monospace;
-                  margin-top: 0;
-                  padding: 0 20px 20px 20px;
-                  max-width: 70mm;
-              }
-            </style>
-          </head>
-          <body>
-            ${labelsHtml}
-          </body>
-        </html>
-        `;
-        
         const w = window.open('', 'print_labels_fallback');
         w.document.write(fullHtml);
         w.document.close();
