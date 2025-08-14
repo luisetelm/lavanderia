@@ -43,46 +43,39 @@ async function sendToPrinter(printerName, data, options = {}) {
         throw err;
     }
 }
-// --- ESC/POS helpers ---
-const LF = '\x0A';
-const ESC_INIT = '\x1B\x40';
-const CUT_ESC_I = '\x1B\x69';        // Corte clásico (ESC i) -> muy fiable en TM-U220
-const CUT_GS_V_FULL = '\x1D\x56\x00'; // Alternativa GS V 0 (corte total)
 
-function buildCutRaw({ feed = 5, variant = 'auto' } = {}) {
-    const feedBlock = LF.repeat(Math.max(0, feed));
-    if (variant === 'gs') {
-        return { type: 'raw', format: 'plain', data: ESC_INIT + feedBlock + CUT_GS_V_FULL };
-    }
-    // 'auto' -> intenta ESC i primero
-    return { type: 'raw', format: 'plain', data: ESC_INIT + feedBlock + CUT_ESC_I };
-}
+// ESC/POS bytes
+const ESC = '\x1B';
+const GS  = '\x1D';
+const LF  = '\x0A';
 
+const INIT       = ESC + '@';
+const ALIGN_LEFT = ESC + 'a' + '\x00';
+const EMP_ON     = ESC + 'E' + '\x01';
+const EMP_OFF    = ESC + 'E' + '\x00';
 
-function buildOneLabelHtml({ orderNum, clientName, i, totalItems, fecha }) {
-    return `
-    <html>
-      <head>
-        <meta charset="utf-8" />
-        <title>Etiqueta ${orderNum} (${i}/${totalItems})</title>
-        <style>
-          @page { margin:0; size:72mm auto; }
-          @media print {
-            body { margin:0; padding:6mm; font-family: monospace; font-size:12pt; }
-            .label { width:72mm; }
-          }
-        </style>
-      </head>
-      <body>
-        <div class="label">
-          <div>Cliente: ${clientName}</div>
-          <div>Pedido: ${orderNum}</div>
-          <div>Prendas: ${i} de ${totalItems}</div>
-          ${fecha ? `<div>Fecha: ${fecha}</div>` : ''}
-        </div>
-      </body>
-    </html>
-  `;
+// Corte (prueba primero ESC i; si no, GS V 0)
+const CUT_ESC_I      = ESC + 'i';         // TM-U220 suele aceptarlo
+const CUT_GS_V_FULL  = GS  + 'V' + '\x00';
+
+// Útil si necesitas acentos/ñ (Windows-1252). Si se ven raros, comenta esta línea.
+const CODEPAGE_1252  = ESC + 't' + '\x10'; // 16 decimal
+
+function buildOneLabelESCPos({ orderNum, clientName, i, totalItems, fecha }) {
+    const header = EMP_ON + `Pedido: ${orderNum}` + EMP_OFF + LF; // resalta pedido
+    const line1  = `Cliente: ${clientName}` + LF;
+    const line2  = `Prendas: ${i} de ${totalItems}` + LF;
+    const line3  = fecha ? (`Fecha: ${fecha}` + LF) : '';
+    const feed   = LF.repeat(6); // alimentar hasta la posición de corte
+
+    // Usa ESC i; si no corta, cambia CUT_ESC_I por CUT_GS_V_FULL
+    const cut = CUT_ESC_I;
+
+    return (
+        INIT + CODEPAGE_1252 + ALIGN_LEFT +
+        header + line1 + line2 + line3 +
+        feed + cut
+    );
 }
 
 export async function printWashLabels({
@@ -97,43 +90,15 @@ export async function printWashLabels({
         ? new Date(fechaLimite).toLocaleDateString('es-ES', { year: 'numeric', month: '2-digit', day: '2-digit' })
         : '';
 
-    try {
-        for (let i = 1; i <= totalItems; i++) {
-            const html = buildOneLabelHtml({ orderNum, clientName, i, totalItems, fecha });
-
-            // 1) Imprime la etiqueta (HTML) con config "normal" (sin forceRaw)
-            await sendToPrinter('LAVADORA', [ buildRawHtml(html) ]);
-
-            // 2) Corte físico: imprime un trabajo RAW aparte con forceRaw:true
-            const cutJob = buildCutRaw({ feed: 5, variant: 'auto' }); // si no corta, prueba variant:'gs' o aumenta feed
-            await sendToPrinter('LAVADORA', [ cutJob ], { forceRaw: true });
-        }
-    } catch (e) {
-        // Fallback visual (sin corte físico)
-        console.warn('QZ Tray falló, recayendo a window.print()', e);
-
-        // imprimimos todas seguidas para que al menos salgan por la impresora del SO
-        let labelsInner = '';
-        for (let i = 1; i <= totalItems; i++) {
-            labelsInner += `
-        <div style="page-break-after:always">
-          <div>Cliente: ${clientName}</div>
-          <div>Pedido: ${orderNum}</div>
-          <div>Prendas: ${i} de ${totalItems}</div>
-          ${fecha ? `<div>Fecha: ${fecha}</div>` : ''}
-        </div>`;
-        }
-        const fullHtml = `
-      <html><head><meta charset="utf-8" /><title>Etiquetas ${orderNum}</title></head>
-      <body>${labelsInner}</body></html>`;
-
-        const w = window.open('', 'print_labels_fallback');
-        w.document.write(fullHtml);
-        w.document.close();
-        w.focus();
-        setTimeout(() => { w.print(); w.close(); }, 300);
+    for (let i = 1; i <= totalItems; i++) {
+        const payload = buildOneLabelESCPos({ orderNum, clientName, i, totalItems, fecha });
+        // Trabajo RAW directo; importantísimo forceRaw:true
+        await sendToPrinter('LAVADORA', [
+            { type: 'raw', format: 'plain', data: payload }
+        ], { forceRaw: true });
     }
 }
+
 
 export async function printWashLabels0({
                                           orderNum,
