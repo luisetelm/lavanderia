@@ -12,7 +12,7 @@ async function connectQZ() {
     }
 }
 
-function buildRawHtml(htmlContent) {
+function buildRawHtml0(htmlContent) {
     // QZ puede imprimir HTML mediante “qz.print” con tipo 'html'
     return [
         {
@@ -22,6 +22,16 @@ function buildRawHtml(htmlContent) {
         },
     ];
 }
+
+function buildRawHtml(htmlContent) {
+    // QZ renderiza HTML usando type:'pixel', format:'html'
+    return {
+        type: 'pixel',
+        format: 'html',
+        data: htmlContent,
+    };
+}
+
 
 async function sendToPrinter(printerName, data, options = {}) {
     await connectQZ();
@@ -33,6 +43,47 @@ async function sendToPrinter(printerName, data, options = {}) {
         throw err;
     }
 }
+// --- ESC/POS helpers ---
+const LF = '\x0A';
+const ESC_INIT = '\x1B\x40';
+const CUT_ESC_I = '\x1B\x69';        // Corte clásico (ESC i) -> muy fiable en TM-U220
+const CUT_GS_V_FULL = '\x1D\x56\x00'; // Alternativa GS V 0 (corte total)
+
+function buildCutRaw({ feed = 5, variant = 'auto' } = {}) {
+    const feedBlock = LF.repeat(Math.max(0, feed));
+    if (variant === 'gs') {
+        return { type: 'raw', format: 'plain', data: ESC_INIT + feedBlock + CUT_GS_V_FULL };
+    }
+    // 'auto' -> intenta ESC i primero
+    return { type: 'raw', format: 'plain', data: ESC_INIT + feedBlock + CUT_ESC_I };
+}
+
+
+function buildOneLabelHtml({ orderNum, clientName, i, totalItems, fecha }) {
+    return `
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <title>Etiqueta ${orderNum} (${i}/${totalItems})</title>
+        <style>
+          @page { margin:0; size:72mm auto; }
+          @media print {
+            body { margin:0; padding:6mm; font-family: monospace; font-size:12pt; }
+            .label { width:72mm; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="label">
+          <div>Cliente: ${clientName}</div>
+          <div>Pedido: ${orderNum}</div>
+          <div>Prendas: ${i} de ${totalItems}</div>
+          ${fecha ? `<div>Fecha: ${fecha}</div>` : ''}
+        </div>
+      </body>
+    </html>
+  `;
+}
 
 export async function printWashLabels({
                                           orderNum,
@@ -42,57 +93,40 @@ export async function printWashLabels({
                                           fechaLimite = '',
                                       }) {
     const clientName = `${clientFirstName} ${clientLastName}`.trim();
-    const fechaLimiteFormatted = fechaLimite
-        ? new Date(fechaLimite).toLocaleDateString('es-ES', {year:'numeric', month:'2-digit', day:'2-digit'})
+    const fecha = fechaLimite
+        ? new Date(fechaLimite).toLocaleDateString('es-ES', { year: 'numeric', month: '2-digit', day: '2-digit' })
         : '';
 
-    let labelsHtml = '';
-    for (let i = 1; i <= totalItems; i++) {
-        labelsHtml += `
-      <section class="label">
-        <div>Cliente: ${clientName}</div>
-        <div>Pedido: ${orderNum}</div>
-        <div>Prendas: ${i} de ${totalItems}</div>
-        <div>Fecha: ${fechaLimiteFormatted}</div>
-      </section>
-    `;
-    }
-
-    const fullHtml = `
-    <html>
-      <head>
-        <meta charset="utf-8" />
-        <title>Etiquetas ${orderNum}</title>
-        <style>
-          @page { margin: 0; size: 72mm auto; } /* ajusta el ancho a tu rollo */
-          @media print {
-            body { margin: 0; padding: 0; }
-            .label {
-              width: 72mm;           /* ajusta a tu papel */
-              padding: 6mm 6mm 6mm;  /* margen interno */
-              font-family: monospace;
-              font-size: 12pt;
-              /* truco importante: el salto debe aplicarse al bloque */
-              page-break-after: always;  /* legacy */
-              break-after: page;         /* moderno */
-              /* evita que se parta el contenido */
-              page-break-inside: avoid;
-              break-inside: avoid-page;
-            }
-            /* no necesitas un .cut extra */
-          }
-        </style>
-      </head>
-      <body>
-        ${labelsHtml}
-      </body>
-    </html>
-  `;
-
     try {
-        await sendToPrinter('LAVADORA', buildRawHtml(fullHtml));
+        for (let i = 1; i <= totalItems; i++) {
+            const html = buildOneLabelHtml({ orderNum, clientName, i, totalItems, fecha });
+
+            // 1) Imprime la etiqueta (HTML) con config "normal" (sin forceRaw)
+            await sendToPrinter('LAVADORA', [ buildRawHtml(html) ]);
+
+            // 2) Corte físico: imprime un trabajo RAW aparte con forceRaw:true
+            const cutJob = buildCutRaw({ feed: 5, variant: 'auto' }); // si no corta, prueba variant:'gs' o aumenta feed
+            await sendToPrinter('LAVADORA', [ cutJob ], { forceRaw: true });
+        }
     } catch (e) {
+        // Fallback visual (sin corte físico)
         console.warn('QZ Tray falló, recayendo a window.print()', e);
+
+        // imprimimos todas seguidas para que al menos salgan por la impresora del SO
+        let labelsInner = '';
+        for (let i = 1; i <= totalItems; i++) {
+            labelsInner += `
+        <div style="page-break-after:always">
+          <div>Cliente: ${clientName}</div>
+          <div>Pedido: ${orderNum}</div>
+          <div>Prendas: ${i} de ${totalItems}</div>
+          ${fecha ? `<div>Fecha: ${fecha}</div>` : ''}
+        </div>`;
+        }
+        const fullHtml = `
+      <html><head><meta charset="utf-8" /><title>Etiquetas ${orderNum}</title></head>
+      <body>${labelsInner}</body></html>`;
+
         const w = window.open('', 'print_labels_fallback');
         w.document.write(fullHtml);
         w.document.close();
@@ -100,8 +134,6 @@ export async function printWashLabels({
         setTimeout(() => { w.print(); w.close(); }, 300);
     }
 }
-
-
 
 export async function printWashLabels0({
                                           orderNum,
