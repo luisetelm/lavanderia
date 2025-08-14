@@ -12,21 +12,32 @@ async function connectQZ() {
     }
 }
 
-function buildRawHtml(htmlContent) {
-    // QZ puede imprimir HTML mediante “qz.print” con tipo 'html'
-    return [
-        {
-            type: 'html',
-            format: 'plain',
-            data: htmlContent,
-        },
-    ];
+function buildRawHtml(htmlContent, addCuts = false) {
+    // Para impresoras térmicas, podemos agregar comandos RAW de corte
+    if (addCuts) {
+        return [{
+            type: 'html', format: 'plain', data: htmlContent, options: {
+                cutType: 'feed', // o 'cut' dependiendo del modelo de impresora
+                perSpool: true    // aplicar por cada página/etiqueta
+            }
+        }];
+    } else {
+        return [{
+            type: 'html', format: 'plain', data: htmlContent,
+        },];
+    }
 }
 
 async function sendToPrinter(printerName, data, options = {}) {
     await connectQZ();
     try {
-        const config = qz.configs.create(printerName, options); // puedes pasar opciones como tamaño/dpi
+        const config = qz.configs.create(printerName, options);
+
+        // Añadir opciones específicas para corte automático si es la impresora de etiquetas
+        if (printerName === 'LAVADORA') {
+            config.setCutAt(true); // Habilitar corte automático
+        }
+
         await qz.print(config, data);
     } catch (err) {
         console.error('Error imprimiendo con QZ Tray:', err);
@@ -34,53 +45,12 @@ async function sendToPrinter(printerName, data, options = {}) {
     }
 }
 
-export async function printWashLabels({ orderNum, clientFirstName, clientLastName, totalItems, fechaLimite = '' }) {
-    const clientName = `${clientFirstName} ${clientLastName}`.trim();
-    const fechaLimiteFormatted = new Date(fechaLimite).toLocaleDateString('es-ES', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-    });
-
-    const printData = [];
-
-    for (let i = 1; i <= totalItems; i++) {
-        const labelHtml = `
-      <html>
-        <head>
-          <style>
-            body { font-size:1.2em; font-family:monospace; margin:0; padding:10px; max-width:70mm; }
-          </style>
-        </head>
-        <body>
-          <div>Cliente: ${clientName}</div>
-          <div>Pedido: ${orderNum}</div>
-          <div>Prendas: ${i} de ${totalItems}</div>
-          <div>Fecha: ${fechaLimiteFormatted}</div>
-        </body>
-      </html>
-    `;
-
-        printData.push(...buildRawHtml(labelHtml));
-        // GS V 1 → corte total
-        printData.push({ type: 'raw', format: 'command', data: '\x1D\x56\x01' });
-    }
-
-    await sendToPrinter('LAVADORA', printData);
-}
-
-export async function printWashLabels0({
-                                          orderNum,
-                                          clientFirstName,
-                                          clientLastName,
-                                          totalItems,
-                                          fechaLimite = '',
+export async function printWashLabels({
+                                          orderNum, clientFirstName, clientLastName, totalItems, fechaLimite = '',
                                       }) {
     const clientName = `${clientFirstName} ${clientLastName}`.trim();
     const fechaLimiteFormatted = new Date(fechaLimite).toLocaleDateString('es-ES', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
+        year: 'numeric', month: '2-digit', day: '2-digit',
     });
 
     let labelsHtml = '';
@@ -129,7 +99,7 @@ export async function printWashLabels0({
   `;
 
     try {
-        await sendToPrinter('LAVADORA', buildRawHtml(fullHtml));
+        await sendToPrinter('LAVADORA', buildRawHtml(fullHtml, true));
     } catch (e) {
         // fallback visual si falla
         console.warn('QZ Tray falló, recayendo a window.print()', e);
@@ -146,14 +116,10 @@ export async function printWashLabels0({
 
 export async function printSaleTicket(order, products = [], printerName) {
     const fechaLimiteFormatted = new Date(order.fechaLimite).toLocaleDateString('es-ES', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
+        year: 'numeric', month: '2-digit', day: '2-digit',
     });
     const client = order.client || {};
-    const clientName = client.firstName
-        ? `${client.firstName} ${client.lastName}`.trim()
-        : 'Cliente rápido';
+    const clientName = client.firstName ? `${client.firstName} ${client.lastName}`.trim() : 'Cliente rápido';
 
     const linesHtml = (order.lines || [])
         .map((l) => {
