@@ -34,7 +34,42 @@ async function sendToPrinter(printerName, data, options = {}) {
     }
 }
 
-export async function printWashLabels({
+export async function printWashLabels({ orderNum, clientFirstName, clientLastName, totalItems, fechaLimite = '' }) {
+    const clientName = `${clientFirstName} ${clientLastName}`.trim();
+    const fechaLimiteFormatted = new Date(fechaLimite).toLocaleDateString('es-ES', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+    });
+
+    const printData = [];
+
+    for (let i = 1; i <= totalItems; i++) {
+        const labelHtml = `
+      <html>
+        <head>
+          <style>
+            body { font-size:1.2em; font-family:monospace; margin:0; padding:10px; max-width:70mm; }
+          </style>
+        </head>
+        <body>
+          <div>Cliente: ${clientName}</div>
+          <div>Pedido: ${orderNum}</div>
+          <div>Prendas: ${i} de ${totalItems}</div>
+          <div>Fecha: ${fechaLimiteFormatted}</div>
+        </body>
+      </html>
+    `;
+
+        printData.push(...buildRawHtml(labelHtml));
+        // GS V 1 → corte total
+        printData.push({ type: 'raw', format: 'command', data: '\x1D\x56\x01' });
+    }
+
+    await sendToPrinter('LAVADORA', printData);
+}
+
+export async function printWashLabels0({
                                           orderNum,
                                           clientFirstName,
                                           clientLastName,
@@ -94,7 +129,7 @@ export async function printWashLabels({
   `;
 
     try {
-        await sendToPrinter('CLIENTE', buildRawHtml(fullHtml));
+        await sendToPrinter('LAVADORA', buildRawHtml(fullHtml));
     } catch (e) {
         // fallback visual si falla
         console.warn('QZ Tray falló, recayendo a window.print()', e);
