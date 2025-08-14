@@ -12,7 +12,7 @@ async function connectQZ() {
     }
 }
 
-function buildRawHtml0(htmlContent) {
+function buildRawHtml(htmlContent) {
     // QZ puede imprimir HTML mediante “qz.print” con tipo 'html'
     return [
         {
@@ -21,15 +21,6 @@ function buildRawHtml0(htmlContent) {
             data: htmlContent,
         },
     ];
-}
-
-function buildRawHtml(htmlContent) {
-    // QZ renderiza HTML usando type:'pixel', format:'html'
-    return {
-        type: 'pixel',
-        format: 'html',
-        data: htmlContent,
-    };
 }
 
 
@@ -44,63 +35,9 @@ async function sendToPrinter(printerName, data, options = {}) {
     }
 }
 
-// ESC/POS bytes
-const ESC = '\x1B';
-const GS  = '\x1D';
-const LF  = '\x0A';
 
-const INIT       = ESC + '@';
-const ALIGN_LEFT = ESC + 'a' + '\x00';
-const EMP_ON     = ESC + 'E' + '\x01';
-const EMP_OFF    = ESC + 'E' + '\x00';
-
-// Corte (prueba primero ESC i; si no, GS V 0)
-const CUT_ESC_I      = ESC + 'i';         // TM-U220 suele aceptarlo
-const CUT_GS_V_FULL  = GS  + 'V' + '\x00';
-
-// Útil si necesitas acentos/ñ (Windows-1252). Si se ven raros, comenta esta línea.
-const CODEPAGE_1252  = ESC + 't' + '\x10'; // 16 decimal
-
-function buildOneLabelESCPos({ orderNum, clientName, i, totalItems, fecha }) {
-    const header = EMP_ON + `Pedido: ${orderNum}` + EMP_OFF + LF; // resalta pedido
-    const line1  = `Cliente: ${clientName}` + LF;
-    const line2  = `Prendas: ${i} de ${totalItems}` + LF;
-    const line3  = fecha ? (`Fecha: ${fecha}` + LF) : '';
-    const feed   = LF.repeat(6); // alimentar hasta la posición de corte
-
-    // Usa ESC i; si no corta, cambia CUT_ESC_I por CUT_GS_V_FULL
-    const cut = CUT_ESC_I;
-
-    return (
-        INIT + CODEPAGE_1252 + ALIGN_LEFT +
-        header + line1 + line2 + line3 +
-        feed + cut
-    );
-}
 
 export async function printWashLabels({
-                                          orderNum,
-                                          clientFirstName,
-                                          clientLastName,
-                                          totalItems,
-                                          fechaLimite = '',
-                                      }) {
-    const clientName = `${clientFirstName} ${clientLastName}`.trim();
-    const fecha = fechaLimite
-        ? new Date(fechaLimite).toLocaleDateString('es-ES', { year: 'numeric', month: '2-digit', day: '2-digit' })
-        : '';
-
-    for (let i = 1; i <= totalItems; i++) {
-        const payload = buildOneLabelESCPos({ orderNum, clientName, i, totalItems, fecha });
-        // Trabajo RAW directo; importantísimo forceRaw:true
-        await sendToPrinter('LAVADORA', [
-            { type: 'raw', format: 'plain', data: payload }
-        ], { forceRaw: true });
-    }
-}
-
-
-export async function printWashLabels0({
                                           orderNum,
                                           clientFirstName,
                                           clientLastName,
