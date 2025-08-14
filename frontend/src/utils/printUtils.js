@@ -94,7 +94,7 @@ export async function printWashLabels({
   `;
 
     try {
-        await sendToPrinter('LAVADORA', buildRawHtml(fullHtml));
+        await sendToPrinter('CLIENTE', buildRawHtml(fullHtml));
     } catch (e) {
         // fallback visual si falla
         console.warn('QZ Tray falló, recayendo a window.print()', e);
