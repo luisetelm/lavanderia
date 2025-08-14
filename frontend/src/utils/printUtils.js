@@ -14,13 +14,9 @@ async function connectQZ() {
 
 function buildRawHtml(htmlContent) {
     // QZ puede imprimir HTML mediante “qz.print” con tipo 'html'
-    return [
-        {
-            type: 'html',
-            format: 'plain',
-            data: htmlContent,
-        },
-    ];
+    return [{
+        type: 'html', format: 'plain', data: htmlContent,
+    },];
 }
 
 
@@ -35,20 +31,92 @@ async function sendToPrinter(printerName, data, options = {}) {
     }
 }
 
+// --- ESC/POS helpers ---
+const LF = '\x0A';
+const ESC_INIT = '\x1B\x40';
+const CUT_ESC_I = '\x1B\x69';        // Corte (ESC i) -> muy fiable en TM-U220
+const CUT_GS_V_FULL = '\x1D\x56\x00'; // Alternativa GS V 0 (corte total)
 
+function buildCut({feed = 0, variant = 'auto', partial = false, feedAfter = 0} = {}) {
+    const feedBlock = LF.repeat(Math.max(0, feed));
+
+    if (variant === 'gs') {
+        if (partial) {
+            // Corte parcial estándar (GS V 1)
+            return ESC_INIT + feedBlock + '\x1D\x56\x01';
+        }
+        if (feedAfter > 0) {
+            // GS V 66 n → corta y avanza n unidades
+            return ESC_INIT + feedBlock + '\x1D\x56\x42' + String.fromCharCode(feedAfter);
+        }
+        // Corte total GS V 0
+        return ESC_INIT + feedBlock + '\x1D\x56\x00';
+    }
+
+    // Variante 'auto' → prueba ESC i (corte total clásico)
+    return ESC_INIT + feedBlock + CUT_ESC_I;
+}
+
+
+// frontend/src/utils/printUtils.js
+// frontend/src/utils/printUtils.js
+const SIZE_NORMAL = '\x1D\x21\x00'   // Tamaño normal
+const SIZE_DOUBLE = '\x1D\x21\x11'   // Doble ancho y alto
 
 export async function printWashLabels({
-                                          orderNum,
-                                          clientFirstName,
-                                          clientLastName,
-                                          totalItems,
-                                          fechaLimite = '',
+                                          orderNum, clientFirstName, clientLastName, totalItems, fechaLimite = ''
                                       }) {
+    const clientName = `${clientFirstName} ${clientLastName}`.trim()
+    const fecha = fechaLimite
+        ? new Date(fechaLimite).toLocaleDateString('es-ES', {
+            year: 'numeric', month: '2-digit', day: '2-digit'
+        })
+        : ''
+
+    const printData = []
+    printData.push({type: 'raw', format: 'command', data: ESC_INIT})
+
+
+    for (let i = 1; i <= totalItems; i++) {
+        const lines =
+            `Cliente: ${clientName}${LF}` +
+            `Pedido: ${orderNum}${LF}` +
+            `Prendas: ${i} de ${totalItems}${LF}` +
+            (fecha ? `Fecha: ${fecha}${LF}` : '')
+
+        // Texto en tamaño grande
+        printData.push({type: 'raw', format: 'command', data: SIZE_DOUBLE})
+        printData.push({type: 'raw', format: 'command', data: lines})
+
+
+        // Restablecer a tamaño normal
+        printData.push({type: 'raw', format: 'command', data: SIZE_NORMAL})
+
+        // Corte al borde (sin feed adicional para que corte justo después del contenido)
+        printData.push({
+            type: 'raw',
+            format: 'command',
+            data: buildCut({feed: 1})
+        })
+    }
+
+    // Etiqueta "invisible" inicial para ajustar el papel
+    printData.push({
+        type: 'raw',
+        format: 'command',
+        // Avanzamos 5 líneas vacías y cortamos
+        data: buildCut({feed: 6})
+    })
+
+    await sendToPrinter(`LAVADORA`, printData)
+}
+
+export async function printWashLabelsOLD({
+                                             orderNum, clientFirstName, clientLastName, totalItems, fechaLimite = '',
+                                         }) {
     const clientName = `${clientFirstName} ${clientLastName}`.trim();
     const fechaLimiteFormatted = new Date(fechaLimite).toLocaleDateString('es-ES', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
+        year: 'numeric', month: '2-digit', day: '2-digit',
     });
 
     let labelsHtml = '';
@@ -114,14 +182,10 @@ export async function printWashLabels({
 
 export async function printSaleTicket(order, products = [], printerName) {
     const fechaLimiteFormatted = new Date(order.fechaLimite).toLocaleDateString('es-ES', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
+        year: 'numeric', month: '2-digit', day: '2-digit',
     });
     const client = order.client || {};
-    const clientName = client.firstName
-        ? `${client.firstName} ${client.lastName}`.trim()
-        : 'Cliente rápido';
+    const clientName = client.firstName ? `${client.firstName} ${client.lastName}`.trim() : 'Cliente rápido';
 
     const linesHtml = (order.lines || [])
         .map((l) => {

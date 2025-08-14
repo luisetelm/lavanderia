@@ -8,5 +8,12 @@
       <jdbc-url>jdbc:postgresql://app.tinteyburbuja.es:5432/laundrydb</jdbc-url>
       <working-dir>$ProjectFileDir$</working-dir>
     </data-source>
+    <data-source source="LOCAL" name="laundrydb@localhost" uuid="784d3385-57c4-45a8-aa38-51b8824f9aea">
+      <driver-ref>postgresql</driver-ref>
+      <synchronize>true</synchronize>
+      <jdbc-driver>org.postgresql.Driver</jdbc-driver>
+      <jdbc-url>jdbc:postgresql://localhost:5432/laundrydb</jdbc-url>
+      <working-dir>$ProjectFileDir$</working-dir>
+    </data-source>
   </component>
 </project>
