@@ -13,13 +13,13 @@ function UserForm({initial = {}, onSave, token, onCancel}) {
         phone: initial.phone || '',
         password: '',
         isActive: initial.isActive !== undefined ? Boolean(initial.isActive) : true,
-        denominacionSocial: initial.denominacionSocial || '',
+        denominacionsocial: initial.denominacionsocial || '',
         nif: initial.nif || '',
-        tipoPersona: initial.tipoPersona || '',
+        tipopersona: initial.tipopersona || '',
         direccion: initial.direccion || '',
         localidad: initial.localidad || '',
         provincia: initial.provincia || '',
-        codigoPostal: initial.codigoPostal || '',
+        codigopostal: initial.codigopostal || '',
         pais: initial.pais || '',
     });
     const [error, setError] = useState('');
@@ -152,8 +152,8 @@ function UserForm({initial = {}, onSave, token, onCancel}) {
                 <div className="uk-form-controls">
                     <input
                         className="uk-input"
-                        value={form.denominacionSocial}
-                        onChange={e => setForm(f => ({...f, denominacionSocial: e.target.value}))}
+                        value={form.denominacionsocial}
+                        onChange={e => setForm(f => ({...f, denominacionsocial: e.target.value}))}
                     />
                 </div>
             </div>
@@ -172,8 +172,8 @@ function UserForm({initial = {}, onSave, token, onCancel}) {
                 <div className="uk-form-controls">
                     <select
                         className="uk-select"
-                        value={form.tipoPersona}
-                        onChange={e => setForm(f => ({...f, tipoPersona: e.target.value}))}
+                        value={form.tipopersona}
+                        onChange={e => setForm(f => ({...f, tipopersona: e.target.value}))}
                     >
                         <option value="">Selecciona tipo</option>
                         <option value="Física">Física</option>
@@ -216,8 +216,8 @@ function UserForm({initial = {}, onSave, token, onCancel}) {
                 <div className="uk-form-controls">
                     <input
                         className="uk-input"
-                        value={form.codigoPostal}
-                        onChange={e => setForm(f => ({...f, codigoPostal: e.target.value}))}
+                        value={form.codigopostal}
+                        onChange={e => setForm(f => ({...f, codigopostal: e.target.value}))}
                     />
                 </div>
             </div>

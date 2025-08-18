@@ -40,13 +40,13 @@ export default async function (fastify, opts) {
                 phone: true,
                 isActive: true,
                 createdAt: true,
-                denominacionSocial: true,
+                denominacionsocial: true,
                 nif: true,
-                tipoPersona: true,
+                tipopersona: true,
                 direccion: true,
                 localidad: true,
                 provincia: true,
-                codigoPostal: true,
+                codigopostal: true,
                 pais: true,
             },
             orderBy: { createdAt: 'desc' },
@@ -84,13 +84,13 @@ export default async function (fastify, opts) {
                 role: true,
                 phone: true,
                 isActive: true,
-                denominacionSocial: true,
+                denominacionsocial: true,
                 nif: true,
-                tipoPersona: true,
+                tipopersona: true,
                 direccion: true,
                 localidad: true,
                 provincia: true,
-                codigoPostal: true,
+                codigopostal: true,
                 pais: true,
             },
         });
@@ -101,7 +101,7 @@ export default async function (fastify, opts) {
     // Crear usuario
     fastify.post('/', async (req, reply) => {
         const { firstName, lastName, email, password, role, phone, isActive,
-            denominacionSocial, nif, tipoPersona, direccion, localidad, provincia, codigoPostal, pais } = req.body;
+            denominacionsocial, nif, tipopersona, direccion, localidad, provincia, codigopostal, pais } = req.body;
 
         if (!firstName || !lastName || !email || !password) {
             return reply.status(400).send({ error: 'firstName, lastName, email y password son obligatorios' });
@@ -123,13 +123,13 @@ export default async function (fastify, opts) {
                 role: role || 'customer',
                 phone: phone || null,
                 isActive: isActive !== undefined ? isActive : true,
-                denominacionSocial: denominacionSocial || null,
+                denominacionsocial: denominacionsocial || null,
                 nif: nif || null,
-                tipoPersona: tipoPersona || null,
+                tipopersona: tipopersona || null,
                 direccion: direccion || null,
                 localidad: localidad || null,
                 provincia: provincia || null,
-                codigoPostal: codigoPostal || null,
+                codigopostal: codigopostal || null,
                 pais: pais || null,
             },
             select: {
@@ -140,13 +140,13 @@ export default async function (fastify, opts) {
                 role: true,
                 phone: true,
                 isActive: true,
-                denominacionSocial: true,
+                denominacionsocial: true,
                 nif: true,
-                tipoPersona: true,
+                tipopersona: true,
                 direccion: true,
                 localidad: true,
                 provincia: true,
-                codigoPostal: true,
+                codigopostal: true,
                 pais: true,
             },
         });
@@ -157,7 +157,7 @@ export default async function (fastify, opts) {
     fastify.put('/:id', async (req, reply) => {
         const { id } = req.params;
         const { firstName, lastName, email, password, role, phone, isActive,
-            denominacionSocial, nif, tipoPersona, direccion, localidad, provincia, codigoPostal, pais } = req.body;
+            denominacionsocial, nif, tipopersona, direccion, localidad, provincia, codigopostal, pais } = req.body;
         const data = {
             firstName,
             lastName,
@@ -165,13 +165,13 @@ export default async function (fastify, opts) {
             role,
             phone,
             isActive,
-            denominacionSocial,
+            denominacionsocial,
             nif,
-            tipoPersona,
+            tipopersona,
             direccion,
             localidad,
             provincia,
-            codigoPostal,
+            codigopostal,
             pais,
         };
         if (password) {
@@ -189,13 +189,13 @@ export default async function (fastify, opts) {
                     role: true,
                     phone: true,
                     isActive: true,
-                    denominacionSocial: true,
+                    denominacionsocial: true,
                     nif: true,
-                    tipoPersona: true,
+                    tipopersona: true,
                     direccion: true,
                     localidad: true,
                     provincia: true,
-                    codigoPostal: true,
+                    codigopostal: true,
                     pais: true,
                 },
             });

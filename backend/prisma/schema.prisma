@@ -84,12 +84,12 @@ model User {
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
   localidad          String?  @db.VarChar
-  denominacionSocial String?  @db.VarChar
+  denominacionsocial String?  @db.VarChar
   nif                String?  @db.VarChar
-  tipoPersona        String?  @db.VarChar
+  tipopersona        String?  @db.VarChar
   direccion          String?  @db.VarChar
   provincia          String?  @db.VarChar
-  codigoPostal       String?  @db.VarChar
+  codigopostal       String?  @db.VarChar
   pais               String?  @db.VarChar
   orders             Order[]  @relation("client_orders")
 }
