@@ -53,9 +53,9 @@ model Order {
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
   status        String?        @default("pending")
+  notification  Notification[]
   client        User?          @relation("client_orders", fields: [clientId], references: [id])
   lines         OrderLine[]
-  notification  Notification[]
 }
 
 model OrderLine {
@@ -73,17 +73,25 @@ model OrderLine {
 }
 
 model User {
-  id        Int      @id @default(autoincrement())
-  firstName String
-  lastName  String
-  email     String?  @unique
-  password  String?
-  role      String   @default("cashier")
-  phone     String?  @unique
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  orders    Order[]  @relation("client_orders")
+  id                 Int      @id @default(autoincrement())
+  firstName          String
+  lastName           String
+  email              String?  @unique
+  password           String?
+  role               String   @default("cashier")
+  phone              String?  @unique
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  localidad          String?  @db.VarChar
+  denominacionSocial String?  @db.VarChar
+  nif                String?  @db.VarChar
+  tipoPersona        String?  @db.VarChar
+  direccion          String?  @db.VarChar
+  provincia          String?  @db.VarChar
+  codigoPostal       String?  @db.VarChar
+  pais               String?  @db.VarChar
+  orders             Order[]  @relation("client_orders")
 }
 
 model Notification {

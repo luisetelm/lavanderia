@@ -1,26 +1,55 @@
-import React from 'react';
+import React, {useEffect, useState} from 'react';
+import {fetchUsers} from '../api';
 
 export default function CustomerSelector({
-    users,
-    searchUser,
-    setSearchUser,
-    selectedUser,
-    setSelectedUser,
-    quickFirstName,
-    quickLastName,
-    quickClientPhone,
-    quickClientEmail,
-    setQuickFirstName,
-    setQuickLastName,
-    setQuickClientPhone,
-    setQuickClientEmail,
-}) {
-    const filteredUsers = users.filter((u) =>
-        `${u.firstName} ${u.lastName}`.toLowerCase().includes(searchUser.toLowerCase())
-    );
+                                             searchUser,
+                                             setSearchUser,
+                                             selectedUser,
+                                             setSelectedUser,
+                                             quickFirstName,
+                                             quickLastName,
+                                             quickClientPhone,
+                                             quickClientEmail,
+                                             setQuickFirstName,
+                                             setQuickLastName,
+                                             setQuickClientPhone,
+                                             setQuickClientEmail,
+                                             token
+                                         }) {
+    const [customers, setCustomers] = useState([]);
+    const [loading, setLoading] = useState(false);
 
-    return (
-        <div className="uk-grid-medium" uk-grid="true">
+    useEffect(() => {
+        let active = true;
+        setLoading(true);
+        fetchUsers(token, {q: searchUser, size: 20})
+            .then(res => {
+                if (active) setCustomers(res.data || []);
+            })
+            .catch(() => {
+                if (active) setCustomers([]);
+            })
+            .finally(() => {
+                if (active) setLoading(false);
+            });
+        return () => {
+            active = false;
+        };
+    }, [searchUser, token]);
+
+    const quickFields = {quickFirstName, quickLastName, quickClientPhone, quickClientEmail};
+    const setQuickFields = updater => {
+        setQuickFirstName(updater(quickFields).quickFirstName);
+        setQuickLastName(updater(quickFields).quickLastName);
+        setQuickClientPhone(updater(quickFields).quickClientPhone);
+        setQuickClientEmail(updater(quickFields).quickClientEmail);
+    };
+
+    return (<div className="uk-grid-medium" uk-grid="true">
+        <div className="uk-width-1-1">
+            <h4>Clientes</h4>
+
+        </div>
             <div className="uk-width-1-2@s">
                 <label className="uk-form-label">Buscar cliente existente</label>
                 <div className="uk-search uk-search-default uk-width-1-1">
@@ -29,38 +58,47 @@ export default function CustomerSelector({
                         className="uk-search-input"
                         placeholder="Buscar cliente..."
                         value={searchUser}
-                        onChange={(e) => setSearchUser(e.target.value)}
+                        onChange={e => setSearchUser(e.target.value)}
                     />
                 </div>
-                <div className="uk-card uk-card-default uk-card-small uk-margin-small-top uk-height-small uk-overflow-auto">
-                    {filteredUsers.map((u) => (
-                        <div
-                            key={u.id}
-                            onClick={() => {
-                                setSelectedUser(u);
-                                setQuickFirstName('');
-                                setQuickLastName('');
-                                setQuickClientPhone('');
-                                setQuickClientEmail('');
-                            }}
-                            className={`uk-padding-small uk-link-reset uk-link-toggle ${
-                                selectedUser?.id === u.id ? 'uk-background-muted' : ''
-                            }`}
-                        >
-                            <div className="uk-flex uk-flex-between">
-                                <div>{u.firstName} {u.lastName} 
-                                    <span className="uk-label uk-margin-small-left uk-text-small">
-                                        {u.role === 'admin' ? 'Admin' : 
-                                         u.role === 'cashier' ? 'Cajero' : 'Trabajador'}
-                                    </span>
+                <div
+                    className="uk-card uk-card-default uk-card-small uk-margin-small-top uk-height-small uk-overflow-auto">
+                    {loading ? (<div className="uk-text-center uk-padding-small">
+                            <div uk-spinner="ratio: 1"></div>
+                        </div>) : (customers.map((u) => (<div
+                                key={u.id}
+                                onClick={() => {
+                                    setSelectedUser(u);
+                                    setQuickFirstName('');
+                                    setQuickLastName('');
+                                    setQuickClientPhone('');
+                                    setQuickClientEmail('');
+                                }}
+                                className={`uk-padding-small uk-link-reset uk-link-toggle ${selectedUser?.id === u.id ? 'uk-background-selected' : ''}`}
+                            >
+                                <div className="uk-flex uk-flex-between">
+                                    <div>{u.firstName} {u.lastName}
+                                        <span className={`uk-label ${{
+                                            admin: 'uk-label-danger',
+                                            cashier: 'uk-label-warning',
+                                            worker: 'uk-label-success',
+                                            customer: 'uk-label-default'
+                                        }[u.role]}`}>
+                                                        {{
+                                                            admin: 'Admin',
+                                                            cashier: 'Cajero',
+                                                            worker: 'Cliente',
+                                                            customer: 'Cliente'
+                                                        }[u.role]}
+                                                    </span>
+                                    </div>
                                 </div>
-                            </div>
-                            <div className="uk-text-small uk-text-muted">{u.phone}</div>
-                        </div>
-                    ))}
-                    {filteredUsers.length === 0 && (
-                        <div className="uk-padding-small uk-text-muted">Ningún cliente encontrado</div>
-                    )}
+                        <div className="uk-text-small uk-text-muted"><span uk-icon="icon: phone; ratio: 0.8;"></span>{u.phone}</div>
+                            </div>)))}
+                    {!loading && customers.length === 0 && (
+                        <div className="uk-text-center uk-text-muted uk-padding-small">
+                            No se encontraron clientes.
+                        </div>)}
                 </div>
             </div>
 
@@ -115,6 +153,5 @@ export default function CustomerSelector({
                     </div>
                 </div>
             </div>
-        </div>
-    );
+        </div>);
 }

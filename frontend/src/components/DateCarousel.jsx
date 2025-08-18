@@ -1,108 +1,159 @@
-import React, { useState, useEffect, useRef } from 'react';
-
-const isBusinessDay = (d) => {
-    const wd = d.getDay();
-    return wd !== 0 && wd !== 6;
-};
-
-const getNextBusinessDays = (count = 12) => {
-    const days = [];
-    let cursor = new Date();
-    while (days.length < count) {
-        cursor = new Date(cursor);
-        cursor.setDate(cursor.getDate() + 1);
-        if (isBusinessDay(cursor)) {
-            days.push(new Date(cursor));
-        }
-    }
-    return days;
-};
-
-const formatDateKey = (d) => d.toISOString().split('T')[0];
+import React, {useState, useEffect} from 'react';
+import {fetchDates} from '../api';
 
 export default function DateCarousel({
-    loadByDay,
-    fechaLimite,
-    setFechaLimite,
-}) {
-    const days = getNextBusinessDays(10);
+                                         fechaLimite,
+                                         setFechaLimite,
+                                         token
+                                     }) {
+    const [currentPage, setCurrentPage] = useState(0);
+    const [dates, setDates] = useState([]);
+    const [loadByDay, setLoadByDay] = useState({});
+    const [suggestedDate, setSuggestedDate] = useState(null);
+    const [loading, setLoading] = useState(false);
+
+    const loadDates = async (page) => {
+        setLoading(true);
+        try {
+            const res = await fetchDates(page, token);
+            setDates(res.dates);
+            setLoadByDay(res.loadByDay);
+            console.log(res);
+
+            if (page === 0 && res.suggestedDate) {
+                setSuggestedDate(res.suggestedDate);
+                // Solo establecer la fecha sugerida aquí si no hay fecha límite establecida
+                if (fechaLimite === null || fechaLimite === undefined || fechaLimite === '') {
+
+                    console.log('Estableciendo fecha sugerida:', res.suggestedDate);
+                    setFechaLimite(res.suggestedDate);
+                }
+            }
+        } catch (error) {
+            console.error('Error loading dates:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        if (token) {
+            loadDates(0);
+        }
+    }, [token]);
+
+
+    const handlePrevious = () => {
+        const newPage = currentPage - 1; // Permitir páginas negativas
+        console.log('Previous - Current page:', currentPage, 'New page:', newPage);
+        setCurrentPage(newPage);
+        loadDates(newPage);
+    };
+
+    const handleNext = () => {
+        const newPage = currentPage + 1;
+        console.log('Next - Current page:', currentPage, 'New page:', newPage);
+        setCurrentPage(newPage);
+        loadDates(newPage);
+    };
+
+    if (loading) {
+        return <div className="uk-text-center">
+            <div uk-spinner="true"></div>
+        </div>;
+    }
 
     return (
         <div className="uk-margin-medium-bottom">
-            <h4 className="uk-heading-bullet uk-margin-small-bottom">Fecha de entrega</h4>
-            
-            <div className="uk-child-width-1-5@m uk-child-width-1-3@s uk-child-width-1-2 uk-grid-small" uk-grid="true">
-                {days.map((d) => {
-                    const key = formatDateKey(d);
-                    const ordersForDay = loadByDay[key] || [];
-                    
-                    // Determinar la clase de color según la cantidad de pedidos
-                    const colorClass = 
-                        ordersForDay.length >= 5
-                            ? 'uk-alert-danger' 
-                            : ordersForDay.length >= 2
-                                ? 'uk-alert-warning'
-                                : 'uk-alert-success';
-                    
-                    return (
-                        <div key={key}>
-                            <div className="uk-inline uk-display-block">
-                                <div 
-                                    className={`${colorClass} uk-padding-small uk-border-rounded uk-box-shadow-small uk-display-block ${
-                                        fechaLimite === key ? 'uk-box-shadow-medium uk-position-z-index uk-border uk-border-emphasis' : ''
-                                    }`}
-                                    onClick={() => setFechaLimite(key)}
-                                >
-                                    <div className="uk-text-bold">
-                                        {new Date(key).toLocaleDateString('es-ES', {
-                                            weekday: 'short',
-                                            day: 'numeric',
-                                            month: 'short',
-                                        })}
-                                    </div>
-                                    <div className="uk-text-small">Pedidos: {ordersForDay.length}</div>
-                                </div>
-                                
-                                {ordersForDay.length > 0 && (
-                                    <div 
-                                        className="uk-width-large uk-card uk-card-default uk-card-body uk-padding-small"
-                                        uk-dropdown="mode: hover; delay-hide: 200; pos: bottom-center; boundary: !.uk-grid; boundary-align: true; animation: uk-animation-slide-top-small"
-                                    >
-                                        <h5 className="uk-margin-remove-top uk-margin-small-bottom">
-                                            Pedidos para {new Date(key).toLocaleDateString('es-ES', {
-                                                weekday: 'long',
-                                                day: 'numeric',
-                                                month: 'long',
-                                            })}
-                                        </h5>
-                                        
-                                        <div className="uk-height-medium uk-overflow-auto">
-                                            {ordersForDay.map((o) => (
-                                                <div key={o.id} className="uk-margin-small-bottom">
-                                                    <div className="uk-card-header uk-padding-small">
-                                                        <h5 className="uk-margin-remove">
-                                                            <span className="uk-text-primary">Pedido: {o.orderNum}</span>
-                                                        </h5>
-                                                    </div>
-                                                    <div className="uk-card-body uk-padding-small">
-                                                        <ul className="uk-list uk-list-divider uk-margin-remove">
-                                                            {o.lines.map((l) => (
-                                                                <li key={l.id} className="uk-text-small">
-                                                                    <span className="uk-badge uk-margin-small-right">{l.quantity}</span>
-                                                                    {l.productName || l.product?.name}
-                                                                </li>
-                                                            ))}
-                                                        </ul>
-                                                    </div>
-                                                </div>
-                                            ))}
+            <h4 className="uk-margin-small-bottom">Fecha de entrega</h4>
+
+            <div className="uk-flex uk-flex-middle uk-grid-small" uk-grid="true">
+                <span
+                    onClick={handlePrevious}
+                    disabled={currentPage === 0}
+                >
+                    <span uk-icon="icon: chevron-left; ratio: 2;"></span>
+                </span>
+
+                <div className="uk-width-expand">
+                    <div className="uk-child-width-1-5 uk-grid-small" uk-grid="true">
+                        {dates.map((key) => {
+                            const ordersForDay = loadByDay[key] || [];
+                            const colorClass = ordersForDay.length >= 5
+                                ? 'uk-alert-danger'
+                                : ordersForDay.length >= 2
+                                    ? 'uk-alert-warning'
+                                    : 'uk-alert-success';
+
+                            const isSuggested = key === suggestedDate;
+
+                            return (
+                                <div key={key}>
+                                    <div className="uk-inline uk-display-block">
+                                        <div
+                                            className={`${colorClass} uk-padding-small uk-border-rounded uk-box-shadow-small uk-display-block ${
+                                                fechaLimite === key ? 'uk-box-shadow-medium uk-position-z-index uk-border uk-border-emphasis uk-background-selected' : ''
+                                            } ${isSuggested ? 'uk-box-shadow-large uk-border uk-border-primary' : ''}`}
+                                            onClick={() => setFechaLimite(key)}
+                                        >
+                                            <div className="uk-text-bold">
+                                                {new Date(key).toLocaleDateString('es-ES', {
+                                                    weekday: 'short',
+                                                    day: 'numeric',
+                                                    month: 'short',
+                                                })}
+
+                                            </div>
+                                            <div className="uk-text-small">Pedidos: {ordersForDay.length}</div>
                                         </div>
+
+                                        {/* Mantener el dropdown existente */}
+                                        {ordersForDay.length > 0 && (
+                                            <div
+                                                className="uk-width-large uk-card uk-card-default uk-card-body uk-padding-small"
+                                                uk-dropdown="mode: hover; delay-hide: 200; pos: bottom-center; boundary: !.uk-grid; boundary-align: true; animation: uk-animation-slide-top-small"
+                                            >
+                                                <h5 className="uk-margin-remove-top">Pedidos
+                                                    para {new Date(key).toLocaleDateString('es-ES')}</h5>
+                                                <ul className="uk-list uk-list-divider uk-margin-small-top">
+                                                    {ordersForDay.map((order) => (
+                                                        <li key={order.id} className="uk-text-small">
+                                                            <div className="uk-flex uk-flex-between">
+                                                                <span className="uk-text-bold">{order.orderNum}</span>
+                                                                <span className={`uk-label uk-label-${
+                                                                    order.status === 'pending' ? 'warning' :
+                                                                        order.status === 'in_progress' ? 'primary' :
+                                                                            order.status === 'ready' ? 'success' : 'default'
+                                                                }`}>
+                            {order.status}
+                        </span>
+                                                            </div>
+                                                            <div className="uk-text-muted">
+                                                                {order.client?.firstName} {order.client?.lastName}
+                                                            </div>
+                                                            <div className="uk-text-muted">
+                                                                Items: {order.lines?.reduce((sum, line) => sum + line.quantity, 0) || 0}
+                                                            </div>
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                                <div className="uk-text-small uk-text-muted uk-margin-small-top">
+                                                    Total: {ordersForDay.length} pedido{ordersForDay.length !== 1 ? 's' : ''}
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
-                                )}
-                            </div>
-                        </div>
-                    );
-                })}
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+
+                <span
+                    onClick={handleNext}
+                >
+                    <span uk-icon="icon: chevron-right; ratio: 2;"></span>
+                </span>
             </div>
         </div>
     );

@@ -1,13 +1,13 @@
-import React, { useEffect, useState } from 'react';
+import React, {useEffect, useState} from 'react';
+import {useNavigate} from "react-router-dom";
 import {
     fetchProducts,
-    fetchUsers,
     createOrder,
     payWithCard,
     payWithCash,
     fetchOrder,
 } from '../api.js';
-import { printWashLabels, printSaleTicket } from '../utils/printUtils.js';
+import {printWashLabels, printSaleTicket} from '../utils/printUtils.js';
 import CustomerSelector from '../components/CustomerSelector.jsx';
 import ProductList from '../components/ProductList.jsx';
 import DateCarousel from '../components/DateCarousel.jsx';
@@ -17,9 +17,9 @@ import CartSummary from "../components/CartSummary.jsx";
 
 const isValidSpanishPhone = (phone) => /^[6789]\d{8}$/.test(phone);
 
-export default function POS({ token }) {
+export default function POS({token}) {
+    const navigate = useNavigate();
     const [products, setProducts] = useState([]);
-    const [users, setUsers] = useState([]);
     const [cart, setCart] = useState([]);
     const [order, setOrder] = useState(null);
     const [selectedUser, setSelectedUser] = useState(null);
@@ -40,12 +40,15 @@ export default function POS({ token }) {
     const [isValidated, setIsValidated] = useState(false);
     const [loadByDay, setLoadByDay] = useState({});
     const [showTicketSection, setShowTicketSection] = useState(true);
-
     const [isPaying, setIsPaying] = useState(false);
+
+    console.log(fechaLimite)
+
+    // Estado para forzar la recarga del DateCarousel
+    const [dateCarouselKey, setDateCarouselKey] = useState(0);
 
     useEffect(() => {
         fetchProducts(token).then(setProducts).catch(() => setError('No se pudieron cargar productos'));
-        fetchUsers(token).then(setUsers).catch(() => setError('No se pudieron cargar clientes'));
     }, [token]);
 
     // carga por día
@@ -74,7 +77,7 @@ export default function POS({ token }) {
                 const res = await fetch(
                     `/api/orders?fechaLimite_gte=${from}&fechaLimite_lte=${to}`,
                     {
-                        headers: { Authorization: `Bearer ${token}` },
+                        headers: {Authorization: `Bearer ${token}`},
                     }
                 );
 
@@ -122,14 +125,14 @@ export default function POS({ token }) {
             const exists = prev.find((c) => c.productId === p.id);
             if (exists) {
                 return prev.map((c) =>
-                    c.productId === p.id ? { ...c, quantity: c.quantity + 1 } : c
+                    c.productId === p.id ? {...c, quantity: c.quantity + 1} : c
                 );
             }
-            return [...prev, { productId: p.id, quantity: 1 }];
+            return [...prev, {productId: p.id, quantity: 1}];
         });
     };
 
-    const handleValidate = async ({ submit, observaciones: obs } = {}) => {
+    const handleValidate = async ({submit, observaciones: obs} = {}) => {
         if (obs !== undefined) {
             setObservaciones(obs);
             return;
@@ -170,6 +173,12 @@ export default function POS({ token }) {
             const o = await createOrder(token, payload);
             setOrder(o);
             setIsValidated(true);
+            navigate('/tareas', {
+                state: {
+                    filterOrderId: o.id,
+                    orderNumber: o.orderNum || o.id
+                }
+            });
         } catch (err) {
             setError(err.error || 'Error al crear pedido');
         }
@@ -179,7 +188,7 @@ export default function POS({ token }) {
         if (!order) return;
         setIsPaying(true);
         try {
-            const { order: updated } = await payWithCard(token, order.id);
+            const {order: updated} = await payWithCard(token, order.id);
             setOrder(updated);
         } catch (e) {
             setError(e.error || 'Error en pago con tarjeta');
@@ -224,9 +233,9 @@ export default function POS({ token }) {
             if (newQuantity <= 0) {
                 return prev.filter(item => item.productId !== productId);
             }
-            return prev.map(item => 
-                item.productId === productId 
-                    ? { ...item, quantity: newQuantity }
+            return prev.map(item =>
+                item.productId === productId
+                    ? {...item, quantity: newQuantity}
                     : item
             );
         });
@@ -247,10 +256,12 @@ export default function POS({ token }) {
         setQuickClientPhone('');
         setQuickClientEmail('');
         setObservaciones('');
-        setFechaLimite(null);
+        setFechaLimite(null); // Esto permitirá que DateCarousel establezca la fecha sugerida
         setError('');
         setIsValidated(false);
         setShowTicketSection(true);
+        // Forzar recarga del DateCarousel
+        setDateCarouselKey(prev => prev + 1);
     };
 
     return (
@@ -258,7 +269,7 @@ export default function POS({ token }) {
             <div className="section-header">
                 <h2>Punto de Venta</h2>
                 {isValidated && (
-                    <button 
+                    <button
                         className="uk-button uk-button-primary"
                         onClick={handleNewOrder}
                     >
@@ -266,65 +277,40 @@ export default function POS({ token }) {
                     </button>
                 )}
             </div>
-            
+
             <div className="section-content">
                 <div className="uk-grid-large" uk-grid="true">
                     <div className="uk-width-1-2@m">
                         <div className="uk-card uk-card-default uk-card-body">
-                            <h3 className="uk-card-title">Clientes</h3>
                             <CustomerSelector
-                                users={users}
                                 searchUser={searchUser}
                                 setSearchUser={setSearchUser}
                                 selectedUser={selectedUser}
                                 setSelectedUser={setSelectedUser}
                                 quickFirstName={quickFirstName}
-                                quickLastName={quickLastName}
-                                quickClientPhone={quickClientPhone}
-                                quickClientEmail={quickClientEmail}
                                 setQuickFirstName={setQuickFirstName}
+                                quickLastName={quickLastName}
                                 setQuickLastName={setQuickLastName}
+                                quickClientPhone={quickClientPhone}
                                 setQuickClientPhone={setQuickClientPhone}
+                                quickClientEmail={quickClientEmail}
                                 setQuickClientEmail={setQuickClientEmail}
+                                token={token}
                             />
 
-                            <div className="uk-margin uk-grid-small" uk-grid="true">
-                                <div className="uk-width-2-3@s">
+                            <div className="uk-margin" uk-grid="true">
+                                <div className="uk-width-1-1">
                                     <DateCarousel
-                                        loadByDay={loadByDay}
+                                        key={dateCarouselKey}
                                         fechaLimite={fechaLimite}
                                         setFechaLimite={setFechaLimite}
+                                        token={token}
                                     />
-                                </div>
-                                
-                                <div className="uk-width-1-3@s">
-                                    <label className="uk-form-label">O elegir otra fecha</label>
-                                    <div className="uk-form-controls">
-                                        <input
-                                            type="date"
-                                            className="uk-input"
-                                            value={fechaLimite || ''}
-                                            onChange={(e) => {
-                                                const picked = e.target.value; // formato YYYY-MM-DD
-                                                setFechaLimite(picked);
-                                            }}
-                                            min={new Date().toISOString().split('T')[0]}
-                                        />
-                                    </div>
-                                    <div className="uk-text-small uk-text-muted uk-margin-small-top">
-                                        {fechaLimite
-                                            ? `Entrega: ${new Date(fechaLimite).toLocaleDateString('es-ES', {
-                                                weekday: 'long',
-                                                day: 'numeric',
-                                                month: 'long',
-                                            })}`
-                                            : 'Se propondrá una fecha por defecto'}
-                                    </div>
                                 </div>
                             </div>
 
                             <div className="uk-margin">
-                                <label className="uk-form-label">Observaciones:</label>
+                                <h4 className="uk-margin-small-bottom">Observaciones</h4>
                                 <div className="uk-form-controls">
                                     <textarea
                                         className="uk-textarea"
@@ -339,31 +325,20 @@ export default function POS({ token }) {
                             {/* Mostrar Ticket solo si showTicketSection es true o si no hay pedido validado */}
                             {(showTicketSection || !isValidated) && (
                                 <div className="uk-margin">
-                                    <h3 className="uk-heading-divider">Ticket</h3>
-                                    {selectedUser ? (
-                                        <div className="uk-margin-small">
-                                            <span className="uk-label uk-label-success">Cliente</span>: {selectedUser.firstName} {selectedUser.lastName} - {selectedUser.phone}
-                                        </div>
-                                    ) : quickFirstName ? (
-                                        <div className="uk-margin-small">
-                                            <span className="uk-label uk-label-warning">Cliente rápido</span>: {quickFirstName} {quickLastName} - {quickClientPhone}
-                                        </div>
-                                    ) : (
-                                        <div className="uk-text-muted">Seleccione o cree un cliente</div>
-                                    )}
+                                    <h3 className="uk-heading-divider">Productos añadidos</h3>
 
                                     {!order && (
                                         <div className="uk-margin">
-                                            <CartSummary 
-                                                cart={cart} 
-                                                products={products} 
+                                            <CartSummary
+                                                cart={cart}
+                                                products={products}
                                                 onUpdateQuantity={updateQuantity}
                                                 onRemove={removeFromCart}
                                             />
                                             <div className="uk-margin">
-                                                <button 
-                                                    className="uk-button uk-button-primary uk-width-1-1" 
-                                                    onClick={() => handleValidate({ submit: true })} 
+                                                <button
+                                                    className="uk-button uk-button-primary uk-width-1-1"
+                                                    onClick={() => handleValidate({submit: true})}
                                                     disabled={!cart.length}
                                                 >
                                                     {order ? 'Revalidar pedido' : 'Validar pedido'}
@@ -381,12 +356,13 @@ export default function POS({ token }) {
 
                             {order && (
                                 <div className="uk-margin">
-                                    <div className="uk-card uk-card-default uk-card-body uk-padding-small uk-margin-bottom">
+                                    <div
+                                        className="uk-card uk-card-default uk-card-body uk-padding-small uk-margin-bottom">
                                         <h3 className="uk-card-title">Pedido #{order.orderNum || order.id}</h3>
                                         <div className="uk-label uk-label-success uk-margin-small-right">Validado</div>
                                         <span className="uk-text-muted">Total: {order.total.toFixed(2)} €</span>
                                     </div>
-                                    
+
                                     <PaymentSection
                                         token={token}
                                         orderId={order.id}

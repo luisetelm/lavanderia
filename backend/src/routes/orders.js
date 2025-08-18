@@ -398,11 +398,12 @@ export default async function (fastify, opts) {
                     unitPrice: l.unitPrice,
                     totalPrice: l.totalPrice,
                     notes: l.notes || '',
-                    productName, // incluir info útil de producto si quieres (por ejemplo para imágenes o detalles):
+                    productName: l.product?.name || '',
                     product: {
-                        id: l.product?.id, name: l.product?.name, basePrice: l.product?.basePrice, // agrega aquí más campos si los usas en UI, como SKU, descripción, etc.
-                    }, // si tienes variantes y las necesitas:
-                    // variant: l.variant ? { id: l.variant.id, name: l.variant.name, priceModifier: l.variant.priceModifier } : null,
+                        id: l.product?.id,
+                        name: l.product?.name,
+                        basePrice: l.product?.basePrice,
+                    },
                 };
             });
 
@@ -414,6 +415,204 @@ export default async function (fastify, opts) {
         } catch (err) {
             console.error('Error en GET /orders/:id:', err);
             return reply.status(500).send({error: 'Error al obtener el pedido'});
+        }
+    });
+
+    fastify.get('/delivery-dates', async (req, reply) => {
+        try {
+            const {page = 0} = req.query;
+            const pageNum = parseInt(page) || 0; // Permitir páginas negativas
+
+            // Generar las fechas del carrusel para esta página (permitiendo páginas negativas)
+            const dates = [];
+            let startDate = new Date();
+            startDate.setDate(startDate.getDate() + 3); // Empezar desde mañana para el carrusel
+
+            // Calcular cuántos días laborables saltar (puede ser negativo)
+            let daysToSkip = 0;
+            let tempDate = new Date(startDate);
+
+            if (pageNum >= 0) {
+                // Páginas positivas: avanzar hacia el futuro
+                for (let p = 0; p < pageNum; p++) {
+                    let laborableCount = 0;
+                    while (laborableCount < 5) {
+                        if (tempDate.getDay() !== 0 && tempDate.getDay() !== 6) {
+                            laborableCount++;
+                        }
+                        tempDate.setDate(tempDate.getDate() + 1);
+                        daysToSkip++;
+                    }
+                }
+            } else {
+                // Páginas negativas: retroceder hacia el pasado
+                for (let p = 0; p < Math.abs(pageNum); p++) {
+                    let laborableCount = 0;
+                    while (laborableCount < 5) {
+                        tempDate.setDate(tempDate.getDate() - 1);
+                        if (tempDate.getDay() !== 0 && tempDate.getDay() !== 6) {
+                            laborableCount++;
+                        }
+                        daysToSkip--;
+                    }
+                }
+            }
+
+            // Establecer fecha de inicio para esta página
+            let current = new Date(startDate);
+            current.setDate(current.getDate() + daysToSkip);
+
+            // Generar exactamente 5 días laborables
+            while (dates.length < 5) {
+                if (current.getDay() !== 0 && current.getDay() !== 6) {
+                    dates.push(current.toISOString().split('T')[0]);
+                }
+                current.setDate(current.getDate() + 1);
+            }
+
+            // Convertir strings de fecha a objetos Date para la consulta
+            const dateObjects = dates.map(dateStr => new Date(dateStr + 'T00:00:00.000Z'));
+
+            // Obtener pedidos para estas fechas
+            const orders = await prisma.order.findMany({
+                where: {
+                    fechaLimite: {in: dateObjects}
+                },
+                include: {
+                    lines: {
+                        include: {product: true}
+                    }
+                }
+            });
+
+            // Agrupar por fecha
+            const loadByDay = {};
+            dates.forEach(date => {
+                loadByDay[date] = orders.filter(o =>
+                    o.fechaLimite.toISOString().split('T')[0] === date
+                );
+            });
+
+            // Calcular fecha sugerida solo en la primera página (page = 0)
+            // y asegurar que esté dentro de las fechas disponibles
+            let suggestedDate = null;
+            if (pageNum == 0) {
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+
+                // Buscar la fecha sugerida solo entre las fechas disponibles
+                // y que cumplan con el mínimo de 2 días desde hoy
+                const minDate = new Date(today);
+                minDate.setDate(minDate.getDate() + 2); // Mínimo 2 días
+                const minDateStr = minDate.toISOString().split('T')[0];
+
+                console.log(`Looking for suggested date among available dates: ${dates.join(', ')}`);
+                console.log(`Minimum date required: ${minDateStr}`);
+
+                for (const dateStr of dates) {
+                    // Solo considerar fechas que cumplan el mínimo de 2 días
+                    if (dateStr >= minDateStr) {
+                        const ordersForDay = loadByDay[dateStr] || [];
+                        const totalItems = ordersForDay.reduce((sum, order) =>
+                            sum + order.lines.reduce((s, l) => s + l.quantity, 0), 0);
+
+                        console.log(`Date ${dateStr} has ${totalItems} total items`);
+
+                        if (totalItems < 8) {
+                            suggestedDate = dateStr;
+                            console.log(`Found suggested date: ${dateStr}`);
+                            break;
+                        }
+                    }
+                }
+
+                // Si no se encuentra ninguna fecha con menos de 8 items en la página 0,
+                // buscar en páginas siguientes hasta encontrar una fecha adecuada
+                if (!suggestedDate) {
+                    console.log('No suitable date found in page 0, searching in future pages');
+                    let searchPage = 1;
+                    let maxSearchPages = 3; // Buscar máximo 3 páginas hacia adelante
+
+                    while (!suggestedDate && searchPage <= maxSearchPages) {
+                        // Generar fechas para la página de búsqueda
+                        const searchDates = [];
+                        let searchStartDate = new Date();
+                        searchStartDate.setDate(searchStartDate.getDate() + 1);
+
+                        let searchDaysToSkip = 0;
+                        let searchTempDate = new Date(searchStartDate);
+
+                        for (let p = 0; p < searchPage; p++) {
+                            let laborableCount = 0;
+                            while (laborableCount < 5) {
+                                if (searchTempDate.getDay() !== 0 && searchTempDate.getDay() !== 6) {
+                                    laborableCount++;
+                                }
+                                searchTempDate.setDate(searchTempDate.getDate() + 1);
+                                searchDaysToSkip++;
+                            }
+                        }
+
+                        let searchCurrent = new Date(searchStartDate);
+                        searchCurrent.setDate(searchCurrent.getDate() + searchDaysToSkip);
+
+                        while (searchDates.length < 5) {
+                            if (searchCurrent.getDay() !== 0 && searchCurrent.getDay() !== 6) {
+                                searchDates.push(searchCurrent.toISOString().split('T')[0]);
+                            }
+                            searchCurrent.setDate(searchCurrent.getDate() + 1);
+                        }
+
+                        // Buscar en las fechas de esta página
+                        const searchDateObjects = searchDates.map(dateStr => new Date(dateStr + 'T00:00:00.000Z'));
+                        const searchOrders = await prisma.order.findMany({
+                            where: { fechaLimite: { in: searchDateObjects } },
+                            include: { lines: true }
+                        });
+
+                        const searchLoadByDay = {};
+                        searchDates.forEach(date => {
+                            searchLoadByDay[date] = searchOrders.filter(o =>
+                                o.fechaLimite.toISOString().split('T')[0] === date
+                            );
+                        });
+
+                        for (const dateStr of searchDates) {
+                            if (dateStr >= minDateStr) {
+                                const ordersForDay = searchLoadByDay[dateStr] || [];
+                                const totalItems = ordersForDay.reduce((sum, order) =>
+                                    sum + order.lines.reduce((s, l) => s + l.quantity, 0), 0);
+
+                                if (totalItems < 8) {
+                                    suggestedDate = dateStr;
+                                    console.log(`Found suggested date in page ${searchPage}: ${dateStr}`);
+                                    break;
+                                }
+                            }
+                        }
+
+                        searchPage++;
+                    }
+                }
+
+                // Si aún no se encuentra, usar la primera fecha disponible que cumpla el mínimo
+                if (!suggestedDate) {
+                    suggestedDate = dates.find(dateStr => dateStr >= minDateStr);
+                    console.log(`No date with <8 items found, using first available: ${suggestedDate}`);
+                }
+
+                console.log(`Final suggested date: ${suggestedDate}`);
+            }
+
+            return {
+                dates,
+                loadByDay,
+                suggestedDate: pageNum === 0 ? suggestedDate : null
+            };
+
+        } catch (error) {
+            console.error('Error in delivery-dates endpoint:', error);
+            reply.status(500).send({error: 'Error interno'});
         }
     });
 

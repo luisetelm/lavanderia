@@ -1,6 +1,8 @@
 import React, {useEffect, useState, useRef} from 'react';
 import {fetchOrders, payWithCard, payWithCash} from '../api.js';
 import PaymentSection from '../components/PaymentSection.jsx';
+import {useLocation} from 'react-router-dom';
+
 
 export default function Tasks({token, products}) {
     const [tasks, setTasks] = useState([]);
@@ -14,6 +16,8 @@ export default function Tasks({token, products}) {
     const [receivedAmount, setReceivedAmount] = useState('');
     const [isPaying, setIsPaying] = useState(false);
 
+    const location = useLocation();
+    const {filterOrderId, orderNumber} = location.state || {};
     const load = async (search = '', status = 'all') => {
         setLoading(true);
         try {
@@ -28,13 +32,24 @@ export default function Tasks({token, products}) {
         }
     };
 
-    // Carga inicial
+// Aplicar filtro automáticamente si viene del POS
     useEffect(() => {
-        load(query, filterStatus);
+        if (filterOrderId && orderNumber) {
+            setQuery(orderNumber.toString());
+            load(orderNumber.toString(), filterStatus);
+        }
+    }, [filterOrderId, orderNumber]);
+
+// Carga inicial
+    useEffect(() => {
+        // Solo cargar si no viene filtro del POS
+        if (!filterOrderId) {
+            load(query, filterStatus);
+        }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [token]);
 
-    // Debounce al escribir en la barra de búsqueda
+// Debounce al escribir en la barra de búsqueda
     useEffect(() => {
         if (debounceRef.current) clearTimeout(debounceRef.current);
         debounceRef.current = setTimeout(() => {
@@ -42,12 +57,6 @@ export default function Tasks({token, products}) {
         }, 300);
         return () => clearTimeout(debounceRef.current);
     }, [query, token, filterStatus]);
-
-    // Cambio de filtro: si prefieres que sea inmediato y no espere al debounce
-    // separa este efecto y quita filterStatus del de arriba:
-    // useEffect(() => {
-    //     load(query, filterStatus);
-    // }, [filterStatus]);
 
     return (<div>
         <div className="section-header">
