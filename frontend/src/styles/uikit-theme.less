@@ -177,9 +177,48 @@ nav {
 
 .uk-background-selected {
   border-left: 5px solid @global-primary-background;
-    background-color: @global-secondary-background;
+  background-color: @global-secondary-background;
 }
 
 .section-content {
   padding: 0 @padding-padding;
+}
+
+input {
+  background: #fff !important;
+  color: #333 !important;
+  font-size: 1rem !important;
+  min-width: 200px;
+  height: 38px;
+  padding: 6px 12px;
+  box-shadow: none !important;
+  appearance: none;
+  border-radius: @global-border-radius !important;
+  line-height: 18px;
+
+  &::placeholder {
+    color: #999 !important;
+    opacity: 1 !important; /* Asegura que el placeholder sea visible */
+  }
+}
+
+.uk-select {
+  background: #fff !important;
+  color: #333 !important;
+  font-size: 1rem !important;
+  min-width: 200px;
+  height: 38px;
+  padding: 6px 12px;
+  box-shadow: none !important;
+  appearance: none;
+  border-radius: @global-border-radius !important;
+  line-height: 18px;
+
+
+  option {
+    background: #fff !important;
+    color: #222 !important;
+    border: 1px solid #999 !important;
+    opacity: 1 !important;
+  }
 }

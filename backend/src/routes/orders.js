@@ -311,37 +311,51 @@ export default async function (fastify, opts) {
 
     fastify.get('/', async (req, reply) => {
         const prisma = fastify.prisma;
-        const {q, status} = req.query || {};
-
+        const {q, status, sortBy = 'createdAt', sortOrder = 'desc'} = req.query || {};
 
         const where = {};
 
         if (status && status !== 'all') {
-            where.status = status; // admite ya en mayúsculas
+            where.status = status;
         }
 
         if (q && String(q).trim()) {
             const term = String(q).trim();
-            where.OR = [{orderNum: {contains: term, mode: 'insensitive'}}, {
-                client: {
-                    OR: [{firstName: {contains: term, mode: 'insensitive'}}, {
-                        lastName: {
-                            contains: term, mode: 'insensitive'
-                        }
-                    }, {email: {contains: term, mode: 'insensitive'}}, {phone: {contains: term}},],
+            where.OR = [
+                {orderNum: {contains: term, mode: 'insensitive'}},
+                {
+                    client: {
+                        OR: [
+                            {firstName: {contains: term, mode: 'insensitive'}},
+                            {lastName: {contains: term, mode: 'insensitive'}},
+                            {email: {contains: term, mode: 'insensitive'}},
+                            {phone: {contains: term}},
+                        ],
+                    },
                 },
-            },];
+            ];
         }
+
+        // Configurar ordenación
+        const validSortFields = ['createdAt', 'fechaLimite', 'updatedAt'];
+        const validSortOrders = ['asc', 'desc'];
+
+        const orderByField = validSortFields.includes(sortBy) ? sortBy : 'createdAt';
+        const orderByDirection = validSortOrders.includes(sortOrder) ? sortOrder : 'desc';
 
         try {
             const orders = await prisma.order.findMany({
-                where, include: {
-                    lines: {include: {product: true}}, client: {
+                where,
+                include: {
+                    lines: {include: {product: true}},
+                    client: {
                         select: {id: true, firstName: true, lastName: true, phone: true, email: true},
-                    }, notification: {
+                    },
+                    notification: {
                         select: {id: true, type: true, sentAt: true, status: true, content: true}
                     }
-                }, orderBy: {fechaLimite: 'desc'},
+                },
+                orderBy: {[orderByField]: orderByDirection},
             });
             return reply.send(orders);
         } catch (err) {
@@ -349,7 +363,6 @@ export default async function (fastify, opts) {
             return reply.status(500).send({error: 'Error al obtener pedidos'});
         }
     });
-
     fastify.get('/:id', async (req, reply) => {
         const prisma = fastify.prisma;
         const orderId = Number(req.params.id);

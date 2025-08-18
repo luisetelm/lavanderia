@@ -66,10 +66,13 @@ export function fetchDates(page, token) {
         method: 'GET',
     });
 }
-export function fetchOrders(token, {q, status} = {}) {
+
+export function fetchOrders(token, {q, status, sortBy, sortOrder} = {}) {
     const params = new URLSearchParams();
     if (q) params.set('q', q);
     if (status && status !== 'all') params.set('status', status);
+    if (sortBy) params.set('sortBy', sortBy);
+    if (sortOrder) params.set('sortOrder', sortOrder);
     const qs = params.toString();
     return request(`/orders${qs ? `?${qs}` : ''}`, token, {method: 'GET'});
 }

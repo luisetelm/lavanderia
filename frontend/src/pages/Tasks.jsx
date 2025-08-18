@@ -10,6 +10,8 @@ export default function Tasks({token, products}) {
     const [error, setError] = useState('');
     const [query, setQuery] = useState('');
     const [filterStatus, setFilterStatus] = useState('all');
+    const [sortBy, setSortBy] = useState('createdAt');
+    const [sortOrder, setSortOrder] = useState('desc');
     const debounceRef = useRef(null);
 
     const [showCashModalForTask, setShowCashModalForTask] = useState(null);
@@ -18,10 +20,16 @@ export default function Tasks({token, products}) {
 
     const location = useLocation();
     const {filterOrderId, orderNumber} = location.state || {};
-    const load = async (search = '', status = 'all') => {
+
+    const load = async (search = '', status = 'all', sort = 'createdAt', order = 'desc') => {
         setLoading(true);
         try {
-            const list = await fetchOrders(token, {q: search, status});
+            const list = await fetchOrders(token, {
+                q: search,
+                status,
+                sortBy: sort,
+                sortOrder: order
+            });
             setTasks(Array.isArray(list) ? list : []);
             setError('');
         } catch (e) {
@@ -36,15 +44,14 @@ export default function Tasks({token, products}) {
     useEffect(() => {
         if (filterOrderId && orderNumber) {
             setQuery(orderNumber.toString());
-            load(orderNumber.toString(), filterStatus);
+            load(orderNumber.toString(), filterStatus, sortBy, sortOrder);
         }
-    }, [filterOrderId, orderNumber]);
+    }, [filterOrderId, orderNumber, sortBy, sortOrder]);
 
 // Carga inicial
     useEffect(() => {
-        // Solo cargar si no viene filtro del POS
         if (!filterOrderId) {
-            load(query, filterStatus);
+            load(query, filterStatus, sortBy, sortOrder);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [token]);
@@ -53,15 +60,25 @@ export default function Tasks({token, products}) {
     useEffect(() => {
         if (debounceRef.current) clearTimeout(debounceRef.current);
         debounceRef.current = setTimeout(() => {
-            load(query, filterStatus);
+            load(query, filterStatus, sortBy, sortOrder);
         }, 300);
         return () => clearTimeout(debounceRef.current);
-    }, [query, token, filterStatus]);
+    }, [query, token, filterStatus, sortBy, sortOrder]);
 
     return (<div>
         <div className="section-header">
             <h2 className="uk-margin-remove">Tareas</h2>
-            <FilterBar value={filterStatus} onChange={setFilterStatus} query={query} setQuery={setQuery}/>
+
+            <FilterBar
+                value={filterStatus}
+                onChange={setFilterStatus}
+                query={query}
+                setQuery={setQuery}
+                sortBy={sortBy}
+                setSortBy={setSortBy}
+                sortOrder={sortOrder}
+                setSortOrder={setSortOrder}
+            />
         </div>
 
         {error && (<div className="uk-alert-danger" uk-alert="true">
@@ -121,16 +138,18 @@ export default function Tasks({token, products}) {
     </div>);
 }
 
-function FilterBar({value, onChange, query, setQuery}) {
-    const Btn = ({val, children}) => (<button
-        type="button"
-        className={`uk-button ${value === val ? 'uk-button-primary' : 'uk-button-default'}`}
-        aria-pressed={value === val}
-        onClick={() => onChange(val)}
-    >
-        {children}
-    </button>);
-
+function FilterBar({value, onChange, query, setQuery, sortBy, setSortBy, sortOrder, setSortOrder}) {
+    const Btn = ({val, children}) => (
+        <button
+            type="button"
+            className={`uk-button ${value === val ? 'uk-button-primary' : 'uk-button-default'}`}
+            aria-pressed={value === val}
+            onClick={() => onChange(val)}
+        >
+            {children}
+        </button>
+    );
+    console.log('Valor del select:', `${sortBy}-${sortOrder}`);
     return (<div>
         <div>
             <form className="uk-search uk-search-default">
@@ -138,11 +157,28 @@ function FilterBar({value, onChange, query, setQuery}) {
                     type="search"
                     className="uk-search-input uk-width-1-1"
                     placeholder="Buscar por pedido o cliente..."
-                    value={query}
+                    value={query} // <-- Añade esto
                     onChange={(e) => setQuery(e.target.value)}
                 />
             </form>
         </div>
+        <div>
+            <select
+            className="uk-select"
+            value={`${sortBy}-${sortOrder}`}
+            onChange={(e) => {
+                const [field, order] = e.target.value.split('-');
+                setSortBy(field);
+                setSortOrder(order);
+            }}
+        >
+            <option value="createdAt-desc">Fecha creación (más reciente)</option>
+            <option value="createdAt-asc">Fecha creación (más antigua)</option>
+            <option value="fechaLimite-desc">Fecha entrega (más reciente)</option>
+            <option value="fechaLimite-asc">Fecha entrega (más antigua)</option>
+            <option value="updatedAt-desc">Fecha actualización (más reciente)</option>
+            <option value="updatedAt-asc">Fecha actualización (más antigua)</option>
+        </select></div>
         <div>
             <div className="uk-button-group">
                 <Btn val="all">Todas</Btn>
