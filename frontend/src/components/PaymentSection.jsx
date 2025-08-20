@@ -1,5 +1,5 @@
 import React, {useState, useEffect, useCallback} from 'react';
-import {fetchOrder, payWithCard, payWithCash, updateOrder} from '../api.js';
+import {createCashMovement, fetchOrder, payWithCard, payWithCash, updateOrder} from '../api.js';
 import {printSaleTicket, printWashLabels} from '../utils/printUtils.js';
 
 /**
@@ -67,8 +67,35 @@ export default function PaymentSection({token, orderId, onPaid}) {
         setIsProcessing(true);
         setLocalError('');
         try {
+            // 1. Procesar el pago
+
             const {order: updatedOrder, change} = await payWithCash(token, order.id, received);
             setOrder(updatedOrder);
+
+            console.log(order)
+
+            // 2. Registrar el movimiento de caja
+            if (order.paid) {
+                try {
+                    // Crear movimiento de caja por el pago en efectivo
+                    const cashMovement = await createCashMovement(token, {
+                        type: 'sale_cash_in',
+                        amount: order.total,
+                        note: `Pago pedido #${order.orderNum || order.id}`,
+                        orderId: order.id
+                    });
+
+                    // Recargar los movimientos de caja
+                    await loadCash();
+                    console.log('Movimiento de caja registrado:', cashMovement);
+
+                } catch (movError) {
+                    console.error('Error al registrar movimiento de caja:', movError);
+                    // No bloqueamos el proceso si falla el registro del movimiento
+                }
+            }
+
+
             onPaid?.();
             console.log('Vuelta:', change.toFixed(2));
         } catch (e) {
@@ -110,7 +137,7 @@ export default function PaymentSection({token, orderId, onPaid}) {
     };
 
     const handlePrintLabels = async () => {
-        console.log(order)
+
         if (!order) return;
         setIsPrinting(true);
         try {
@@ -132,8 +159,6 @@ export default function PaymentSection({token, orderId, onPaid}) {
     if (loading) return <div>Cargando pedido...</div>;
     if (error) return <div style={{color: 'red'}}>{error}</div>;
     if (!order) return <div>Pedido no encontrado</div>;
-
-    console.log(order);
 
     const clienteDisplay = () => {
         if (order.client) return `${order.client.firstName} ${order.client.lastName}`;

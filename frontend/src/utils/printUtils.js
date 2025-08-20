@@ -215,7 +215,7 @@ export async function printSaleTicket(order, products = [], printerName) {
 
             // Calcular el IVA para cada producto (suponiendo un 21%)
             const iva = 21;
-            const importeSinIva = (l.unitPrice * l.quantity) / (1 + (iva/100));
+            const importeSinIva = (l.unitPrice * l.quantity) / (1 + (iva / 100));
             const importeIva = (l.unitPrice * l.quantity) - importeSinIva;
 
             return `<div class="producto-linea">
@@ -228,7 +228,7 @@ export async function printSaleTicket(order, products = [], printerName) {
 
     // Calcular el IVA total (21% por defecto)
     const iva = 21;
-    const importeSinIva = order.total / (1 + (iva/100));
+    const importeSinIva = order.total / (1 + (iva / 100));
     const importeIva = order.total - importeSinIva;
 
     const fullHtml = `
@@ -486,4 +486,139 @@ export async function printSaleTicket(order, products = [], printerName) {
             w.close();
         }, 300);
     }
+}
+
+// frontend/src/utils/printUtils.js
+// Añade dos funciones de impresión de tickets de caja (movimiento/cierre).
+// Reutiliza connectQZ, buildRawHtml y sendToPrinter ya definidos.
+
+function getTicketPrinterName() {
+    // Puedes guardar el nombre en localStorage: localStorage.setItem('posPrinterName', 'Nombre Impresora')
+    return localStorage.getItem('posPrinterName') || 'Brother HL-L2445DW Printer';
+}
+
+const fmtMoney = (n) => (Number(n || 0)).toFixed(2) + ' €';
+const fmtDate = (d) => {
+    const dd = d instanceof Date ? d : new Date(d);
+    return `${dd.toLocaleDateString()} ${dd.toLocaleTimeString()}`;
+};
+
+export async function printCashMovementTicket(movement, opts = {}) {
+    const printerName = opts.printerName || getTicketPrinterName();
+    const typeLabel = movement.type === 'withdrawal' ? 'Retirada' :
+        movement.type === 'deposit' ? 'Ingreso' :
+            movement.type === 'refund_cash_out' ? 'Devolución' :
+                movement.type === 'sale_cash_in' ? 'Venta (efectivo)' :
+                    movement.type;
+
+    const amountSigned = ['withdrawal', 'refund_cash_out'].includes(movement.type)
+        ? -Math.abs(Number(movement.amount))
+        : Math.abs(Number(movement.amount));
+
+    const html = `
+    <html>
+      <head>
+        <meta charset="utf-8"/>
+        <style>
+          body { font-family: monospace; font-size: 12px; }
+          .center { text-align: center; }
+          .bold { font-weight: bold; }
+          .hr { border-top: 1px dashed #000; margin: 8px 0; }
+          .row { display: flex; justify-content: space-between; }
+        </style>
+      </head>
+      <body>
+        <div class="center bold">Movimiento de Caja</div>
+        <div class="center">${fmtDate(movement.movement_at || new Date())}</div>
+        <div class="hr"></div>
+        <div><span class="bold">Tipo:</span> ${typeLabel}</div>
+        ${movement.person ? `<div><span class="bold">Persona:</span> ${movement.person}</div>` : ''}
+        ${movement.note ? `<div><span class="bold">Concepto:</span> ${movement.note}</div>` : ''}
+        ${movement.order_id ? `<div><span class="bold">Pedido:</span> #${movement.order_id}</div>` : ''}
+        <div class="row"><span class="bold">Importe:</span> <span class="bold">${fmtMoney(amountSigned)}</span></div>
+        <div class="hr"></div>
+        <div class="center">Gracias</div>
+      </body>
+    </html>
+  `;
+
+    await sendToPrinter(printerName, buildRawHtml(html));
+}
+
+export async function printCashClosureTicket({closure, openingAmount, movements, summary}, opts = {}) {
+    const printerName = opts.printerName || getTicketPrinterName();
+
+    const signed = (t, a) => (['withdrawal', 'refund_cash_out'].includes(t) ? -Math.abs(a) : Math.abs(a));
+    const totals = (movements || []).reduce((acc, m) => {
+        acc.byType[m.type] = (acc.byType[m.type] || 0) + signed(m.type, Number(m.amount));
+        acc.total += signed(m.type, Number(m.amount));
+        return acc;
+    }, {total: 0, byType: {}});
+
+    const saleTotal = totals.byType['sale_cash_in'] || 0;
+
+    const typeLabel = {
+        sale_cash_in: 'Ventas (efectivo)',
+        withdrawal: 'Retiros',
+        deposit: 'Ingresos',
+        refund_cash_out: 'Devoluciones',
+        opening: 'Aperturas',
+        correction: 'Correcciones',
+    };
+
+    const linesHtml = Object.entries(totals.byType)
+        .map(([t, v]) => `<div class="row"><span>${typeLabel[t] || t}</span><span>${fmtMoney(v)}</span></div>`)
+        .join('');
+
+    const movementsHtml = (movements || [])
+        .map(m => {
+            const signAmt = signed(m.type, Number(m.amount));
+            return `<div class="row"><span>${typeLabel[m.type] || m.type}${m.note ? ` - ${m.note}` : ''}</span><span>${fmtMoney(signAmt)}</span></div>`;
+        }).join('');
+
+    const html = `
+    <html>
+      <head>
+        <meta charset="utf-8"/>
+        <style>
+          body { font-family: monospace; font-size: 12px; }
+          .center { text-align: center; }
+          .bold { font-weight: bold; }
+          .hr { border-top: 1px dashed #000; margin: 8px 0; }
+          .row { display: flex; justify-content: space-between; }
+          .mt { margin-top: 6px; }
+        </style>
+      </head>
+      <body>
+        <div class="center bold">Cierre de Caja</div>
+        <div class="center">${fmtDate(closure.closed_at || new Date())}</div>
+        <div class="hr"></div>
+
+        <div class="row"><span>Apertura</span><span>${fmtMoney(openingAmount)}</span></div>
+        <div class="row"><span>Movimientos</span><span>${fmtMoney(closure.expected_amount - openingAmount)}</span></div>
+        <div class="row"><span class="bold">Esperado</span><span class="bold">${fmtMoney(closure.expected_amount)}</span></div>
+        <div class="row"><span>Contado</span><span>${fmtMoney(closure.counted_amount)}</span></div>
+        <div class="row"><span class="bold">Descuadre</span><span class="bold">${fmtMoney(closure.diff)}</span></div>
+
+        <div class="hr"></div>
+        <div class="bold">Resumen por tipo</div>
+        ${linesHtml || '<div>Sin movimientos</div>'}
+
+        <div class="hr"></div>
+        <div class="bold">Ventas efectivo</div>
+        <div class="row"><span>Total</span><span>${fmtMoney(saleTotal)}</span></div>
+
+        <div class="hr"></div>
+        <div class="bold">Detalle movimientos</div>
+        ${movementsHtml || '<div>Sin movimientos</div>'}
+
+        ${closure.notes ? `<div class="hr"></div><div><span class="bold">Notas:</span> ${closure.notes}</div>` : ''}
+
+        <div class="hr"></div>
+        <div class="center">Gracias</div>
+      </body>
+    </html>
+  `;
+
+    await sendToPrinter(printerName, buildRawHtml(html));
 }

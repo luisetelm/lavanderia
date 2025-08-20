@@ -7,6 +7,7 @@ import orderRoutes from './routes/orders.js';
 import taskRoutes from './routes/tasks.js';
 import authRoutes from './routes/auth.js';
 import productsImportRoutes from './routes/products_import.js';
+import cashRoutes from './routes/cash.js';
 
 
 import userRoutes from './routes/users.js';
@@ -54,6 +55,7 @@ app.register(orderRoutes, {prefix: '/api/orders'});
 app.register(taskRoutes, {prefix: '/api/tasks'});
 app.register(userRoutes, {prefix: '/api/users'});
 app.register(productsImportRoutes, {prefix: '/api/products'}); // quedaría POST /api/products/import
+app.register(cashRoutes, {prefix: '/api/cash'}); // quedaría POST /api/products/import
 
 
 // Healthcheck

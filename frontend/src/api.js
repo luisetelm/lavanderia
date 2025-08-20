@@ -126,7 +126,47 @@ export function payWithCash(token, orderId, receivedAmount) {
 
 // helper para refrescar un pedido existente (asume que tu backend tiene GET /orders/:id)
 export function fetchOrder(token, orderId) {
+
     return request(`/orders/${orderId}`, token);
+}
+
+// Nuevas funciones de API para caja.
+// javascript
+// Caja: usar el helper request() y rutas relativas a API_BASE
+
+export function fetchUnclosedCashMovements(token) {
+    return request('/cash/movements/unclosed', token, { method: 'GET' });
+}
+
+export function fetchLastClosure(token) {
+    return request('/cash/last-closure', token, { method: 'GET' });
+}
+
+export function createCashMovement(token, payload) {
+    return request('/cash/movements', token, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+    });
+}
+
+export function updateCashMovement(token, id, payload) {
+    return request(`/cash/movements/${id}`, token, {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+    });
+}
+
+export function deleteCashMovement(token, id) {
+    return request(`/cash/movements/${id}`, token, {
+        method: 'DELETE',
+    });
+}
+
+export function closeCashRegister(token, { countedAmount, notes, user }) {
+    return request('/cash/close', token, {
+        method: 'POST',
+        body: JSON.stringify({ countedAmount, notes, user }),
+    });
 }
 
 

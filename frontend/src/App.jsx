@@ -26,8 +26,6 @@ export default function App() {
         localStorage.removeItem('user');
     };
 
-    console.log(user);
-
     if (!token) {
         return <Login onLogin={handleLogin}/>;
     }
@@ -66,7 +64,7 @@ export default function App() {
             <main className={'uk-container uk-width-4-5@l uk-container-expand'}>
                 <Routes>
                     <Route path="/" element={<Navigate to="/pos" replace/>}/>
-                    <Route path="/pos" element={<POS token={token}/>}/>
+                    <Route path="/pos" element={<POS token={token} user={user}/>}/>
                     <Route path="/productos" element={<Inventory token={token}/>}/>
                     <Route path="/tareas" element={<Tasks token={token}/>}/>
                     <Route path="/usuarios" element={<Users token={token}/>}/>

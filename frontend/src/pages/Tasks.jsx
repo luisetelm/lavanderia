@@ -149,7 +149,6 @@ function FilterBar({value, onChange, query, setQuery, sortBy, setSortBy, sortOrd
             {children}
         </button>
     );
-    console.log('Valor del select:', `${sortBy}-${sortOrder}`);
     return (<div>
         <div>
             <form className="uk-search uk-search-default">

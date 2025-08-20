@@ -53,6 +53,7 @@ model Order {
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
   status        String?        @default("pending")
+  CashMovement  CashMovement[]
   notification  Notification[]
   client        User?          @relation("client_orders", fields: [clientId], references: [id])
   lines         OrderLine[]
@@ -73,25 +74,28 @@ model OrderLine {
 }
 
 model User {
-  id                 Int      @id @default(autoincrement())
+  id                 Int            @id @default(autoincrement())
   firstName          String
   lastName           String
-  email              String?  @unique
+  email              String?        @unique
   password           String?
-  role               String   @default("cashier")
-  phone              String?  @unique
-  isActive           Boolean  @default(true)
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
-  localidad          String?  @db.VarChar
-  denominacionsocial String?  @db.VarChar
-  nif                String?  @db.VarChar
-  tipopersona        String?  @db.VarChar
-  direccion          String?  @db.VarChar
-  provincia          String?  @db.VarChar
-  codigopostal       String?  @db.VarChar
-  pais               String?  @db.VarChar
-  orders             Order[]  @relation("client_orders")
+  role               String         @default("cashier")
+  phone              String?        @unique
+  isActive           Boolean        @default(true)
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  codigopostal       String?        @db.VarChar
+  denominacionsocial String?        @db.VarChar
+  direccion          String?        @db.VarChar
+  localidad          String?        @db.VarChar
+  nif                String?        @db.VarChar
+  pais               String?        @db.VarChar
+  provincia          String?        @db.VarChar
+  tipopersona        String?        @db.VarChar
+  cashClosures       CashClosure[]
+  personMovements    CashMovement[] @relation("person_movements")
+  cashMovements      CashMovement[] @relation("user_movements")
+  orders             Order[]        @relation("client_orders")
 }
 
 model Notification {
@@ -103,4 +107,43 @@ model Notification {
   sentAt    DateTime @default(now())
   orderid   Int?
   order     Order?   @relation(fields: [orderid], references: [id])
+}
+
+model CashClosure {
+  id             Int            @id @default(autoincrement())
+  openedat       DateTime?      @db.Timestamptz(6)
+  closedat       DateTime       @default(now()) @db.Timestamptz(6)
+  openingamount  Decimal        @default(0) @db.Decimal(12, 2)
+  expectedamount Decimal        @db.Decimal(12, 2)
+  countedamount  Decimal        @db.Decimal(12, 2)
+  diff           Decimal        @db.Decimal(12, 2)
+  userId         Int
+  notes          String?
+  user           User           @relation(fields: [userId], references: [id])
+  movements      CashMovement[]
+}
+
+model CashMovement {
+  id           Int              @id @default(autoincrement())
+  type         CashMovementType
+  amount       Decimal          @db.Decimal(12, 2)
+  movementat   DateTime         @default(now()) @db.Timestamptz(6)
+  orderid      Int?
+  userid       Int
+  note         String?
+  closureId    Int?
+  personUserId Int?
+  closure      CashClosure?     @relation(fields: [closureId], references: [id])
+  order        Order?           @relation(fields: [orderid], references: [id])
+  personUser   User?            @relation("person_movements", fields: [personUserId], references: [id])
+  user         User             @relation("user_movements", fields: [userid], references: [id])
+}
+
+enum CashMovementType {
+  sale_cash_in
+  withdrawal
+  deposit
+  refund_cash_out
+  opening
+  correction
 }
