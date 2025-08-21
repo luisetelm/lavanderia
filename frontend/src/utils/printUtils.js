@@ -494,7 +494,7 @@ export async function printSaleTicket(order, products = [], printerName) {
 
 function getTicketPrinterName() {
     // Puedes guardar el nombre en localStorage: localStorage.setItem('posPrinterName', 'Nombre Impresora')
-    return localStorage.getItem('posPrinterName') || 'Brother HL-L2445DW Printer';
+    return localStorage.getItem('posPrinterName') || 'CLIENTE';
 }
 
 const fmtMoney = (n) => (Number(n || 0)).toFixed(2) + ' €';

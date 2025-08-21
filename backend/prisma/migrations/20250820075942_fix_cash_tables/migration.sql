@@ -1,18 +1,4 @@
 -- CreateEnum
-CREATE TYPE "CashMovementType" AS ENUM ('sale_cash_in', 'withdrawal', 'deposit', 'refund_cash_out', 'opening', 'correction');
-
--- AlterTable
-ALTER TABLE "Order" ALTER COLUMN "status" SET DEFAULT 'pending';
-
--- AlterTable
-ALTER TABLE "User" ADD COLUMN     "codigopostal" VARCHAR,
-ADD COLUMN     "denominacionsocial" VARCHAR,
-ADD COLUMN     "direccion" VARCHAR,
-ADD COLUMN     "localidad" VARCHAR,
-ADD COLUMN     "nif" VARCHAR,
-ADD COLUMN     "pais" VARCHAR,
-ADD COLUMN     "provincia" VARCHAR,
-ADD COLUMN     "tipopersona" VARCHAR;
 
 -- CreateTable
 CREATE TABLE "CashClosure" (

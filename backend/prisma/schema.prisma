@@ -54,9 +54,9 @@ model Order {
   updatedAt     DateTime       @updatedAt
   status        String?        @default("pending")
   CashMovement  CashMovement[]
+  notification  Notification[]
   client        User?          @relation("client_orders", fields: [clientId], references: [id])
   lines         OrderLine[]
-  Task          Task[]
 }
 
 model OrderLine {
@@ -96,7 +96,6 @@ model User {
   personMovements    CashMovement[] @relation("person_movements")
   cashMovements      CashMovement[] @relation("user_movements")
   orders             Order[]        @relation("client_orders")
-  Task               Task[]
 }
 
 model Notification {
@@ -107,7 +106,7 @@ model Notification {
   content   String
   status    String
   sentAt    DateTime @default(now())
-  order     Task     @relation(fields: [orderid], references: [id], map: "Notification_taskId_fkey")
+  order     Order    @relation(fields: [orderid], references: [id], map: "Notification_taskId_fkey")
 }
 
 model CashClosure {
@@ -141,18 +140,15 @@ model CashMovement {
 }
 
 model Task {
-  id           Int            @id @default(autoincrement())
-  name         String
-  description  String?
-  state        String
-  orderId      Int?
-  workerId     Int?
-  assignedAt   DateTime?
-  completedAt  DateTime?
-  collectedAt  DateTime?
-  notification Notification[]
-  Order        Order?         @relation(fields: [orderId], references: [id])
-  User         User?          @relation(fields: [workerId], references: [id])
+  id          Int       @id @default(autoincrement())
+  name        String
+  description String?
+  state       String
+  orderId     Int?
+  workerId    Int?
+  assignedAt  DateTime?
+  completedAt DateTime?
+  collectedAt DateTime?
 }
 
 enum CashMovementType {
