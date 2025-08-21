@@ -9,7 +9,7 @@ import {printSaleTicket, printWashLabels} from '../utils/printUtils.js';
  *  - orderId: número o string
  *  - onPaid?: callback que se llama cuando se completa el pago exitosamente
  */
-export default function PaymentSection({token, orderId, onPaid}) {
+export default function PaymentSection({token, orderId, onPaid, user}) {
     const [order, setOrder] = useState(null);
     const [loading, setLoading] = useState(!!orderId);
     const [error, setError] = useState('');
@@ -69,31 +69,33 @@ export default function PaymentSection({token, orderId, onPaid}) {
         try {
             // 1. Procesar el pago
 
-            const {order: updatedOrder, change} = await payWithCash(token, order.id, received);
-            setOrder(updatedOrder);
+            const {order: updateOrder, change} = await payWithCash(token, order.id, received);
+            setOrder(order);
 
             console.log(order)
 
             // 2. Registrar el movimiento de caja
-            if (order.paid) {
-                try {
-                    // Crear movimiento de caja por el pago en efectivo
-                    const cashMovement = await createCashMovement(token, {
-                        type: 'sale_cash_in',
-                        amount: order.total,
-                        note: `Pago pedido #${order.orderNum || order.id}`,
-                        orderId: order.id
-                    });
+            //if (order.paid) {
+            try {
 
-                    // Recargar los movimientos de caja
-                    await loadCash();
-                    console.log('Movimiento de caja registrado:', cashMovement);
-
-                } catch (movError) {
-                    console.error('Error al registrar movimiento de caja:', movError);
-                    // No bloqueamos el proceso si falla el registro del movimiento
+                const payload = {
+                    type: 'sale_cash_in',
+                    amount: order.total,
+                    note: `Pago pedido #${order.orderNum || order.id}`,
+                    orderId: order.id,
+                    person: user.id
                 }
+
+                console.log(payload)
+                // Crear movimiento de caja por el pago en efectivo
+                const cashMovement = await createCashMovement(token, payload);
+
+            } catch (movError) {
+                console.error('Error al registrar movimiento de caja:', movError);
+                // No bloqueamos el proceso si falla el registro del movimiento
             }
+
+            // }
 
 
             onPaid?.();

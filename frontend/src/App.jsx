@@ -66,7 +66,7 @@ export default function App() {
                     <Route path="/" element={<Navigate to="/pos" replace/>}/>
                     <Route path="/pos" element={<POS token={token} user={user}/>}/>
                     <Route path="/productos" element={<Inventory token={token}/>}/>
-                    <Route path="/tareas" element={<Tasks token={token}/>}/>
+                    <Route path="/tareas" element={<Tasks token={token} user={user}/>}/>
                     <Route path="/usuarios" element={<Users token={token}/>}/>
                     <Route path="*" element={<div>Ruta no encontrada</div>}/>
                     <Route path="/login" element={<Login onLogin={handleLogin}/>}/>

@@ -4,7 +4,7 @@ import PaymentSection from '../components/PaymentSection.jsx';
 import {useLocation} from 'react-router-dom';
 
 
-export default function Tasks({token, products}) {
+export default function Tasks({token, user}) {
     const [tasks, setTasks] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
@@ -105,6 +105,7 @@ export default function Tasks({token, products}) {
                             token={token}
                             orderId={t.id}
                             onPaid={() => load(query, filterStatus)}
+                            user={user}
                         />
                     </div>) : (<div className="uk-alert uk-alert-warning uk-margin">
                         Pedido no disponible

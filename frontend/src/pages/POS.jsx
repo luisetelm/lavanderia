@@ -515,7 +515,7 @@ export default function POS({token, user}) {
                                 <span className="uk-text-muted">Total: {order.total.toFixed(2)} €</span>
                             </div>
                             <PaymentSection
-                                token={token}
+                                token={token} user={user.id}
                                 orderId={order.id}
                                 onPaid={async () => {
                                     try {
@@ -525,6 +525,7 @@ export default function POS({token, user}) {
                                         console.error('Error refrescando pedido tras pago:', e);
                                     }
                                 }}
+
                             />
                         </div>)}
                     </div>

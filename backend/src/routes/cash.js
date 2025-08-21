@@ -32,7 +32,7 @@ export default async function cashRoutes(fastify) {
 
     // POST /api/cash/movements
     fastify.post('/movements', async (request, reply) => {
-        const {type, amount, note, personUserId, person} = request.body || {};
+        const {type, amount, note, personUserId, person, orderid} = request.body || {};
         if (!type || !ALLOWED_TYPES.includes(type)) return reply.code(400).send({error: 'type inválido'});
         const num = Number(amount);
         if (!Number.isFinite(num) || num <= 0) return reply.code(400).send({error: 'amount inválido'});
@@ -44,6 +44,7 @@ export default async function cashRoutes(fastify) {
                 userid: person ?? null,
                 personUserId: personUserId ?? null,
                 note: note || null,
+                orderid : orderid || null
             },
             include: {personUser: {select: {id: true, firstName: true, lastName: true, email: true}}},
         });
