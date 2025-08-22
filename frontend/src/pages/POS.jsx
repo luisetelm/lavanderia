@@ -368,6 +368,7 @@ export default function POS({token, user}) {
 
         try {
             const {closure} = await closeCashRegister(token, payload);
+            console.log(closure);
             // Imprimir ticket de cierre con contexto actual (movimientos pendientes incluidos en el cierre)
             await printCashClosureTicket({
                 closure, openingAmount, movements: unclosedMoves, summary: null

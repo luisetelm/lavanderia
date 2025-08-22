@@ -345,6 +345,5 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
         </div>)}
 
 
-    </div>)
-        ;
+    </div>);
 }

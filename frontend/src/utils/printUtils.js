@@ -249,9 +249,8 @@ export async function printSaleTicket(order, products = [], printerName) {
         
         .ticket-container {
            padding: 0 5mm 0 5mm;
-            margin: 0 0 10mm 0;        
-            
-     }
+           margin: 0 0 10mm 0;            
+        }
         
         /* Cabecera */
         .header {
@@ -461,7 +460,7 @@ export async function printSaleTicket(order, products = [], printerName) {
             
             <!-- Información legal obligatoria -->
             <div class="info-legal">
-              Tinte y Burbuja S.L. | CIF: B22837561<br>
+              Gestiones y Apartamentos Úbeda S.L. | CIF: B22837561<br>
               Carretera de Sabiote, 45 - 23400 Úbeda<br>
               Conserve este ticket para posibles reclamaciones<br>
               Dispone de hojas de reclamaciones a su disposición
@@ -488,9 +487,6 @@ export async function printSaleTicket(order, products = [], printerName) {
     }
 }
 
-// frontend/src/utils/printUtils.js
-// Añade dos funciones de impresión de tickets de caja (movimiento/cierre).
-// Reutiliza connectQZ, buildRawHtml y sendToPrinter ya definidos.
 
 function getTicketPrinterName() {
     // Obtener el nombre de impresora guardado en localStorage si existe
@@ -506,7 +502,7 @@ function getTicketPrinterName() {
         window.location.hostname === '127.0.0.1';
 
     // Devolver el nombre de impresora según el entorno
-    return isLocalhost ? 'CLIENTE' : 'CLIENTE';
+    return isLocalhost ? 'Brother HL-L2445DW Printer' : 'CLIENTE';
 }
 
 const fmtMoney = (n) => (Number(n || 0)).toFixed(2) + ' €';
@@ -532,7 +528,21 @@ export async function printCashMovementTicket(movement, opts = {}) {
       <head>
         <meta charset="utf-8"/>
         <style>
-          body { font-family: monospace; font-size: 12px; }
+                   @import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=swap');
+        
+        body {
+            font-family: 'Open Sans', sans-serif;
+            padding: 0;
+            margin: 0;
+            width: 80mm;
+            color: black;
+            font-size: 0.8rem;
+        }
+        
+        .ticket-container {
+           padding: 0 5mm 0 5mm;
+           margin: 0 0 10mm 0;            
+        }
           .center { text-align: center; }
           .bold { font-weight: bold; }
           .hr { border-top: 1px dashed #000; margin: 8px 0; }
@@ -540,6 +550,7 @@ export async function printCashMovementTicket(movement, opts = {}) {
         </style>
       </head>
       <body>
+      <div class="ticket-container">
         <div class="center bold">Movimiento de Caja</div>
         <div class="center">${fmtDate(movement.movement_at || new Date())}</div>
         <div class="hr"></div>
@@ -549,7 +560,7 @@ export async function printCashMovementTicket(movement, opts = {}) {
         ${movement.order_id ? `<div><span class="bold">Pedido:</span> #${movement.order_id}</div>` : ''}
         <div class="row"><span class="bold">Importe:</span> <span class="bold">${fmtMoney(amountSigned)}</span></div>
         <div class="hr"></div>
-        <div class="center">Gracias</div>
+        </div>
       </body>
     </html>
   `;
@@ -593,7 +604,23 @@ export async function printCashClosureTicket({closure, openingAmount, movements,
       <head>
         <meta charset="utf-8"/>
         <style>
-          body { font-family: monospace; font-size: 12px; }
+        
+           @import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=swap');
+        
+        body {
+            font-family: 'Open Sans', sans-serif;
+            padding: 0;
+            margin: 0;
+            width: 80mm;
+            color: black;
+            font-size: 0.8rem;
+        }
+        
+        .ticket-container {
+           padding: 0 5mm 0 5mm;
+           margin: 0 0 10mm 0;            
+        }
+        
           .center { text-align: center; }
           .bold { font-weight: bold; }
           .hr { border-top: 1px dashed #000; margin: 8px 0; }
@@ -602,14 +629,15 @@ export async function printCashClosureTicket({closure, openingAmount, movements,
         </style>
       </head>
       <body>
+      <div class="ticket-container">
         <div class="center bold">Cierre de Caja</div>
         <div class="center">${fmtDate(closure.closed_at || new Date())}</div>
         <div class="hr"></div>
 
-        <div class="row"><span>Apertura</span><span>${fmtMoney(openingAmount)}</span></div>
-        <div class="row"><span>Movimientos</span><span>${fmtMoney(closure.expected_amount - openingAmount)}</span></div>
-        <div class="row"><span class="bold">Esperado</span><span class="bold">${fmtMoney(closure.expected_amount)}</span></div>
-        <div class="row"><span>Contado</span><span>${fmtMoney(closure.counted_amount)}</span></div>
+        <div class="row"><span>Apertura</span><span>${fmtMoney(closure.openingamount)}</span></div>
+        <div class="row"><span>Movimientos</span><span>${fmtMoney(closure.expectedamount - openingAmount)}</span></div>
+        <div class="row"><span class="bold">Esperado</span><span class="bold">${fmtMoney(closure.expectedamount)}</span></div>
+        <div class="row"><span>Contado</span><span>${fmtMoney(closure.countedamount)}</span></div>
         <div class="row"><span class="bold">Descuadre</span><span class="bold">${fmtMoney(closure.diff)}</span></div>
 
         <div class="hr"></div>
@@ -627,7 +655,7 @@ export async function printCashClosureTicket({closure, openingAmount, movements,
         ${closure.notes ? `<div class="hr"></div><div><span class="bold">Notas:</span> ${closure.notes}</div>` : ''}
 
         <div class="hr"></div>
-        <div class="center">Gracias</div>
+        </div>
       </body>
     </html>
   `;
