@@ -462,83 +462,83 @@ export default function POS({token, user}) {
                 </button>
             </div>
 
-            {isValidated && (<button className="uk-button uk-button-primary" onClick={handleNewOrder}>
-                <span uk-icon="plus"></span> Nuevo pedido
-            </button>)}
         </div>
 
         <div className="section-content">
-            <div className="uk-grid-large" uk-grid="true">
-                <div className="uk-width-1-2@m">
-                    <div className="uk-card uk-card-default uk-card-body">
-                        <CustomerSelector
-                            searchUser={searchUser} setSearchUser={setSearchUser}
-                            selectedUser={selectedUser} setSelectedUser={setSelectedUser}
-                            quickFirstName={quickFirstName} setQuickFirstName={setQuickFirstName}
-                            quickLastName={quickLastName} setQuickLastName={setQuickLastName}
-                            quickClientPhone={quickClientPhone} setQuickClientPhone={setQuickClientPhone}
-                            quickClientEmail={quickClientEmail} setQuickClientEmail={setQuickClientEmail}
-                            token={token}
-                        />
+            <div className="uk-card-default uk-card-body">
+                <div uk-grid="true" className="uk-grid-divider">
+                    <div className="uk-width-1-2@m">
+                        <div className="uk-card">
+                            <CustomerSelector
+                                searchUser={searchUser} setSearchUser={setSearchUser}
+                                selectedUser={selectedUser} setSelectedUser={setSelectedUser}
+                                quickFirstName={quickFirstName} setQuickFirstName={setQuickFirstName}
+                                quickLastName={quickLastName} setQuickLastName={setQuickLastName}
+                                quickClientPhone={quickClientPhone} setQuickClientPhone={setQuickClientPhone}
+                                quickClientEmail={quickClientEmail} setQuickClientEmail={setQuickClientEmail}
+                                token={token}
+                            />
 
-                        <div className="uk-margin" uk-grid="true">
-                            <div className="uk-width-1-1">
-                                <DateCarousel key={dateCarouselKey} fechaLimite={fechaLimite}
-                                              setFechaLimite={setFechaLimite} token={token}/>
+                            <div className="uk-margin" uk-grid="true">
+                                <div className="uk-width-1-1">
+                                    <DateCarousel key={dateCarouselKey} fechaLimite={fechaLimite}
+                                                  setFechaLimite={setFechaLimite} token={token}/>
+                                </div>
                             </div>
-                        </div>
 
-                        <div className="uk-margin">
-                            <h4 className="uk-margin-small-bottom">Observaciones</h4>
-                            <div className="uk-form-controls">
+                            <div className="uk-margin">
+                                <h4 className="uk-margin-small-bottom">Observaciones</h4>
+                                <div className="uk-form-controls">
                   <textarea className="uk-textarea" rows="3" placeholder="Prenda en mal estado, petición especial..."
                             value={observaciones} onChange={(e) => setObservaciones(e.target.value)}/>
+                                </div>
                             </div>
+
+                            {(showTicketSection || !isValidated) && (<div className="uk-margin">
+                                <h3 className="uk-heading-divider">Productos añadidos</h3>
+                                {!order && (<div className="uk-margin">
+                                    <CartSummary cart={cart} products={products}
+                                                 onUpdateQuantity={updateQuantity} onRemove={removeFromCart}/>
+                                    <div className="uk-margin">
+                                        <button className="uk-button uk-button-primary uk-width-1-1"
+                                                onClick={() => handleValidate({submit: true})}
+                                                disabled={!cart.length}>
+                                            {order ? 'Revalidar pedido' : 'Validar pedido'}
+                                        </button>
+                                    </div>
+                                    {error && <div className="uk-alert-danger uk-margin-small" uk-alert="true">
+                                        <p>{error}</p></div>}
+                                </div>)}
+                            </div>)}
+
+                            {order && (<div className="uk-margin">
+                                <div
+                                    className="uk-card uk-card-default uk-card-body uk-padding-small uk-margin-bottom">
+                                    <h3 className="uk-card-title">Pedido #{order.orderNum || order.id}</h3>
+                                    <div className="uk-label uk-label-success uk-margin-small-right">Validado</div>
+                                    <span className="uk-text-muted">Total: {order.total.toFixed(2)} €</span>
+                                </div>
+                                <PaymentSection
+                                    token={token} user={user.id}
+                                    orderId={order.id}
+                                    onPaid={async () => {
+                                        try {
+                                            const updated = await fetchOrder(token, order.id);
+                                            setOrder(updated);
+                                        } catch (e) {
+                                            console.error('Error refrescando pedido tras pago:', e);
+                                        }
+                                    }}
+
+                                />
+                            </div>)}
                         </div>
 
-                        {(showTicketSection || !isValidated) && (<div className="uk-margin">
-                            <h3 className="uk-heading-divider">Productos añadidos</h3>
-                            {!order && (<div className="uk-margin">
-                                <CartSummary cart={cart} products={products}
-                                             onUpdateQuantity={updateQuantity} onRemove={removeFromCart}/>
-                                <div className="uk-margin">
-                                    <button className="uk-button uk-button-primary uk-width-1-1"
-                                            onClick={() => handleValidate({submit: true})}
-                                            disabled={!cart.length}>
-                                        {order ? 'Revalidar pedido' : 'Validar pedido'}
-                                    </button>
-                                </div>
-                                {error && <div className="uk-alert-danger uk-margin-small" uk-alert="true">
-                                    <p>{error}</p></div>}
-                            </div>)}
-                        </div>)}
 
-                        {order && (<div className="uk-margin">
-                            <div
-                                className="uk-card uk-card-default uk-card-body uk-padding-small uk-margin-bottom">
-                                <h3 className="uk-card-title">Pedido #{order.orderNum || order.id}</h3>
-                                <div className="uk-label uk-label-success uk-margin-small-right">Validado</div>
-                                <span className="uk-text-muted">Total: {order.total.toFixed(2)} €</span>
-                            </div>
-                            <PaymentSection
-                                token={token} user={user.id}
-                                orderId={order.id}
-                                onPaid={async () => {
-                                    try {
-                                        const updated = await fetchOrder(token, order.id);
-                                        setOrder(updated);
-                                    } catch (e) {
-                                        console.error('Error refrescando pedido tras pago:', e);
-                                    }
-                                }}
-
-                            />
-                        </div>)}
                     </div>
-                </div>
+                    <div className="uk-width-1-2@m">
 
-                <div className="uk-width-1-2@m">
-                    <div className="uk-card uk-card-default uk-card-body">
+
                         <ProductList products={products} searchProduct={searchProduct}
                                      setSearchProduct={setSearchProduct} onAdd={add}/>
                     </div>
@@ -546,301 +546,314 @@ export default function POS({token, user}) {
             </div>
         </div>
 
-        {/* Modal: Nuevo movimiento de caja */}
-        {showMovementModal && (<div className="uk-modal uk-open" style={{display: 'block'}}>
-            <div className="uk-modal-dialog uk-modal-body">
-                <h3>Nuevo movimiento de caja</h3>
-                {cashErr && <div className="uk-alert-danger" uk-alert="true"><p>{cashErr}</p></div>}
+        {/* Modal: Nuevo movimiento de caja */
+        }
+        {
+            showMovementModal && (<div className="uk-modal uk-open" style={{display: 'block'}}>
+                <div className="uk-modal-dialog uk-modal-body">
+                    <h3>Nuevo movimiento de caja</h3>
+                    {cashErr && <div className="uk-alert-danger" uk-alert="true"><p>{cashErr}</p></div>}
 
-                <div className="uk-grid-small" uk-grid="true">
-                    <div className="uk-width-1-2">
-                        <label className="uk-form-label">Tipo</label>
-                        <select className="uk-select" value={movementForm.type}
-                                onChange={(e) => setMovementForm({...movementForm, type: e.target.value})}>
-                            <option value="deposit">Entrada de dinero</option>
-                            <option value="withdrawal">Retirada de dinero</option>
-                        </select>
-                    </div>
-                    <div className="uk-width-1-2">
-                        <label className="uk-form-label">Importe</label>
-                        <input className="uk-input" type="number" step="0.01" value={movementForm.amount}
-                               onChange={(e) => setMovementForm({...movementForm, amount: e.target.value})}/>
-                    </div>
-                    <div className="uk-width-1-2">
-                        <label className="uk-form-label">Concepto</label>
-                        <input className="uk-input" type="text" value={movementForm.concept}
-                               onChange={(e) => setMovementForm({...movementForm, concept: e.target.value})}/>
-                    </div>
-                    <div className="uk-width-1-2">
-                        <label className="uk-form-label">Persona</label>
-                        <div className="uk-flex uk-flex-middle">
-                            <input className="uk-input" type="text" value={movementForm.person}
-                                   onChange={(e) => setMovementForm({
-                                       ...movementForm, person: e.target.value
-                                   })}/>
-                            <button
-                                className="uk-button uk-button-default uk-button-small uk-margin-small-left"
-                                onClick={() => {
-                                    // Abrir modal o mostrar desplegable para seleccionar usuario
-                                    setShowUserSelector(true);
-                                }}
-                                type="button"
-                            >
-                                <span uk-icon="user"></span>
-                            </button>
-                        </div>
-                    </div>
-                    <div className="uk-width-1-1">
-                        <label className="uk-form-label">Descripción (opcional)</label>
-                        <textarea className="uk-textarea" rows="2" value={movementForm.note}
-                                  onChange={(e) => setMovementForm({...movementForm, note: e.target.value})}/>
-                    </div>
-                </div>
-
-                <div className="uk-margin-top uk-flex uk-flex-right">
-                    <button className="uk-button uk-button-default"
-                            onClick={() => setShowMovementModal(false)}>Cancelar
-                    </button>
-                    <button className="uk-button uk-button-primary uk-margin-small-left"
-                            onClick={saveMovement}>Guardar
-                    </button>
-                </div>
-            </div>
-            <div className="uk-modal-bg" onClick={() => setShowMovementModal(false)}></div>
-        </div>)}
-
-        {/* Modal: Selector de usuario */}
-        {showUserSelector && (<div className="uk-modal uk-open" style={{display: 'block', zIndex: 1100}}>
-            <div className="uk-modal-dialog">
-                <div className="uk-modal-header">
-                    <h3 className="uk-modal-title">Seleccionar Usuario</h3>
-                    <button className="uk-modal-close-default" type="button" uk-close
-                            onClick={() => setShowUserSelector(false)}></button>
-                </div>
-                <div className="uk-modal-body" style={{maxHeight: '60vh', overflow: 'auto'}}>
-                    <div className="uk-margin">
-                        <input
-                            className="uk-input"
-                            type="text"
-                            placeholder="Buscar usuario..."
-                            value={userSearchTerm}
-                            onChange={e => setUserSearchTerm(e.target.value)}
-                        />
-                    </div>
-                    <ul className="uk-list uk-list-divider">
-                        {Array.isArray(userResults) && userResults.map(user => (<li key={user.id}
-                                                                                    className="uk-flex uk-flex-between uk-flex-middle"
-                                                                                    style={{
-                                                                                        cursor: 'pointer',
-                                                                                        padding: '8px'
-                                                                                    }}
-                                                                                    onClick={() => {
-                                                                                        setMovementForm({
-                                                                                            ...movementForm,
-                                                                                            person: `${user.firstName} ${user.lastName}`,
-                                                                                            personUserId: user.id
-                                                                                        });
-                                                                                        setShowUserSelector(false);
-                                                                                    }}
-                        >
-                            <div>
-                                <div>{user.firstName} {user.lastName}</div>
-                                <div className="uk-text-small uk-text-muted">{user.phone || user.email}</div>
-                            </div>
-                            <div className="uk-label">{user.role}</div>
-                        </li>))}
-                        {(!Array.isArray(userResults) || userResults.length === 0) && (
-                            <li className="uk-text-center uk-text-muted">No se encontraron usuarios</li>)}
-                    </ul>
-                </div>
-                <div className="uk-modal-footer uk-text-right">
-                    <button className="uk-button uk-button-default"
-                            onClick={() => setShowUserSelector(false)}>Cerrar
-                    </button>
-                </div>
-            </div>
-            <div className="uk-modal-bg" onClick={() => setShowUserSelector(false)}></div>
-        </div>)}
-
-        {/* Modal: Cierre de caja */}
-        {showCloseModal && (<div className="uk-modal uk-open" style={{display: 'block'}}>
-            <div className="uk-modal-dialog uk-modal-body">
-                <h3>Cierre de caja</h3>
-                {cashErr && <div className="uk-alert-danger" uk-alert="true"><p>{cashErr}</p></div>}
-
-                <div className="uk-grid-small" uk-grid="true">
-                    <div className="uk-width-1-2">
-                        <div className="uk-form-stacked">
-                            <label className="uk-form-label">Apertura</label>
-                            <input className="uk-input" type="text" readOnly
-                                   value={openingAmount.toFixed(2) + ' €'}/>
-                        </div>
-                    </div>
-                    <div className="uk-width-1-2">
-                        <div className="uk-form-stacked">
-                            <label className="uk-form-label">Movimientos</label>
-                            <input className="uk-input" type="text" readOnly value={sumMoves.toFixed(2) + ' €'}/>
-                        </div>
-                    </div>
-                    <div className="uk-width-1-2">
-                        <div className="uk-form-stacked">
-                            <label className="uk-form-label">Esperado</label>
-                            <input className="uk-input" type="text" readOnly
-                                   value={expectedAmount.toFixed(2) + ' €'}/>
-                        </div>
-                    </div>
-                    <div className="uk-width-1-2">
-                        <div className="uk-form-stacked">
-                            <label className="uk-form-label">Contado</label>
-                            <input className="uk-input" type="number" step="0.01" value={countedAmount}
-                                   onChange={(e) => setCountedAmount(e.target.value)}/>
-                        </div>
-                    </div>
-                    <div className="uk-width-1-2">
-                        <div className="uk-form-stacked">
-                            <label className="uk-form-label">Descuadre</label>
-                            <input className="uk-input" type="text" readOnly value={diffAmount.toFixed(2) + ' €'}/>
-                        </div>
-                    </div>
-                    <div className="uk-width-1-1">
-                        <label className="uk-form-label">Notas del cierre</label>
-                        <textarea className="uk-textarea" rows="2" value={closeNotes}
-                                  onChange={(e) => setCloseNotes(e.target.value)}/>
-                    </div>
-                </div>
-
-                {/* Resumen ventas y movimientos */}
-                <div className="uk-margin uk-card uk-card-default uk-card-body">
-                    <h4 className="uk-margin-small">Resumen</h4>
                     <div className="uk-grid-small" uk-grid="true">
-                        <div className="uk-width-1-2">Ventas
-                            (efectivo): {(unclosedMoves.filter(m => m.type === 'sale_cash_in')
-                                .reduce((a, m) => a + Number(m.amount), 0)).toFixed(2)} €
-                        </div>
-                        <div className="uk-width-1-2">Retiros: {(unclosedMoves.filter(m => m.type === 'withdrawal')
-                            .reduce((a, m) => a + Number(m.amount), 0)).toFixed(2)} €
-                        </div>
-                        <div className="uk-width-1-2">Ingresos: {(unclosedMoves.filter(m => m.type === 'deposit')
-                            .reduce((a, m) => a + Number(m.amount), 0)).toFixed(2)} €
-                        </div>
-                        <div
-                            className="uk-width-1-2">Devoluciones: {(unclosedMoves.filter(m => m.type === 'refund_cash_out')
-                            .reduce((a, m) => a + Number(m.amount), 0)).toFixed(2)} €
-                        </div>
-                    </div>
-                    <hr/>
-                    <h5>Movimientos en periodo</h5>
-                    <ul className="uk-list uk-list-divider" style={{maxHeight: 160, overflow: 'auto'}}>
-                        {unclosedMoves.map(m => (<li key={m.id} className="uk-flex uk-flex-between">
-                            <span>{typeLabel[m.type]} {m.note ? `- ${m.note}` : ''}</span>
-                            <span>{signed(m.type, Number(m.amount)).toFixed(2)} €</span>
-                        </li>))}
-                        {!unclosedMoves.length && <li>Sin movimientos</li>}
-                    </ul>
-                </div>
-
-                <div className="uk-margin-top uk-flex uk-flex-right">
-                    <button className="uk-button uk-button-default"
-                            onClick={() => setShowCloseModal(false)}>Cancelar
-                    </button>
-                    <button className="uk-button uk-button-primary uk-margin-small-left"
-                            onClick={doCloseCash}>Cerrar caja
-                    </button>
-                </div>
-            </div>
-            <div className="uk-modal-bg" onClick={() => setShowCloseModal(false)}></div>
-        </div>)}
-
-
-        {/* Offcanvas: Movimientos pendientes (listar/editar) */}
-        {showMovesCanvas && (<div style={{
-            position: 'fixed',
-            top: 0,
-            right: 0,
-            bottom: 0,
-            width: '420px',
-            background: '#fff',
-            boxShadow: '-2px 0 8px rgba(0,0,0,.2)',
-            zIndex: 1000,
-            padding: '16px',
-            overflow: 'auto'
-        }}>
-            <div className="uk-flex uk-flex-between uk-flex-middle">
-                <h3 className="uk-margin-remove">Movimientos de caja</h3>
-                <button className="uk-button uk-button-text" onClick={() => setShowMovesCanvas(false)}>Cerrar
-                    ✕
-                </button>
-            </div>
-            {cashErr && <div className="uk-alert-danger" uk-alert="true"><p>{cashErr}</p></div>}
-
-            <ul className="uk-list uk-list-divider">
-                {(unclosedMoves || []).map(m => (<li key={m.id}>
-                    {console.log(m)}
-                    {editingId === m.id ? (<div className="uk-grid-small" uk-grid="true">
                         <div className="uk-width-1-2">
                             <label className="uk-form-label">Tipo</label>
-                            <select className="uk-select" value={editingForm.type}
-                                    onChange={(e) => setEditingForm({
-                                        ...editingForm, type: e.target.value
-                                    })}>
-                                <option value="deposit">Ingreso</option>
-                                <option value="withdrawal">Retirada</option>
-                                <option value="refund_cash_out">Devolución</option>
-                                <option value="sale_cash_in">Venta efectivo</option>
+                            <select className="uk-select" value={movementForm.type}
+                                    onChange={(e) => setMovementForm({...movementForm, type: e.target.value})}>
+                                <option value="deposit">Entrada de dinero</option>
+                                <option value="withdrawal">Retirada de dinero</option>
                             </select>
                         </div>
                         <div className="uk-width-1-2">
                             <label className="uk-form-label">Importe</label>
-                            <input className="uk-input" type="number" step="0.01"
-                                   value={editingForm.amount}
-                                   onChange={(e) => setEditingForm({
-                                       ...editingForm, amount: e.target.value
-                                   })}/>
+                            <input className="uk-input" type="number" step="0.01" value={movementForm.amount}
+                                   onChange={(e) => setMovementForm({...movementForm, amount: e.target.value})}/>
+                        </div>
+                        <div className="uk-width-1-2">
+                            <label className="uk-form-label">Concepto</label>
+                            <input className="uk-input" type="text" value={movementForm.concept}
+                                   onChange={(e) => setMovementForm({...movementForm, concept: e.target.value})}/>
                         </div>
                         <div className="uk-width-1-2">
                             <label className="uk-form-label">Persona</label>
-                            <input className="uk-input" type="text" value={editingForm.person}
-                                   onChange={(e) => setEditingForm({
-                                       ...editingForm, person: e.target.value
-                                   })}/>
+                            <div className="uk-flex uk-flex-middle">
+                                <input className="uk-input" type="text" value={movementForm.person}
+                                       onChange={(e) => setMovementForm({
+                                           ...movementForm, person: e.target.value
+                                       })}/>
+                                <button
+                                    className="uk-button uk-button-default uk-button-small uk-margin-small-left"
+                                    onClick={() => {
+                                        // Abrir modal o mostrar desplegable para seleccionar usuario
+                                        setShowUserSelector(true);
+                                    }}
+                                    type="button"
+                                >
+                                    <span uk-icon="user"></span>
+                                </button>
+                            </div>
                         </div>
                         <div className="uk-width-1-1">
-                            <label className="uk-form-label">Nota</label>
-                            <input className="uk-input" type="text" value={editingForm.note}
-                                   onChange={(e) => setEditingForm({
-                                       ...editingForm, note: e.target.value
-                                   })}/>
+                            <label className="uk-form-label">Descripción (opcional)</label>
+                            <textarea className="uk-textarea" rows="2" value={movementForm.note}
+                                      onChange={(e) => setMovementForm({...movementForm, note: e.target.value})}/>
                         </div>
-                        <div className="uk-width-1-1 uk-text-right">
-                            <button className="uk-button uk-button-default"
-                                    onClick={() => setEditingId(null)}>Cancelar
-                            </button>
-                            <button className="uk-button uk-button-primary uk-margin-small-left"
-                                    onClick={saveEditMove}>Guardar
-                            </button>
+                    </div>
+
+                    <div className="uk-margin-top uk-flex uk-flex-right">
+                        <button className="uk-button uk-button-default"
+                                onClick={() => setShowMovementModal(false)}>Cancelar
+                        </button>
+                        <button className="uk-button uk-button-primary uk-margin-small-left"
+                                onClick={saveMovement}>Guardar
+                        </button>
+                    </div>
+                </div>
+                <div className="uk-modal-bg" onClick={() => setShowMovementModal(false)}></div>
+            </div>)
+        }
+
+        {/* Modal: Selector de usuario */
+        }
+        {
+            showUserSelector && (<div className="uk-modal uk-open" style={{display: 'block', zIndex: 1100}}>
+                <div className="uk-modal-dialog">
+                    <div className="uk-modal-header">
+                        <h3 className="uk-modal-title">Seleccionar Usuario</h3>
+                        <button className="uk-modal-close-default" type="button" uk-close
+                                onClick={() => setShowUserSelector(false)}></button>
+                    </div>
+                    <div className="uk-modal-body" style={{maxHeight: '60vh', overflow: 'auto'}}>
+                        <div className="uk-margin">
+                            <input
+                                className="uk-input"
+                                type="text"
+                                placeholder="Buscar usuario..."
+                                value={userSearchTerm}
+                                onChange={e => setUserSearchTerm(e.target.value)}
+                            />
                         </div>
-                    </div>) : (<div className="uk-flex uk-flex-between uk-flex-middle">
-                        <div>
-                            <div className="uk-text-bold">{typeLabel[m.type]} <span
-                                className="uk-text-muted">#{m.id}</span></div>
+                        <ul className="uk-list uk-list-divider">
+                            {Array.isArray(userResults) && userResults.map(user => (<li key={user.id}
+                                                                                        className="uk-flex uk-flex-between uk-flex-middle"
+                                                                                        style={{
+                                                                                            cursor: 'pointer',
+                                                                                            padding: '8px'
+                                                                                        }}
+                                                                                        onClick={() => {
+                                                                                            setMovementForm({
+                                                                                                ...movementForm,
+                                                                                                person: `${user.firstName} ${user.lastName}`,
+                                                                                                personUserId: user.id
+                                                                                            });
+                                                                                            setShowUserSelector(false);
+                                                                                        }}
+                            >
+                                <div>
+                                    <div>{user.firstName} {user.lastName}</div>
+                                    <div className="uk-text-small uk-text-muted">{user.phone || user.email}</div>
+                                </div>
+                                <div className="uk-label">{user.role}</div>
+                            </li>))}
+                            {(!Array.isArray(userResults) || userResults.length === 0) && (
+                                <li className="uk-text-center uk-text-muted">No se encontraron usuarios</li>)}
+                        </ul>
+                    </div>
+                    <div className="uk-modal-footer uk-text-right">
+                        <button className="uk-button uk-button-default"
+                                onClick={() => setShowUserSelector(false)}>Cerrar
+                        </button>
+                    </div>
+                </div>
+                <div className="uk-modal-bg" onClick={() => setShowUserSelector(false)}></div>
+            </div>)
+        }
+
+        {/* Modal: Cierre de caja */
+        }
+        {
+            showCloseModal && (<div className="uk-modal uk-open" style={{display: 'block'}}>
+                <div className="uk-modal-dialog uk-modal-body">
+                    <h3>Cierre de caja</h3>
+                    {cashErr && <div className="uk-alert-danger" uk-alert="true"><p>{cashErr}</p></div>}
+
+                    <div className="uk-grid-small" uk-grid="true">
+                        <div className="uk-width-1-2">
+                            <div className="uk-form-stacked">
+                                <label className="uk-form-label">Apertura</label>
+                                <input className="uk-input" type="text" readOnly
+                                       value={openingAmount.toFixed(2) + ' €'}/>
+                            </div>
+                        </div>
+                        <div className="uk-width-1-2">
+                            <div className="uk-form-stacked">
+                                <label className="uk-form-label">Movimientos</label>
+                                <input className="uk-input" type="text" readOnly value={sumMoves.toFixed(2) + ' €'}/>
+                            </div>
+                        </div>
+                        <div className="uk-width-1-2">
+                            <div className="uk-form-stacked">
+                                <label className="uk-form-label">Esperado</label>
+                                <input className="uk-input" type="text" readOnly
+                                       value={expectedAmount.toFixed(2) + ' €'}/>
+                            </div>
+                        </div>
+                        <div className="uk-width-1-2">
+                            <div className="uk-form-stacked">
+                                <label className="uk-form-label">Contado</label>
+                                <input className="uk-input" type="number" step="0.01" value={countedAmount}
+                                       onChange={(e) => setCountedAmount(e.target.value)}/>
+                            </div>
+                        </div>
+                        <div className="uk-width-1-2">
+                            <div className="uk-form-stacked">
+                                <label className="uk-form-label">Descuadre</label>
+                                <input className="uk-input" type="text" readOnly value={diffAmount.toFixed(2) + ' €'}/>
+                            </div>
+                        </div>
+                        <div className="uk-width-1-1">
+                            <label className="uk-form-label">Notas del cierre</label>
+                            <textarea className="uk-textarea" rows="2" value={closeNotes}
+                                      onChange={(e) => setCloseNotes(e.target.value)}/>
+                        </div>
+                    </div>
+
+                    {/* Resumen ventas y movimientos */}
+                    <div className="uk-margin uk-card uk-card-default uk-card-body">
+                        <h4 className="uk-margin-small">Resumen</h4>
+                        <div className="uk-grid-small" uk-grid="true">
+                            <div className="uk-width-1-2">Ventas
+                                (efectivo): {(unclosedMoves.filter(m => m.type === 'sale_cash_in')
+                                    .reduce((a, m) => a + Number(m.amount), 0)).toFixed(2)} €
+                            </div>
+                            <div className="uk-width-1-2">Retiros: {(unclosedMoves.filter(m => m.type === 'withdrawal')
+                                .reduce((a, m) => a + Number(m.amount), 0)).toFixed(2)} €
+                            </div>
+                            <div className="uk-width-1-2">Ingresos: {(unclosedMoves.filter(m => m.type === 'deposit')
+                                .reduce((a, m) => a + Number(m.amount), 0)).toFixed(2)} €
+                            </div>
                             <div
-                                className="uk-text-small uk-text-muted">{m.note || 'Sin nota'}{m.person ? ` • ${m.person}` : ''}</div>
+                                className="uk-width-1-2">Devoluciones: {(unclosedMoves.filter(m => m.type === 'refund_cash_out')
+                                .reduce((a, m) => a + Number(m.amount), 0)).toFixed(2)} €
+                            </div>
                         </div>
-                        <div>
+                        <hr/>
+                        <h5>Movimientos en periodo</h5>
+                        <ul className="uk-list uk-list-divider" style={{maxHeight: 160, overflow: 'auto'}}>
+                            {unclosedMoves.map(m => (<li key={m.id} className="uk-flex uk-flex-between">
+                                <span>{typeLabel[m.type]} {m.note ? `- ${m.note}` : ''}</span>
+                                <span>{signed(m.type, Number(m.amount)).toFixed(2)} €</span>
+                            </li>))}
+                            {!unclosedMoves.length && <li>Sin movimientos</li>}
+                        </ul>
+                    </div>
+
+                    <div className="uk-margin-top uk-flex uk-flex-right">
+                        <button className="uk-button uk-button-default"
+                                onClick={() => setShowCloseModal(false)}>Cancelar
+                        </button>
+                        <button className="uk-button uk-button-primary uk-margin-small-left"
+                                onClick={doCloseCash}>Cerrar caja
+                        </button>
+                    </div>
+                </div>
+                <div className="uk-modal-bg" onClick={() => setShowCloseModal(false)}></div>
+            </div>)
+        }
+
+
+        {/* Offcanvas: Movimientos pendientes (listar/editar) */
+        }
+        {
+            showMovesCanvas && (<div style={{
+                position: 'fixed',
+                top: 0,
+                right: 0,
+                bottom: 0,
+                width: '420px',
+                background: '#fff',
+                boxShadow: '-2px 0 8px rgba(0,0,0,.2)',
+                zIndex: 1000,
+                padding: '16px',
+                overflow: 'auto'
+            }}>
+                <div className="uk-flex uk-flex-between uk-flex-middle">
+                    <h3 className="uk-margin-remove">Movimientos de caja</h3>
+                    <button className="uk-button uk-button-text" onClick={() => setShowMovesCanvas(false)}>Cerrar
+                        ✕
+                    </button>
+                </div>
+                {cashErr && <div className="uk-alert-danger" uk-alert="true"><p>{cashErr}</p></div>}
+
+                <ul className="uk-list uk-list-divider">
+                    {(unclosedMoves || []).map(m => (<li key={m.id}>
+                        {console.log(m)}
+                        {editingId === m.id ? (<div className="uk-grid-small" uk-grid="true">
+                            <div className="uk-width-1-2">
+                                <label className="uk-form-label">Tipo</label>
+                                <select className="uk-select" value={editingForm.type}
+                                        onChange={(e) => setEditingForm({
+                                            ...editingForm, type: e.target.value
+                                        })}>
+                                    <option value="deposit">Ingreso</option>
+                                    <option value="withdrawal">Retirada</option>
+                                    <option value="refund_cash_out">Devolución</option>
+                                    <option value="sale_cash_in">Venta efectivo</option>
+                                </select>
+                            </div>
+                            <div className="uk-width-1-2">
+                                <label className="uk-form-label">Importe</label>
+                                <input className="uk-input" type="number" step="0.01"
+                                       value={editingForm.amount}
+                                       onChange={(e) => setEditingForm({
+                                           ...editingForm, amount: e.target.value
+                                       })}/>
+                            </div>
+                            <div className="uk-width-1-2">
+                                <label className="uk-form-label">Persona</label>
+                                <input className="uk-input" type="text" value={editingForm.person}
+                                       onChange={(e) => setEditingForm({
+                                           ...editingForm, person: e.target.value
+                                       })}/>
+                            </div>
+                            <div className="uk-width-1-1">
+                                <label className="uk-form-label">Nota</label>
+                                <input className="uk-input" type="text" value={editingForm.note}
+                                       onChange={(e) => setEditingForm({
+                                           ...editingForm, note: e.target.value
+                                       })}/>
+                            </div>
+                            <div className="uk-width-1-1 uk-text-right">
+                                <button className="uk-button uk-button-default"
+                                        onClick={() => setEditingId(null)}>Cancelar
+                                </button>
+                                <button className="uk-button uk-button-primary uk-margin-small-left"
+                                        onClick={saveEditMove}>Guardar
+                                </button>
+                            </div>
+                        </div>) : (<div className="uk-flex uk-flex-between uk-flex-middle">
+                            <div>
+                                <div className="uk-text-bold">{typeLabel[m.type]} <span
+                                    className="uk-text-muted">#{m.id}</span></div>
+                                <div
+                                    className="uk-text-small uk-text-muted">{m.note || 'Sin nota'}{m.person ? ` • ${m.person}` : ''}</div>
+                            </div>
+                            <div>
                                             <span
                                                 className="uk-margin-small-right">{signed(m.type, Number(m.amount)).toFixed(2)} €</span>
-                            <button className="uk-button uk-button-small"
-                                    onClick={() => startEditMove(m)} uk-icon="pencil">Editar
-                            </button>
-                            <button
-                                className="uk-button uk-button-danger uk-button-small uk-margin-small-left"
-                                onClick={() => removeMove(m.id)}>Borrar
-                            </button>
-                        </div>
-                    </div>)}
-                </li>))}
-                {(!unclosedMoves || !unclosedMoves.length) && <li>No hay movimientos pendientes.</li>}
-            </ul>
-        </div>)}
-    </div>);
+                                <button className="uk-button uk-button-small"
+                                        onClick={() => startEditMove(m)} uk-icon="pencil">Editar
+                                </button>
+                                <button
+                                    className="uk-button uk-button-danger uk-button-small uk-margin-small-left"
+                                    onClick={() => removeMove(m.id)}>Borrar
+                                </button>
+                            </div>
+                        </div>)}
+                    </li>))}
+                    {(!unclosedMoves || !unclosedMoves.length) && <li>No hay movimientos pendientes.</li>}
+                </ul>
+            </div>)
+        }
+    </div>)
+        ;
 }
