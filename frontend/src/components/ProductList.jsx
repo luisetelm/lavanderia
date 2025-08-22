@@ -45,7 +45,7 @@ export default function ProductList({products, searchProduct, setSearchProduct, 
                         aria-pressed={serviceFilter === 'dryWash'}
                         onClick={() => handleFilterClick('dryWash')}
                     >
-                        Lavado seco
+                        Seco
                     </button>
                     <button
                         type="button"
@@ -53,7 +53,7 @@ export default function ProductList({products, searchProduct, setSearchProduct, 
                         aria-pressed={serviceFilter === 'wetWash'}
                         onClick={() => handleFilterClick('wetWash')}
                     >
-                        Lavado mojado
+                        Mojado
                     </button>
                     <button
                         type="button"
