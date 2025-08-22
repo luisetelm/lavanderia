@@ -775,6 +775,7 @@ export default function POS({token, user}) {
 
             <ul className="uk-list uk-list-divider">
                 {(unclosedMoves || []).map(m => (<li key={m.id}>
+                    {console.log(m)}
                     {editingId === m.id ? (<div className="uk-grid-small" uk-grid="true">
                         <div className="uk-width-1-2">
                             <label className="uk-form-label">Tipo</label>

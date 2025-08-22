@@ -21,7 +21,7 @@ export default async function (fastify, opts) {
     });
 
     fastify.post('/', async (req, reply) => {
-        let { name, sku, basePrice, categoryId, description, type } = req.body;
+        let { name, sku, basePrice, categoryId, description, type, weight, bigClientPrice, serviceOptions } = req.body;
         if (!name || basePrice == null) return reply.status(400).send({ error: 'Name and basePrice required' });
 
         if (!sku || sku.trim() === '') {
@@ -40,6 +40,14 @@ export default async function (fastify, opts) {
                 categoryId: categoryId || null,
                 description,
                 type: type || 'service',
+                weight: weight != null ? parseFloat(weight) : 0,
+                bigClientPrice: bigClientPrice != null ? parseFloat(bigClientPrice) : 0,
+                serviceOptions: serviceOptions || {
+                    dryWash: false,
+                    wetWash: false,
+                    ironing: false,
+                    externalService: false
+                }
             },
         });
         return reply.status(201).send(product);
@@ -47,7 +55,7 @@ export default async function (fastify, opts) {
 
     fastify.put('/:id', async (req, reply) => {
         const { id } = req.params;
-        const { name, sku, basePrice, categoryId, description, type } = req.body;
+        const { name, sku, basePrice, categoryId, description, type, weight, bigClientPrice, serviceOptions } = req.body;
         try {
             const data = {};
             if (name !== undefined) data.name = name;
@@ -56,6 +64,9 @@ export default async function (fastify, opts) {
             if (categoryId !== undefined) data.categoryId = categoryId;
             if (description !== undefined) data.description = description;
             if (type !== undefined) data.type = type;
+            if (weight !== undefined) data.weight = parseFloat(weight);
+            if (bigClientPrice !== undefined) data.bigClientPrice = parseFloat(bigClientPrice);
+            if (serviceOptions !== undefined) data.serviceOptions = serviceOptions;
 
             const product = await prisma.product.update({
                 where: { id: Number(id) },

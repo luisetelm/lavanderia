@@ -159,8 +159,10 @@ export function updateCashMovement(token, id, payload) {
 export function deleteCashMovement(token, id) {
     return request(`/cash/movements/${id}`, token, {
         method: 'DELETE',
+        body: JSON.stringify({}),
     });
 }
+
 
 export function closeCashRegister(token, { countedAmount, notes, user }) {
     return request('/cash/close', token, {

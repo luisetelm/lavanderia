@@ -17,18 +17,21 @@ model ProductCategory {
 }
 
 model Product {
-  id          Int              @id @default(autoincrement())
-  name        String
-  sku         String?          @unique
-  type        String           @default("service")
-  basePrice   Float
-  categoryId  Int?
-  description String?
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
-  orderLines  OrderLine[]
-  category    ProductCategory? @relation(fields: [categoryId], references: [id])
-  variants    ProductVariant[]
+  id             Int              @id @default(autoincrement())
+  name           String
+  sku            String?          @unique
+  type           String           @default("service")
+  basePrice      Float
+  categoryId     Int?
+  description    String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  weight         Decimal?         @default(0) @db.Decimal(12, 2)
+  bigClientPrice Decimal?         @default(0) @db.Decimal(12, 2)
+  serviceOptions Json?            @default("{\"dryWash\": false, \"ironing\": false, \"wetWash\": false, \"externalService\": false}")
+  orderLines     OrderLine[]
+  category       ProductCategory? @relation(fields: [categoryId], references: [id])
+  variants       ProductVariant[]
 }
 
 model ProductVariant {
@@ -100,13 +103,13 @@ model User {
 
 model Notification {
   id        Int      @id @default(autoincrement())
-  orderid   Int
   type      String
   recipient String
   content   String
   status    String
   sentAt    DateTime @default(now())
-  order     Order    @relation(fields: [orderid], references: [id], map: "Notification_taskId_fkey")
+  orderid   Int?
+  order     Order?   @relation(fields: [orderid], references: [id], map: "Notification_taskId_fkey")
 }
 
 model CashClosure {
@@ -137,18 +140,6 @@ model CashMovement {
   order        Order?           @relation(fields: [orderid], references: [id])
   personUser   User?            @relation("person_movements", fields: [personUserId], references: [id])
   user         User             @relation("user_movements", fields: [userid], references: [id])
-}
-
-model Task {
-  id          Int       @id @default(autoincrement())
-  name        String
-  description String?
-  state       String
-  orderId     Int?
-  workerId    Int?
-  assignedAt  DateTime?
-  completedAt DateTime?
-  collectedAt DateTime?
 }
 
 enum CashMovementType {

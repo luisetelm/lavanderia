@@ -70,32 +70,31 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
             // 1. Procesar el pago
 
             const {order: updateOrder, change} = await payWithCash(token, order.id, received);
-            setOrder(order);
+            setOrder(updateOrder);
 
-            console.log(order)
 
             // 2. Registrar el movimiento de caja
-            // if (order.paid) {
-            try {
+            if (updateOrder.paid) {
+                try {
 
-                const payload = {
-                    type: 'sale_cash_in',
-                    amount: order.total,
-                    note: `Pago pedido #${order.orderNum || order.id}`,
-                    orderId: order.id,
-                    person: user.id
+                    const payload = {
+                        type: 'sale_cash_in',
+                        amount: order.total,
+                        note: `Pago pedido #${order.orderNum || order.id}`,
+                        orderId: order.id,
+                        person: user.id
+                    }
+
+                    console.log(payload)
+                    // Crear movimiento de caja por el pago en efectivo
+                    const cashMovement = await createCashMovement(token, payload);
+
+                } catch (movError) {
+                    console.error('Error al registrar movimiento de caja:', movError);
+                    // No bloqueamos el proceso si falla el registro del movimiento
                 }
 
-                console.log(payload)
-                // Crear movimiento de caja por el pago en efectivo
-                const cashMovement = await createCashMovement(token, payload);
-
-            } catch (movError) {
-                console.error('Error al registrar movimiento de caja:', movError);
-                // No bloqueamos el proceso si falla el registro del movimiento
             }
-
-            // }
 
 
             onPaid?.();
