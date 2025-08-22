@@ -493,8 +493,20 @@ export async function printSaleTicket(order, products = [], printerName) {
 // Reutiliza connectQZ, buildRawHtml y sendToPrinter ya definidos.
 
 function getTicketPrinterName() {
-    // Puedes guardar el nombre en localStorage: localStorage.setItem('posPrinterName', 'Nombre Impresora')
-    return localStorage.getItem('posPrinterName') || 'CLIENTE';
+    // Obtener el nombre de impresora guardado en localStorage si existe
+    const savedPrinter = localStorage.getItem('posPrinterName');
+
+    // Si hay un nombre guardado en localStorage, usar ese
+    if (savedPrinter) {
+        return savedPrinter;
+    }
+
+    // Detectar si estamos en localhost o en el servidor
+    const isLocalhost = window.location.hostname === 'localhost' ||
+        window.location.hostname === '127.0.0.1';
+
+    // Devolver el nombre de impresora según el entorno
+    return isLocalhost ? 'CLIENTE' : 'CLIENTE';
 }
 
 const fmtMoney = (n) => (Number(n || 0)).toFixed(2) + ' €';

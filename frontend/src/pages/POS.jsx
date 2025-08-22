@@ -174,7 +174,12 @@ export default function POS({token, user}) {
     };
 
     // Cálculos de caja
-    const openingAmount = useMemo(() => Number(lastClosure?.counted_amount || 0), [lastClosure]);
+    //const openingAmount = useMemo(() => Number(lastClosure?.counted_amount || 0), [lastClosure]);
+    const openingAmount = useMemo(() => {
+        if (!lastClosure) return 0;
+        // Accedemos al valor contado en el último cierre, que será la apertura para el actual
+        return Number(lastClosure.countedamount || lastClosure.countedAmount || 0);
+    }, [lastClosure]);
     const sumMoves = useMemo(() => (unclosedMoves || []).reduce((acc, m) => acc + signed(m.type, Number(m.amount)), 0), [unclosedMoves]);
     const expectedAmount = useMemo(() => Number((openingAmount + sumMoves).toFixed(2)), [openingAmount, sumMoves]);
     const diffAmount = useMemo(() => {
