@@ -26,7 +26,7 @@ export default function ProductList({products, searchProduct, setSearchProduct, 
 
     return (
         <div>
-            <div className={"uk-flex uk-flex-between uk-flex-middle"}>
+            <div className={"uk-flex uk-flex-column"}>
             <h4>Productos</h4>
 
             <div className="uk-margin-small">
