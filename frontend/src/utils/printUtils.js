@@ -60,48 +60,43 @@ function buildCut({feed = 0, variant = 'auto', partial = false, feedAfter = 0} =
     return ESC_INIT + feedBlock + CUT_ESC_I;
 }
 
-// Define tamaños de texto más grandes
-const SIZE_NORMAL = '\x1D\x21\x00'       // Tamaño normal
-const SIZE_DOUBLE = '\x1D\x21\x11'       // Doble ancho y alto
-const SIZE_TRIPLE = '\x1D\x21\x22'       // Triple ancho y alto (más grande)
-const SIZE_HUGE = '\x1D\x21\x33'         // Ancho x3 y alto x3 (muy grande)
+const SIZE_NORMAL = '\x1D\x21\x00'        // Normal
+const SIZE_DOUBLE = '\x1D\x21\x11'        // Doble ancho y alto
 
 export async function printWashLabels({
                                           orderNum, clientFirstName, clientLastName, totalItems, fechaLimite = ''
                                       }) {
-    const clientName = `${clientFirstName} ${clientLastName}`.trim()
-    const fecha = fechaLimite ? new Date(fechaLimite).toLocaleDateString('es-ES', {
-        year: 'numeric', month: '2-digit', day: '2-digit'
-    }) : ''
+    const clientName = `${clientFirstName} ${clientLastName}`.trim();
+    const fecha = fechaLimite
+        ? new Date(fechaLimite).toLocaleDateString('es-ES', { year: 'numeric', month: '2-digit', day: '2-digit' })
+        : '';
 
-    const printData = []
-    printData.push({type: 'raw', format: 'command', data: ESC_INIT})
+    const printData = [];
+    printData.push({ type: 'raw', format: 'command', data: ESC_INIT });
 
     for (let i = 1; i <= totalItems; i++) {
-        const lines = `Cliente: ${clientName}${LF}` + `Pedido: ${orderNum}${LF}` + `Prendas: ${i} de ${totalItems}${LF}` + (fecha ? `Fecha: ${fecha}${LF}` : '')
+        const lines = `Cliente: ${clientName}${LF}` +
+            `Pedido: ${orderNum}${LF}` +
+            `Prendas: ${i} de ${totalItems}${LF}` +
+            (fecha ? `Fecha: ${fecha}${LF}` : '');
 
-        // Usar tamaño HUGE (mucho más grande)
-        printData.push({type: 'raw', format: 'command', data: SIZE_HUGE})
-        printData.push({type: 'raw', format: 'command', data: lines})
+        // Usar tamaño DOUBLE (el más grande soportado)
+        printData.push({ type: 'raw', format: 'command', data: SIZE_DOUBLE });
+        printData.push({ type: 'raw', format: 'command', data: lines });
 
         // Restablecer a tamaño normal
-        printData.push({type: 'raw', format: 'command', data: SIZE_NORMAL})
+        printData.push({ type: 'raw', format: 'command', data: SIZE_NORMAL });
 
         // Corte al borde
-        printData.push({
-            type: 'raw', format: 'command', data: buildCut({feed: 1})
-        })
+        printData.push({ type: 'raw', format: 'command', data: buildCut({ feed: 1 }) });
     }
 
     // Etiqueta inicial para ajustar el papel
-    printData.push({
-        type: 'raw', format: 'command', data: buildCut({feed: 6})
-    })
+    printData.push({ type: 'raw', format: 'command', data: buildCut({ feed: 6 }) });
 
     const impresora = getTicketWasherName();
     console.log(impresora);
     await sendToPrinter(impresora, printData);
-
 }
 
 
