@@ -60,127 +60,48 @@ function buildCut({feed = 0, variant = 'auto', partial = false, feedAfter = 0} =
     return ESC_INIT + feedBlock + CUT_ESC_I;
 }
 
-
-// frontend/src/utils/printUtils.js
-// frontend/src/utils/printUtils.js
-const SIZE_NORMAL = '\x1D\x21\x00'   // Tamaño normal
-const SIZE_DOUBLE = '\x1D\x21\x11'   // Doble ancho y alto
+// Define tamaños de texto más grandes
+const SIZE_NORMAL = '\x1D\x21\x00'       // Tamaño normal
+const SIZE_DOUBLE = '\x1D\x21\x11'       // Doble ancho y alto
+const SIZE_TRIPLE = '\x1D\x21\x22'       // Triple ancho y alto (más grande)
+const SIZE_HUGE = '\x1D\x21\x33'         // Ancho x3 y alto x3 (muy grande)
 
 export async function printWashLabels({
                                           orderNum, clientFirstName, clientLastName, totalItems, fechaLimite = ''
                                       }) {
     const clientName = `${clientFirstName} ${clientLastName}`.trim()
-    const fecha = fechaLimite
-        ? new Date(fechaLimite).toLocaleDateString('es-ES', {
-            year: 'numeric', month: '2-digit', day: '2-digit'
-        })
-        : ''
+    const fecha = fechaLimite ? new Date(fechaLimite).toLocaleDateString('es-ES', {
+        year: 'numeric', month: '2-digit', day: '2-digit'
+    }) : ''
 
     const printData = []
     printData.push({type: 'raw', format: 'command', data: ESC_INIT})
 
-
     for (let i = 1; i <= totalItems; i++) {
-        const lines =
-            `Cliente: ${clientName}${LF}` +
-            `Pedido: ${orderNum}${LF}` +
-            `Prendas: ${i} de ${totalItems}${LF}` +
-            (fecha ? `Fecha: ${fecha}${LF}` : '')
+        const lines = `Cliente: ${clientName}${LF}` + `Pedido: ${orderNum}${LF}` + `Prendas: ${i} de ${totalItems}${LF}` + (fecha ? `Fecha: ${fecha}${LF}` : '')
 
-        // Texto en tamaño grande
-        printData.push({type: 'raw', format: 'command', data: SIZE_DOUBLE})
+        // Usar tamaño HUGE (mucho más grande)
+        printData.push({type: 'raw', format: 'command', data: SIZE_HUGE})
         printData.push({type: 'raw', format: 'command', data: lines})
-
 
         // Restablecer a tamaño normal
         printData.push({type: 'raw', format: 'command', data: SIZE_NORMAL})
 
-        // Corte al borde (sin feed adicional para que corte justo después del contenido)
+        // Corte al borde
         printData.push({
-            type: 'raw',
-            format: 'command',
-            data: buildCut({feed: 1})
+            type: 'raw', format: 'command', data: buildCut({feed: 1})
         })
     }
 
-    // Etiqueta "invisible" inicial para ajustar el papel
+    // Etiqueta inicial para ajustar el papel
     printData.push({
-        type: 'raw',
-        format: 'command',
-        // Avanzamos 5 líneas vacías y cortamos
-        data: buildCut({feed: 6})
+        type: 'raw', format: 'command', data: buildCut({feed: 6})
     })
 
-    await sendToPrinter(`LAVADORA`, printData)
-}
+    const impresora = getTicketWasherName();
+    console.log(impresora);
+    await sendToPrinter(impresora, printData);
 
-export async function printWashLabelsOLD({
-                                             orderNum, clientFirstName, clientLastName, totalItems, fechaLimite = '',
-                                         }) {
-    const clientName = `${clientFirstName} ${clientLastName}`.trim();
-    const fechaLimiteFormatted = new Date(fechaLimite).toLocaleDateString('es-ES', {
-        year: 'numeric', month: '2-digit', day: '2-digit',
-    });
-
-    let labelsHtml = '';
-    for (let i = 1; i <= totalItems; i++) {
-        labelsHtml += `
-      <div>
-        <div>Cliente: ${clientName}</div>
-        <div>Pedido: ${orderNum}</div>
-        <div>Prendas: ${i} de ${totalItems}</div>
-        <div>Fecha: ${fechaLimiteFormatted}</div>
-      </div>
-      <div class="cut"></div>
-    `;
-    }
-
-    const fullHtml = `
-    <html>
-      <head>
-        <title>Etiquetas ${orderNum}</title>
-        <style>
-        
-        @page {
-  margin: 0;
-  size: auto; /* deja que la impresora decida la altura, ancho adaptado */
-}
-
-
-            body {
-                font-size: 1.2em;
-                font-family: monospace;
-                margin-top: 0;
-                padding: 0 20px 20px 20px;
-                max-width: 70mm;
-            }
-            .cut {
-                /* después de la línea de corte, hacer salto */
-                break-after: page;
-                page-break-after: always;
-            }
-        </style>
-      </head>
-      <body>
-        ${labelsHtml}
-      </body>
-    </html>
-  `;
-
-    try {
-        await sendToPrinter('LAVADORA', buildRawHtml(fullHtml));
-    } catch (e) {
-        // fallback visual si falla
-        console.warn('QZ Tray falló, recayendo a window.print()', e);
-        const w = window.open('', 'print_labels_fallback');
-        w.document.write(fullHtml);
-        w.document.close();
-        w.focus();
-        setTimeout(() => {
-            w.print();
-            w.close();
-        }, 300);
-    }
 }
 
 
@@ -196,9 +117,7 @@ export async function printSaleTicket(order, products = [], printerName) {
 
     // Generar el código QR como data URL
     const qrCodeDataUrl = await QRCode.toDataURL(`https://share.google/2s6o76QI8BlyONLeg`, {
-        width: 100,
-        margin: 1,
-        errorCorrectionLevel: 'M',
+        width: 100, margin: 1, errorCorrectionLevel: 'M',
     });
 
     // Logo de la empresa en Base64
@@ -416,9 +335,7 @@ export async function printSaleTicket(order, products = [], printerName) {
           <div class="client-info">
             <div><strong>Cliente:</strong> ${clientName}</div>
             ${client.phone ? `<div><strong>Teléfono:</strong> ${client.phone}</div>` : ''}
-            ${order.paid
-        ? `<div class="payment-info">Pago: ${order.paymentMethod === 'cash' ? 'Efectivo' : 'Tarjeta'}</div>`
-        : `<div class="ticket-no-pagado">Pendiente de pago</div>`}
+            ${order.paid ? `<div class="payment-info">Pago: ${order.paymentMethod === 'cash' ? 'Efectivo' : 'Tarjeta'}</div>` : `<div class="ticket-no-pagado">Pendiente de pago</div>`}
           </div>
           
           <hr/>
@@ -498,11 +415,26 @@ function getTicketPrinterName() {
     }
 
     // Detectar si estamos en localhost o en el servidor
-    const isLocalhost = window.location.hostname === 'localhost' ||
-        window.location.hostname === '127.0.0.1';
+    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
     // Devolver el nombre de impresora según el entorno
     return isLocalhost ? 'Brother HL-L2445DW Printer' : 'CLIENTE';
+}
+
+function getTicketWasherName() {
+    // Obtener el nombre de impresora guardado en localStorage si existe
+    const savedPrinter = localStorage.getItem('posPrinterName');
+
+    // Si hay un nombre guardado en localStorage, usar ese
+    if (savedPrinter) {
+        return savedPrinter;
+    }
+
+    // Detectar si estamos en localhost o en el servidor
+    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+
+    // Devolver el nombre de impresora según el entorno
+    return isLocalhost ? 'Brother HL-L2445DW Printer' : 'LAVADORA';
 }
 
 const fmtMoney = (n) => (Number(n || 0)).toFixed(2) + ' €';
@@ -513,15 +445,9 @@ const fmtDate = (d) => {
 
 export async function printCashMovementTicket(movement, opts = {}) {
     const printerName = opts.printerName || getTicketPrinterName();
-    const typeLabel = movement.type === 'withdrawal' ? 'Retirada' :
-        movement.type === 'deposit' ? 'Ingreso' :
-            movement.type === 'refund_cash_out' ? 'Devolución' :
-                movement.type === 'sale_cash_in' ? 'Venta (efectivo)' :
-                    movement.type;
+    const typeLabel = movement.type === 'withdrawal' ? 'Retirada' : movement.type === 'deposit' ? 'Ingreso' : movement.type === 'refund_cash_out' ? 'Devolución' : movement.type === 'sale_cash_in' ? 'Venta (efectivo)' : movement.type;
 
-    const amountSigned = ['withdrawal', 'refund_cash_out'].includes(movement.type)
-        ? -Math.abs(Number(movement.amount))
-        : Math.abs(Number(movement.amount));
+    const amountSigned = ['withdrawal', 'refund_cash_out'].includes(movement.type) ? -Math.abs(Number(movement.amount)) : Math.abs(Number(movement.amount));
 
     const html = `
     <html>

@@ -1,5 +1,5 @@
 // backend/src/routes/users.js
-import { hash } from 'bcrypt';
+import {hash} from 'bcrypt';
 
 const isValidSpanishPhone = (phone) => /^[6789]\d{8}$/.test(phone);
 
@@ -9,7 +9,7 @@ export default async function (fastify, opts) {
 
     // Listar usuarios
     fastify.get('/', async (req, reply) => {
-        const { q, page = 0, size = 50 } = req.query;
+        const {q, page = 0, size = 50} = req.query;
         const pageNum = parseInt(page) || 0;
         const pageSize = parseInt(size) || 50;
         const skip = pageNum * pageSize;
@@ -17,21 +17,20 @@ export default async function (fastify, opts) {
         // Construir el filtro de búsqueda si existe un término
         const where = {};
         if (q) {
-            where.OR = [
-                { firstName: { contains: q, mode: 'insensitive' } },
-                { lastName: { contains: q, mode: 'insensitive' } },
-                { email: { contains: q, mode: 'insensitive' } },
-                { phone: { contains: q, mode: 'insensitive' } }
-            ];
+            where.OR = [{firstName: {contains: q, mode: 'insensitive'}}, {
+                lastName: {
+                    contains: q,
+                    mode: 'insensitive'
+                }
+            }, {email: {contains: q, mode: 'insensitive'}}, {phone: {contains: q, mode: 'insensitive'}}];
         }
 
         // Obtener el total de registros para la paginación
-        const total = await prisma.user.count({ where });
+        const total = await prisma.user.count({where});
 
         // Obtener los usuarios con paginación
         const users = await prisma.user.findMany({
-            where,
-            select: {
+            where, select: {
                 id: true,
                 firstName: true,
                 lastName: true,
@@ -39,6 +38,7 @@ export default async function (fastify, opts) {
                 role: true,
                 phone: true,
                 isActive: true,
+                isbigclient: true,
                 createdAt: true,
                 denominacionsocial: true,
                 nif: true,
@@ -48,10 +48,7 @@ export default async function (fastify, opts) {
                 provincia: true,
                 codigopostal: true,
                 pais: true,
-            },
-            orderBy: { createdAt: 'desc' },
-            skip,
-            take: pageSize,
+            }, orderBy: {createdAt: 'desc'}, skip, take: pageSize,
         });
 
         // Calcular metadatos de paginación
@@ -59,8 +56,7 @@ export default async function (fastify, opts) {
 
         // Construir respuesta con metadatos
         return {
-            data: users,
-            meta: {
+            data: users, meta: {
                 total,
                 page: pageNum,
                 size: pageSize,
@@ -73,10 +69,9 @@ export default async function (fastify, opts) {
 
     // Obtener uno
     fastify.get('/:id', async (req, reply) => {
-        const { id } = req.params;
+        const {id} = req.params;
         const user = await prisma.user.findUnique({
-            where: { id: Number(id) },
-            select: {
+            where: {id: Number(id)}, select: {
                 id: true,
                 firstName: true,
                 lastName: true,
@@ -84,6 +79,7 @@ export default async function (fastify, opts) {
                 role: true,
                 phone: true,
                 isActive: true,
+                isbigclient: true,
                 denominacionsocial: true,
                 nif: true,
                 tipopersona: true,
@@ -94,24 +90,40 @@ export default async function (fastify, opts) {
                 pais: true,
             },
         });
-        if (!user) return reply.status(404).send({ error: 'Usuario no encontrado' });
+        if (!user) return reply.status(404).send({error: 'Usuario no encontrado'});
         return user;
     });
 
     // Crear usuario
     fastify.post('/', async (req, reply) => {
-        const { firstName, lastName, email, password, role, phone, isActive,
-            denominacionsocial, nif, tipopersona, direccion, localidad, provincia, codigopostal, pais } = req.body;
+        const {
+            firstName,
+            lastName,
+            email,
+            password,
+            role,
+            phone,
+            isActive,
+            isbigclient,
+            denominacionsocial,
+            nif,
+            tipopersona,
+            direccion,
+            localidad,
+            provincia,
+            codigopostal,
+            pais
+        } = req.body;
 
         if (!firstName || !lastName || !email || !password) {
-            return reply.status(400).send({ error: 'firstName, lastName, email y password son obligatorios' });
+            return reply.status(400).send({error: 'firstName, lastName, email y password son obligatorios'});
         }
         if (phone && !isValidSpanishPhone(phone)) {
-            return reply.status(400).send({ error: 'Teléfono inválido. Formato español, p.ej. 600123456' });
+            return reply.status(400).send({error: 'Teléfono inválido. Formato español, p.ej. 600123456'});
         }
 
-        const exists = await prisma.user.findUnique({ where: { email } });
-        if (exists) return reply.status(400).send({ error: 'Email ya registrado' });
+        const exists = await prisma.user.findUnique({where: {email}});
+        if (exists) return reply.status(400).send({error: 'Email ya registrado'});
 
         const hashed = await hash(password, 10);
         const user = await prisma.user.create({
@@ -123,6 +135,7 @@ export default async function (fastify, opts) {
                 role: role || 'customer',
                 phone: phone || null,
                 isActive: isActive !== undefined ? isActive : true,
+                isbigclient: isbigclient || false,
                 denominacionsocial: denominacionsocial || null,
                 nif: nif || null,
                 tipopersona: tipopersona || null,
@@ -131,8 +144,7 @@ export default async function (fastify, opts) {
                 provincia: provincia || null,
                 codigopostal: codigopostal || null,
                 pais: pais || null,
-            },
-            select: {
+            }, select: {
                 id: true,
                 firstName: true,
                 lastName: true,
@@ -140,6 +152,7 @@ export default async function (fastify, opts) {
                 role: true,
                 phone: true,
                 isActive: true,
+                isbigclient: true,
                 denominacionsocial: true,
                 nif: true,
                 tipopersona: true,
@@ -155,9 +168,25 @@ export default async function (fastify, opts) {
 
     // Editar usuario
     fastify.put('/:id', async (req, reply) => {
-        const { id } = req.params;
-        const { firstName, lastName, email, password, role, phone, isActive,
-            denominacionsocial, nif, tipopersona, direccion, localidad, provincia, codigopostal, pais } = req.body;
+        const {id} = req.params;
+        const {
+            firstName,
+            lastName,
+            email,
+            password,
+            role,
+            phone,
+            isActive,
+            isbigclient,
+            denominacionsocial,
+            nif,
+            tipopersona,
+            direccion,
+            localidad,
+            provincia,
+            codigopostal,
+            pais
+        } = req.body;
         const data = {
             firstName,
             lastName,
@@ -165,6 +194,7 @@ export default async function (fastify, opts) {
             role,
             phone,
             isActive,
+            isbigclient,
             denominacionsocial,
             nif,
             tipopersona,
@@ -178,10 +208,11 @@ export default async function (fastify, opts) {
             data.password = await hash(password, 10);
         }
         try {
+
+            console.log(data);
+
             const user = await prisma.user.update({
-                where: { id: Number(id) },
-                data,
-                select: {
+                where: {id: Number(id)}, data, select: {
                     id: true,
                     firstName: true,
                     lastName: true,
@@ -189,6 +220,7 @@ export default async function (fastify, opts) {
                     role: true,
                     phone: true,
                     isActive: true,
+                    isbigclient: true,
                     denominacionsocial: true,
                     nif: true,
                     tipopersona: true,
@@ -202,30 +234,24 @@ export default async function (fastify, opts) {
             return user;
         } catch (e) {
             console.log(e);
-            return reply.status(404).send({ error: 'Usuario no encontrado' });
+            return reply.status(404).send({error: 'Usuario no encontrado'});
         }
     });
 
     // Activar/desactivar
     fastify.patch('/:id/activate', async (req, reply) => {
-        const { id } = req.params;
-        const { isActive } = req.body;
-        if (typeof isActive !== 'boolean') return reply.status(400).send({ error: 'isActive booleano requerido' });
+        const {id} = req.params;
+        const {isActive} = req.body;
+        if (typeof isActive !== 'boolean') return reply.status(400).send({error: 'isActive booleano requerido'});
         try {
             const user = await prisma.user.update({
-                where: { id: Number(id) },
-                data: { isActive },
-                select: {
-                    id: true,
-                    firstName: true,
-                    lastName: true,
-                    email: true,
-                    isActive: true,
+                where: {id: Number(id)}, data: {isActive}, select: {
+                    id: true, firstName: true, lastName: true, email: true, isActive: true,
                 },
             });
             return user;
         } catch {
-            return reply.status(404).send({ error: 'Usuario no encontrado' });
+            return reply.status(404).send({error: 'Usuario no encontrado'});
         }
     });
 }

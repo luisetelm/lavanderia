@@ -83,7 +83,13 @@ export default async function (fastify, opts) {
             const product = await prisma.product.findUnique({where: {id: l.productId}});
             if (!product) return reply.status(400).send({error: `Producto inválido: ${l.productId}`});
 
+            // Determinar qué precio usar según si el cliente es gran cliente
             let unitPrice = product.basePrice;
+            if (client.isbigclient && product.bigClientPrice && product.bigClientPrice > 0) {
+                unitPrice = parseFloat(product.bigClientPrice);
+            }
+
+            // Aplicar modificador de variante si existe
             if (l.variantId) {
                 const variant = await prisma.productVariant.findUnique({where: {id: l.variantId}});
                 if (variant) unitPrice += variant.priceModifier;

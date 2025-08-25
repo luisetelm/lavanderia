@@ -95,6 +95,7 @@ model User {
   pais               String?        @db.VarChar
   provincia          String?        @db.VarChar
   tipopersona        String?        @db.VarChar
+  isbigclient        Boolean        @default(false)
   cashClosures       CashClosure[]
   personMovements    CashMovement[] @relation("person_movements")
   cashMovements      CashMovement[] @relation("user_movements")

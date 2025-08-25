@@ -217,14 +217,28 @@ export default function POS({token, user}) {
             return;
         }
         setError('');
-        const linesPayload = cart.map((c) => ({
-            productId: c.productId, quantity: c.quantity,
-        }));
+
+        const linesPayload = cart.map((c) => {
+            const product = products.find(p => p.id === c.productId);
+            const isBigClient = selectedUser?.isBigClient;
+            const appliedPrice = getPriceForClient(product, isBigClient);
+
+            return {
+                productId: c.productId,
+                quantity: c.quantity,
+                unitPrice: appliedPrice // Enviar el precio que se aplicó
+            };
+        });
+
+
         const payload = {
             lines: linesPayload, observaciones, fechaLimite: fechaLimite || undefined,
         };
+
+
         if (selectedUser) {
             payload.clientId = selectedUser.id;
+
         } else {
             payload.clientFirstName = quickFirstName;
             payload.clientLastName = quickLastName;
@@ -284,9 +298,18 @@ export default function POS({token, user}) {
         }
     };
 
+    const getPriceForClient = (product, isClient = false) => {
+        if (isClient && product.bigClientPrice && product.bigClientPrice > 0) {
+            return product.bigClientPrice;
+        }
+        return product.basePrice;
+    };
+
     const total = cart.reduce((sum, c) => {
         const p = products.find((prod) => prod.id === c.productId);
-        return sum + (p?.basePrice || 0) * c.quantity;
+        // Comprobar si el cliente seleccionado es gran cliente
+        const isbigclient = selectedUser && selectedUser.isbigclient;
+        return sum + (p ? getPriceForClient(p, isbigclient) : 0) * c.quantity;
     }, 0);
 
     const updateQuantity = (productId, newQuantity) => {
@@ -497,7 +520,8 @@ export default function POS({token, user}) {
                             {(showTicketSection || !isValidated) && (<div className="uk-margin">
                                 <h3 className="uk-heading-divider">Productos añadidos</h3>
                                 {!order && (<div className="uk-margin">
-                                    <CartSummary cart={cart} products={products}
+                                    <CartSummary cart={cart} products={products} isbigclient={selectedUser?.isbigclient}
+
                                                  onUpdateQuantity={updateQuantity} onRemove={removeFromCart}/>
                                     <div className="uk-margin">
                                         <button className="uk-button uk-button-primary uk-width-1-1"

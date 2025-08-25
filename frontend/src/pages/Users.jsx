@@ -13,6 +13,7 @@ function UserForm({initial = {}, onSave, token, onCancel}) {
         phone: initial.phone || '',
         password: '',
         isActive: initial.isActive !== undefined ? Boolean(initial.isActive) : true,
+        isbigclient: initial.isbigclient !== undefined ? Boolean(initial.isbigclient) : false,
         denominacionsocial: initial.denominacionsocial || '',
         nif: initial.nif || '',
         tipopersona: initial.tipopersona || '',
@@ -22,11 +23,14 @@ function UserForm({initial = {}, onSave, token, onCancel}) {
         codigopostal: initial.codigopostal || '',
         pais: initial.pais || '',
     });
+
+    console.log(form)
     const [error, setError] = useState('');
 
     const submit = async (e) => {
         e.preventDefault();
         try {
+            console.log(form)
             if (initial.id) {
                 await updateUser(token, initial.id, form);
             } else {
@@ -144,6 +148,18 @@ function UserForm({initial = {}, onSave, token, onCancel}) {
                         onChange={e => setForm(f => ({...f, isActive: e.target.checked}))}
                     />{' '}
                     Activo
+                </label>
+            </div>
+
+            <div className="uk-margin">
+                <label>
+                    <input
+                        className="uk-checkbox"
+                        type="checkbox"
+                        checked={form.isbigclient}
+                        onChange={e => setForm(f => ({...f, isbigclient: e.target.checked}))}
+                    />{' '}
+                    Tarifa Gran Cliente
                 </label>
             </div>
 
