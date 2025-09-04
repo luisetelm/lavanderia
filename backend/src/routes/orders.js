@@ -317,7 +317,7 @@ export default async function (fastify, opts) {
 
     fastify.get('/', async (req, reply) => {
         const prisma = fastify.prisma;
-        const {q, status, sortBy = 'createdAt', sortOrder = 'desc'} = req.query || {};
+        const {q, status, sortBy = 'createdAt', sortOrder = 'desc', startDate, endDate} = req.query || {};
 
         const where = {};
 
@@ -325,21 +325,27 @@ export default async function (fastify, opts) {
             where.status = status;
         }
 
+        if (startDate && endDate) {
+            const startDateObj = new Date(startDate);
+            const endDateObj = new Date(endDate);
+            where.createdAt = {
+                gte: startDateObj, lte: endDateObj,
+            };
+        }
+
+
         if (q && String(q).trim()) {
             const term = String(q).trim();
-            where.OR = [
-                {orderNum: {contains: term, mode: 'insensitive'}},
-                {
-                    client: {
-                        OR: [
-                            {firstName: {contains: term, mode: 'insensitive'}},
-                            {lastName: {contains: term, mode: 'insensitive'}},
-                            {email: {contains: term, mode: 'insensitive'}},
-                            {phone: {contains: term}},
-                        ],
-                    },
+            where.OR = [{orderNum: {contains: term, mode: 'insensitive'}}, {
+                client: {
+                    OR: [{firstName: {contains: term, mode: 'insensitive'}}, {
+                        lastName: {
+                            contains: term,
+                            mode: 'insensitive'
+                        }
+                    }, {email: {contains: term, mode: 'insensitive'}}, {phone: {contains: term}},],
                 },
-            ];
+            },];
         }
 
         // Configurar ordenación
@@ -351,17 +357,13 @@ export default async function (fastify, opts) {
 
         try {
             const orders = await prisma.order.findMany({
-                where,
-                include: {
-                    lines: {include: {product: true}},
-                    client: {
+                where, include: {
+                    lines: {include: {product: true}}, client: {
                         select: {id: true, firstName: true, lastName: true, phone: true, email: true},
-                    },
-                    notification: {
+                    }, notification: {
                         select: {id: true, type: true, sentAt: true, status: true, content: true}
                     }
-                },
-                orderBy: {[orderByField]: orderByDirection},
+                }, orderBy: {[orderByField]: orderByDirection},
             });
             return reply.send(orders);
         } catch (err) {
@@ -419,9 +421,7 @@ export default async function (fastify, opts) {
                     notes: l.notes || '',
                     productName: l.product?.name || '',
                     product: {
-                        id: l.product?.id,
-                        name: l.product?.name,
-                        basePrice: l.product?.basePrice,
+                        id: l.product?.id, name: l.product?.name, basePrice: l.product?.basePrice,
                     },
                 };
             });
@@ -496,8 +496,7 @@ export default async function (fastify, opts) {
             const orders = await prisma.order.findMany({
                 where: {
                     fechaLimite: {in: dateObjects}
-                },
-                include: {
+                }, include: {
                     lines: {
                         include: {product: true}
                     }
@@ -507,9 +506,7 @@ export default async function (fastify, opts) {
             // Agrupar por fecha
             const loadByDay = {};
             dates.forEach(date => {
-                loadByDay[date] = orders.filter(o =>
-                    o.fechaLimite.toISOString().split('T')[0] === date
-                );
+                loadByDay[date] = orders.filter(o => o.fechaLimite.toISOString().split('T')[0] === date);
             });
 
             // Calcular fecha sugerida solo en la primera página (page = 0)
@@ -532,8 +529,7 @@ export default async function (fastify, opts) {
                     // Solo considerar fechas que cumplan el mínimo de 2 días
                     if (dateStr >= minDateStr) {
                         const ordersForDay = loadByDay[dateStr] || [];
-                        const totalItems = ordersForDay.reduce((sum, order) =>
-                            sum + order.lines.reduce((s, l) => s + l.quantity, 0), 0);
+                        const totalItems = ordersForDay.reduce((sum, order) => sum + order.lines.reduce((s, l) => s + l.quantity, 0), 0);
 
                         console.log(`Date ${dateStr} has ${totalItems} total items`);
 
@@ -585,22 +581,18 @@ export default async function (fastify, opts) {
                         // Buscar en las fechas de esta página
                         const searchDateObjects = searchDates.map(dateStr => new Date(dateStr + 'T00:00:00.000Z'));
                         const searchOrders = await prisma.order.findMany({
-                            where: { fechaLimite: { in: searchDateObjects } },
-                            include: { lines: true }
+                            where: {fechaLimite: {in: searchDateObjects}}, include: {lines: true}
                         });
 
                         const searchLoadByDay = {};
                         searchDates.forEach(date => {
-                            searchLoadByDay[date] = searchOrders.filter(o =>
-                                o.fechaLimite.toISOString().split('T')[0] === date
-                            );
+                            searchLoadByDay[date] = searchOrders.filter(o => o.fechaLimite.toISOString().split('T')[0] === date);
                         });
 
                         for (const dateStr of searchDates) {
                             if (dateStr >= minDateStr) {
                                 const ordersForDay = searchLoadByDay[dateStr] || [];
-                                const totalItems = ordersForDay.reduce((sum, order) =>
-                                    sum + order.lines.reduce((s, l) => s + l.quantity, 0), 0);
+                                const totalItems = ordersForDay.reduce((sum, order) => sum + order.lines.reduce((s, l) => s + l.quantity, 0), 0);
 
                                 if (totalItems < 8) {
                                     suggestedDate = dateStr;
@@ -624,9 +616,7 @@ export default async function (fastify, opts) {
             }
 
             return {
-                dates,
-                loadByDay,
-                suggestedDate: pageNum === 0 ? suggestedDate : null
+                dates, loadByDay, suggestedDate: pageNum === 0 ? suggestedDate : null
             };
 
         } catch (error) {

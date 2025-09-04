@@ -67,16 +67,23 @@ export function fetchDates(page, token) {
     });
 }
 
-export function fetchOrders(token, {q, status, sortBy, sortOrder} = {}) {
+export function fetchOrders(token, {q, status, sortBy, sortOrder, startDate, endDate} = {}) {
     const params = new URLSearchParams();
     if (q) params.set('q', q);
     if (status && status !== 'all') params.set('status', status);
     if (sortBy) params.set('sortBy', sortBy);
     if (sortOrder) params.set('sortOrder', sortOrder);
+    if (startDate) params.set('startDate', startDate);
+    if (endDate) params.set('endDate', endDate);
     const qs = params.toString();
     return request(`/orders${qs ? `?${qs}` : ''}`, token, {method: 'GET'});
 }
 
+export function facturarPedido(token, orderId) {
+    return request(`/orders/${orderId}/invoice`, token, {
+        method: 'POST', body: JSON.stringify({}),
+    });
+}
 
 export async function updateOrder(token, taskId, data) {
     const res = await fetch(`/api/orders/${taskId}`, {
