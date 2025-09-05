@@ -108,9 +108,10 @@ export async function updateOrder(token, taskId, data) {
     return res.json();
 }
 
-export async function fetchUsers(token, {q = '', page = 0, size = 50} = {}) {
+export async function fetchUsers(token, {q = '', role, page = 0, size = 50} = {}) {
     const params = new URLSearchParams({page, size});
     if (q) params.set('q', q);
+    if (role) params.set('role', role);
     return request(`/users?${params}`, token, {})
 }
 

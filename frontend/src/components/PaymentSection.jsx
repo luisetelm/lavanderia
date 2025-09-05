@@ -63,7 +63,7 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
     const loadUsers = useCallback(async () => {
         if (workers.length > 0) return; // Solo cargar si no hay trabajadores ya cargados
         try {
-            const workersResp = await fetchUsers(token, 'worker');
+            const workersResp = await fetchUsers(token, {role: 'worker'});
             setWorkers(workersResp.data || []);
         } catch (e) {
             console.error('Error cargando trabajadores:', e);
