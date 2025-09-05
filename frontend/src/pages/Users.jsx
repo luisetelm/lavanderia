@@ -383,7 +383,7 @@ export default function Users({token}) {
                                                         {{
                                                             admin: 'Admin',
                                                             cashier: 'Cajero',
-                                                            worker: 'Cliente',
+                                                            worker: 'Trabajador',
                                                             customer: 'Cliente'
                                                         }[u.role]}
                                                     </span>

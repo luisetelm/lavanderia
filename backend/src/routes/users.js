@@ -11,7 +11,10 @@ const emailTransporter = nodemailer.createTransport({
 
 const sendWelcomeEmail = async (email, firstName, lastName, password) => {
     const mailOptions = {
-        from: {name: process.env.FROM_NAME , address: process.env.FROM_EMAIL}, to: email, subject: 'Bienvenido - Credenciales de acceso', html: `
+        from: {name: process.env.FROM_NAME, address: process.env.FROM_EMAIL},
+        to: email,
+        subject: 'Bienvenido - Credenciales de acceso',
+        html: `
             <h2>¡Bienvenido ${firstName} ${lastName}!</h2>
             <p>Tu cuenta ha sido creada exitosamente.</p>
             <p><strong>Tus credenciales de acceso son:</strong></p>
@@ -45,16 +48,18 @@ export default async function (fastify, opts) {
 
         // Construir el filtro de búsqueda si existe un término
         const where = {};
+
+        // Añadir filtro de rol si se proporciona
+        if (role) {
+            where.role = role;
+        }
+
         if (q) {
             where.OR = [{firstName: {contains: q, mode: 'insensitive'}}, {
                 lastName: {
                     contains: q, mode: 'insensitive'
                 }
-            }, {email: {contains: q, mode: 'insensitive'}}, {phone: {contains: q, mode: 'insensitive'}}, {
-                role: {
-                    contains: role, mode: 'insensitive'
-                }
-            }];
+            }, {email: {contains: q, mode: 'insensitive'}}, {phone: {contains: q, mode: 'insensitive'}},];
         }
 
         // Obtener el total de registros para la paginación
@@ -196,7 +201,7 @@ export default async function (fastify, opts) {
             },
         });
 
-        if(email && password) {
+        if (email && password) {
             await sendWelcomeEmail(email, firstName, lastName, password);
         }
 
