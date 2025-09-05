@@ -24,6 +24,7 @@ export default async function (fastify, opts) {
             lines,
             observaciones,
             fechaLimite: fechaLimiteRaw,
+            workerId,
         } = req.body;
 
         // Validaciones básicas similares a las que ya tienes
@@ -131,6 +132,8 @@ export default async function (fastify, opts) {
         // Generar orderNum (usa tu helper correctamente con fastify)
         const orderNum = await nextOrderNum(prisma);
 
+
+
         // Crear pedido en estado pendiente (sin pago)
         const order = await prisma.order.create({
             data: {
@@ -142,6 +145,7 @@ export default async function (fastify, opts) {
                 observaciones: observaciones || null,
                 fechaLimite,
                 lines: {create: lineCreates},
+                workerId: workerId
             }, include: {
                 lines: {
                     include: {product: true},
@@ -173,7 +177,7 @@ export default async function (fastify, opts) {
     fastify.patch('/:id', async (req, reply) => {
         const prisma = fastify.prisma;
         const orderId = Number(req.params.id);
-        const {status, observaciones, fechaLimite: fechaLimiteRaw} = req.body;
+        const {status, observaciones, fechaLimite: fechaLimiteRaw, sendSMS, workerId, observacionesInternas} = req.body;
 
 
         const data = {};
@@ -186,6 +190,7 @@ export default async function (fastify, opts) {
         }
 
         if (observaciones !== undefined) data.observaciones = observaciones;
+        if (observacionesInternas !== undefined) data.observacionesInternas = observacionesInternas;
         if (fechaLimiteRaw !== undefined) {
             const fechaLimite = new Date(fechaLimiteRaw);
             const today = new Date();
@@ -195,6 +200,22 @@ export default async function (fastify, opts) {
             }
             data.fechaLimite = fechaLimite;
         }
+
+        if (workerId !== undefined) {
+            // Convertir string vacío o null a null, sino convertir a número
+            if (workerId === '' || workerId === null) {
+                data.workerId = null;
+            } else {
+                const workerIdNum = Number(workerId);
+                if (isNaN(workerIdNum)) {
+                    return reply.status(400).send({error: 'workerId debe ser un número válido'});
+                }
+                data.workerId = workerIdNum;
+            }
+        }
+
+        console.log('data', data);
+
 
         if (Object.keys(data).length === 0) {
             return reply.status(400).send({error: 'Nada para actualizar'});
@@ -213,7 +234,7 @@ export default async function (fastify, opts) {
         });
 
         // Si se marca como ready, notificar al cliente
-        if (status === 'ready' && updated.client?.phone) {
+        if (status === 'ready' && updated.client?.phone && sendSMS) {
             const client = updated.client;
             const orderNum = updated.orderNum || '';
             const clientName = `${client.firstName || ''} ${client.lastName || ''}`.trim();
@@ -317,12 +338,16 @@ export default async function (fastify, opts) {
 
     fastify.get('/', async (req, reply) => {
         const prisma = fastify.prisma;
-        const {q, status, sortBy = 'createdAt', sortOrder = 'desc', startDate, endDate} = req.query || {};
+        const {q, status, workerId, sortBy = 'createdAt', sortOrder = 'desc', startDate, endDate} = req.query || {};
 
         const where = {};
 
         if (status && status !== 'all') {
             where.status = status;
+        }
+
+        if (workerId) {
+            where.workerId = parseInt(workerId);
         }
 
         if (startDate && endDate) {

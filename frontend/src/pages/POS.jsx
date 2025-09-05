@@ -15,13 +15,12 @@ import {
     closeCashRegister,
 } from '../api.js';
 import {
-    printWashLabels, printSaleTicket, printCashMovementTicket, printCashClosureTicket
+    printCashMovementTicket, printCashClosureTicket
 } from '../utils/printUtils.js';
 import CustomerSelector from '../components/CustomerSelector.jsx';
 import ProductList from '../components/ProductList.jsx';
 import DateCarousel from '../components/DateCarousel.jsx';
 import PaymentSection from '../components/PaymentSection.jsx';
-import CashModal from '../components/CashModal.jsx';
 import CartSummary from "../components/CartSummary.jsx";
 
 const isValidSpanishPhone = (phone) => /^[6789]\d{8}$/.test(phone);
@@ -53,15 +52,10 @@ export default function POS({token, user}) {
     const [quickClientEmail, setQuickClientEmail] = useState('');
 
     // nuevas
-    const [paymentMethod, setPaymentMethod] = useState('cash');
     const [observaciones, setObservaciones] = useState('');
     const [fechaLimite, setFechaLimite] = useState(null);
-    const [showCashModal, setShowCashModal] = useState(false);
-    const [receivedAmount, setReceivedAmount] = useState('');
     const [isValidated, setIsValidated] = useState(false);
-    const [loadByDay, setLoadByDay] = useState({});
     const [showTicketSection, setShowTicketSection] = useState(true);
-    const [isPaying, setIsPaying] = useState(false);
 
     // Estado para forzar la recarga del DateCarousel
     const [dateCarouselKey, setDateCarouselKey] = useState(0);
@@ -246,6 +240,8 @@ export default function POS({token, user}) {
             if (quickClientEmail) payload.clientEmail = quickClientEmail;
         }
 
+        payload.workerId = user.id;
+
         try {
             const o = await createOrder(token, payload);
             setOrder(o);
@@ -260,43 +256,8 @@ export default function POS({token, user}) {
         }
     };
 
-    const handleCardPay = async () => {
-        if (!order) return;
-        setIsPaying(true);
-        try {
-            const {order: updated} = await payWithCard(token, order.id);
-            setOrder(updated);
-        } catch (e) {
-            setError(e.error || 'Error en pago con tarjeta');
-        } finally {
-            setIsPaying(false);
-        }
-    };
 
-    const handleCashStart = () => {
-        setReceivedAmount('');
-        setShowCashModal(true);
-    };
 
-    const handleCashConfirm = async () => {
-        if (!order) return;
-        const received = parseFloat(receivedAmount);
-        if (isNaN(received) || received < order.total) {
-            setError('Cantidad recibida insuficiente');
-            return;
-        }
-        setIsPaying(true);
-        try {
-            const data = await payWithCash(token, order.id, receivedAmount);
-            setOrder(data.order || data);
-            const vuelta = data.change; // si el backend la incluye
-            setShowCashModal(false);
-        } catch (e) {
-            setError('Error en pago efectivo');
-        } finally {
-            setIsPaying(false);
-        }
-    };
 
     const getPriceForClient = (product, isClient = false) => {
         if (isClient && product.bigClientPrice && product.bigClientPrice > 0) {

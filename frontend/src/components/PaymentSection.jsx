@@ -1,22 +1,44 @@
 import React, {useState, useEffect, useCallback} from 'react';
-import {createCashMovement, fetchOrder, payWithCard, payWithCash, updateOrder} from '../api.js';
+import {
+    createCashMovement, fetchOrder, fetchUsers, payWithCard, payWithCash, updateOrder, updateOrder as apiUpdateOrder
+} from '../api.js';
 import {printSaleTicket, printWashLabels} from '../utils/printUtils.js';
 
-/**
- * PaymentSection para un pedido concreto.
- * Props:
- *  - token: string (auth)
- *  - orderId: número o string
- *  - onPaid?: callback que se llama cuando se completa el pago exitosamente
- */
 export default function PaymentSection({token, orderId, onPaid, user}) {
     const [order, setOrder] = useState(null);
+    const [workers, setWorkers] = useState([]);
     const [loading, setLoading] = useState(!!orderId);
     const [error, setError] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
     const [receivedAmount, setReceivedAmount] = useState('');
     const [localError, setLocalError] = useState('');
     const [isPrinting, setIsPrinting] = useState(false);
+
+    // Modal de confirmación (listo/recogido)
+    const [showModal, setShowModal] = useState(false);
+    const [modalAction, setModalAction] = useState(null);
+
+    // Notas internas controladas
+    const [internalNotes, setInternalNotes] = useState('');
+
+    const formatEUR = (num) => (typeof num === 'number' ? num : Number(num || 0)).toLocaleString('es-ES', {
+        style: 'currency', currency: 'EUR', minimumFractionDigits: 2, maximumFractionDigits: 2,
+    });
+
+    const showConfirmModal = (action) => {
+        setModalAction(action);
+        setShowModal(true);
+    };
+
+    const executeAction = async (sendSMS = false) => {
+        setShowModal(false);
+        if (modalAction === 'ready') {
+            await markReady(sendSMS);
+        } else if (modalAction === 'collected') {
+            await markCollected(sendSMS);
+        }
+        setModalAction(null);
+    };
 
     const loadOrder = useCallback(async () => {
         if (!orderId) return;
@@ -25,6 +47,7 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
         try {
             const o = await fetchOrder(token, orderId);
             setOrder(o);
+            setInternalNotes(o.observacionesInternas || '');
         } catch (e) {
             console.error('Error cargando pedido:', e);
             setError(e.error || 'Error cargando pedido');
@@ -37,10 +60,25 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
         loadOrder();
     }, [loadOrder]);
 
+    const loadUsers = useCallback(async () => {
+        if (workers.length > 0) return; // Solo cargar si no hay trabajadores ya cargados
+        try {
+            const workersResp = await fetchUsers(token, 'worker');
+            setWorkers(workersResp.data || []);
+        } catch (e) {
+            console.error('Error cargando trabajadores:', e);
+        }
+    }, [token, workers.length]);
+
+    useEffect(() => {
+        loadUsers();
+    }, [loadUsers]);
+
     const handleCardPay = async () => {
         if (!order) return;
-        const confirmed = window.prompt(`Confirmar pago con tarjeta por ${order.total.toFixed(2)} €. Escribe "OK" para continuar.`);
-        if (!(confirmed && confirmed.toUpperCase() === 'OK')) return;
+        // Evita prompt; confirm más simple y rápido
+        const confirmed = window.confirm(`Confirmar pago con tarjeta por ${formatEUR(order.total)}.`);
+        if (!confirmed) return;
 
         setIsProcessing(true);
         setLocalError('');
@@ -59,7 +97,7 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
     const handleCashPay = async () => {
         if (!order) return;
         const received = parseFloat(receivedAmount);
-        if (isNaN(received) || received < order.total) {
+        if (isNaN(received) || received < Number(order.total || 0)) {
             setLocalError('Cantidad recibida insuficiente');
             return;
         }
@@ -67,38 +105,30 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
         setIsProcessing(true);
         setLocalError('');
         try {
-            // 1. Procesar el pago
+            // 1) Procesar el pago
+            const {order: paidOrder, change} = await payWithCash(token, order.id, received);
+            setOrder(paidOrder);
 
-            const {order: updateOrder, change} = await payWithCash(token, order.id, received);
-            setOrder(updateOrder);
-
-
-            // 2. Registrar el movimiento de caja
-            if (updateOrder.paid) {
+            // 2) Registrar movimiento de caja solo si el pedido ha quedado pagado
+            if (paidOrder?.paid) {
                 try {
-
                     const payload = {
                         type: 'sale_cash_in',
-                        amount: order.total,
-                        note: `Pago pedido #${order.orderNum || order.id}`,
-                        orderId: order.id,
-                        person: user.id
-                    }
-
-                    console.log(payload)
-                    // Crear movimiento de caja por el pago en efectivo
-                    const cashMovement = await createCashMovement(token, payload);
-
+                        amount: paidOrder.total, // <-- usar el importe actualizado
+                        note: `Pago pedido #${paidOrder.orderNum || paidOrder.id}`,
+                        orderId: paidOrder.id,
+                        person: user?.id ?? null,
+                    };
+                    await createCashMovement(token, payload);
                 } catch (movError) {
                     console.error('Error al registrar movimiento de caja:', movError);
-                    // No bloqueamos el proceso si falla el registro del movimiento
+                    // No bloquea el flujo
                 }
-
             }
 
-
             onPaid?.();
-            console.log('Vuelta:', change.toFixed(2));
+            // (Opcional) feedback al usuario
+            alert(`Pago registrado. Vuelta: ${formatEUR(change)}`);
         } catch (e) {
             console.error('Error pago en efectivo:', e);
             setLocalError(e.error || 'Error en pago en efectivo');
@@ -107,21 +137,32 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
         }
     };
 
-    const markReady = async () => {
+    const markReady = async (sendSMS = false) => {
         try {
-            await updateOrder(token, order.id, {status: 'ready'});
+            await apiUpdateOrder(token, order.id, {status: 'ready', sendSMS});
             await loadOrder();
         } catch (e) {
             console.error(e);
         }
     };
 
-    const markCollected = async () => {
+    const markCollected = async (sendSMS = false) => {
         try {
-            await updateOrder(token, order.id, {status: 'collected'});
+            await apiUpdateOrder(token, order.id, {status: 'collected', sendSMS});
             await loadOrder();
         } catch (e) {
             console.error(e);
+        }
+    };
+
+    const handleSaveInternalNotes = async () => {
+        if (!order) return;
+        try {
+            await updateOrder(token, order.id, {observacionesInternas: internalNotes});
+            // opcional: recarga para reflejar cambios de backend (si hay normalizaciones)
+            // await loadOrder();
+        } catch (e) {
+            console.error('Error guardando notas internas:', e);
         }
     };
 
@@ -138,11 +179,10 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
     };
 
     const handlePrintLabels = async () => {
-
         if (!order) return;
         setIsPrinting(true);
         try {
-            const totalItems = order.lines.reduce((sum, l) => sum + (l.quantity || 1), 0);
+            const totalItems = (order.lines || []).reduce((sum, l) => sum + (l.quantity || 1), 0);
             await printWashLabels({
                 orderNum: order.orderNum,
                 clientFirstName: order.client?.firstName || '',
@@ -161,68 +201,105 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
     if (error) return <div style={{color: 'red'}}>{error}</div>;
     if (!order) return <div>Pedido no encontrado</div>;
 
-    const clienteDisplay = () => {
-        if (order.client) return `${order.client.firstName} ${order.client.lastName}`;
-        return 'Cliente rápido';
-    };
+    const clienteDisplay = () => (order.client ? `${order.client.firstName} ${order.client.lastName}` : 'Cliente rápido');
+    const telefonoDisplay = () => order.client?.phone || null;
 
-    const telefonoDisplay = () => {
-        return order.client?.phone || null;
-    };
+    const createdDate = order.createdAt ? new Date(order.createdAt).toLocaleDateString('es-ES') : '—';
+    const dueDate = order.fechaLimite ? new Date(order.fechaLimite).toLocaleDateString('es-ES') : '—';
 
+    const changePreview = receivedAmount && !isNaN(parseFloat(receivedAmount)) ? Math.max(0, parseFloat(receivedAmount) - Number(order.total || 0)).toFixed(2) : '0.00';
 
-    return (<div className={'uk-card uk-card-body  ' + 'uk-card-default'}>
+    return (<div className={'uk-card uk-card-body uk-card-default'}>
         <div className={'uk-card-badge'}>{order.status}</div>
-        <h3 className={'uk-card-title'}>{clienteDisplay()} {order.orderNum}</h3>
-        <div className={'uk-badge uk-text-bolder'}>
-            {order.fechaLimite ? new Date(order.createdAt).toLocaleDateString('es-ES') : '—'}
-            <icon className="uk-icon" uk-icon="arrow-right"></icon>
-            {order.fechaLimite ? new Date(order.fechaLimite).toLocaleDateString('es-ES') : '—'}
-        </div>
+        <h3 className={'uk-card-title'}>
+            {clienteDisplay()} {order.orderNum}
+        </h3>
 
+        <div className={'uk-badge uk-text-bolder'}>
+            {createdDate}
+            <span className="uk-icon" uk-icon="icon: arrow-right"></span>
+            {dueDate}
+        </div>
 
         <div className={'uk-grid uk-child-width-1-3@l uk-margin-top'}>
             <div>
-
                 {telefonoDisplay() && (<div>
-                    <strong>Teléfono:</strong> {telefonoDisplay()}
+                    <strong>Teléfono:</strong>{' '}
+                    <a href={`tel:${telefonoDisplay()}`} className="uk-link-text">
+                        {telefonoDisplay()}
+                    </a>
                 </div>)}
                 <div>
                     <strong>Estado pago:</strong> {order.paid ? 'Pagado' : 'Pendiente de pago'}
                 </div>
                 <div>
                     <strong>Método de pago:</strong>{' '}
-                    {order.paymentMethod ? order.paymentMethod === 'cash' ? 'Efectivo' : 'Tarjeta' : 'No seleccionado'}
+                    {order.paymentMethod ? (order.paymentMethod === 'cash' ? 'Efectivo' : 'Tarjeta') : 'No seleccionado'}
                 </div>
                 <div>
                     <strong>Observaciones:</strong> {order.observaciones || '—'}
                 </div>
 
+                <div className="uk-margin-small">
+                    <label className={'uk-form-label'}>Persona encargada:</label>
+                    <div className={'uk-form-controls'}>
+                        <select
+                            className={'uk-select'}
+                            value={order.workerId ?? ''}
+                            onChange={async (e) => {
+                                const raw = e.target.value;
+                                const workerId = raw === '' ? null : Number.isNaN(Number(raw)) ? raw : Number(raw);
+                                // update optimista
+                                setOrder((prev) => (prev ? {...prev, workerId} : prev));
+                                try {
+                                    await apiUpdateOrder(token, order.id, {workerId});
+                                } catch (e2) {
+                                    console.error('Error actualizando trabajador:', e2);
+                                    // fallback: recarga
+                                    await loadOrder();
+                                }
+                            }}
+                        >
+                            <option value="">Sin asignar</option>
+                            {workers.map((w) => (<option key={w.id} value={w.id}>
+                                {w.firstName} {w.lastName}
+                            </option>))}
+                        </select>
+                    </div>
+                </div>
+
+                <div className="uk-margin-small">
+                    <label className="uk-form-label" htmlFor="">
+                        Observaciones internas
+                    </label>
+                    <textarea
+                        className="uk-textarea"
+                        value={internalNotes}
+                        onChange={(e) => setInternalNotes(e.target.value)}
+                        onBlur={handleSaveInternalNotes}
+                        placeholder="Notas internas del pedido..."
+                    />
+                </div>
             </div>
 
             <div>
                 <div style={{fontWeight: 'bold'}}>Líneas:</div>
-                {order.lines.map((l) => {
+                {(order.lines || []).map((l) => {
                     const name = l.productName || l.product?.name || `#${l.productId}`;
+                    const lineTotal = Number(l.unitPrice || 0) * Number(l.quantity || 0);
                     return (<div
                         key={l.id}
-                        style={{
-                            display: 'flex', justifyContent: 'space-between', fontSize: 12, marginTop: 2,
-                        }}
+                        style={{display: 'flex', justifyContent: 'space-between', fontSize: 12, marginTop: 2}}
                     >
                         <div>
                             {l.quantity}x {name}
                         </div>
-                        <div>{(l.unitPrice * l.quantity).toFixed(2)}€</div>
+                        <div>{formatEUR(lineTotal)}</div>
                     </div>);
                 })}
-                <div
-                    style={{
-                        marginTop: 10, display: 'flex', justifyContent: 'space-between', fontWeight: 'bold',
-                    }}
-                >
+                <div style={{marginTop: 10, display: 'flex', justifyContent: 'space-between', fontWeight: 'bold'}}>
                     <div>Total:</div>
-                    <div>{order.total.toFixed(2)}€</div>
+                    <div>{formatEUR(order.total)}</div>
                 </div>
             </div>
 
@@ -240,46 +317,75 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
                         width: '100%',
                     }}
                 >
-                    <button className={'uk-button uk-button-default uk-width-1-1@l'} uk-icon={'print'}
-                            onClick={handlePrintTicket}
-                            disabled={!order || isPrinting}>
+                    <button
+                        className={'uk-button uk-button-default uk-width-1-1@l'}
+                        uk-icon={'print'}
+                        onClick={handlePrintTicket}
+                        disabled={!order || isPrinting}
+                    >
                         {isPrinting ? 'Imprimiendo...' : 'Imprimir ticket'}
                     </button>
 
-                    <button className={'uk-button uk-button-default uk-width-1-1@l'} uk-icon={'print'}
-                            onClick={handlePrintLabels}
-                            disabled={!order || isPrinting}>
+                    <button
+                        className={'uk-button uk-button-default uk-width-1-1@l'}
+                        uk-icon={'print'}
+                        onClick={handlePrintLabels}
+                        disabled={!order || isPrinting}
+                    >
                         {isPrinting ? 'Imprimiendo...' : 'Imprimir etiquetas'}
                     </button>
 
-
-                    {order.status === 'pending' && (<button type="button"
-                                                            className="uk-button uk-button-default  uk-width-1-1@l"
-                                                            onClick={() => {
-                                                                const confirmed = window.confirm('¿Seguro que quieres marcar el pedido como listo? Haz clic en "Aceptar" para continuar.');
-                                                                if (confirmed) markReady();
-                                                            }} aria-label="Marcar como listo"
-                                                            uk-icon="check">Marcar como listo
+                    {order.status === 'pending' && (<button
+                        type="button"
+                        className="uk-button uk-button-default uk-width-1-1@l"
+                        onClick={() => showConfirmModal('ready')}
+                        aria-label="Marcar como listo"
+                        uk-icon="check"
+                    >
+                        Marcar como listo
                     </button>)}
 
-                    {/* Acciones de estado */}
-                    {order.status === 'ready' && (<button type="button"
-                                                          className="uk-button uk-button-default uk-width-1-1@l"
-                                                          onClick={() => {
-                                                              const confirmed = window.confirm('¿Seguro que quieres marcar el pedido como recogido? Haz clic en "Aceptar" para continuar.');
-                                                              if (confirmed) markCollected();
-                                                          }} aria-label="Marcar como recogido"
+                    {order.status === 'ready' && (<button
+                        type="button"
+                        className="uk-button uk-button-default uk-width-1-1@l"
+                        onClick={() => showConfirmModal('collected')}
+                        aria-label="Marcar como recogido"
                     >
                         Marcar como recogido
                     </button>)}
 
+                    {showModal && (<div id="confirm-modal" className="uk-modal uk-open" style={{display: 'block'}}>
+                        <div className="uk-modal-dialog uk-modal-body">
+                            <h2 className="uk-modal-title">
+                                {modalAction === 'ready' ? '¿Marcar como listo?' : '¿Marcar como recogido?'}
+                            </h2>
+                            <p>
+                                Indica también si quieres enviar un SMS al cliente. Al marcar como recogido, el
+                                SMS es
+                                una petición para dejar una reseña.
+                            </p>
+                            <div className="uk-margin uk-flex uk-flex-between" uk-flex="true">
+                                <button className="uk-button uk-button-default uk-margin-small-right"
+                                        onClick={() => setShowModal(false)}>
+                                    Cancelar
+                                </button>
+                                <div className={'uk-button-group'}>
+                                    <button className="uk-button uk-button-danger"
+                                            onClick={() => executeAction(false)}>
+                                        Sí, no enviar SMS
+                                    </button>
+                                    <button className="uk-button uk-button-primary"
+                                            onClick={() => executeAction(true)}>
+                                        Sí, y enviar SMS
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>)}
 
-                    {(localError || error) && (<div style={{color: 'red', marginTop: 8}}>{localError || error}</div>)}
+                    {(localError || error) && <div style={{color: 'red', marginTop: 8}}>{localError || error}</div>}
                 </div>
-
-
             </div>
-
         </div>
 
         {Array.isArray(order.notification) && order.notification.length > 0 && (<div style={{marginTop: 16}}>
@@ -288,30 +394,25 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
                 {order.notification.map((n) => (<li key={n.id} style={{fontSize: 12, marginBottom: 6}}>
                     <strong>{n.type}</strong> — {n.status} <br/>
                     {n.content} <br/>
-                    {n.createdAt && (<span style={{color: '#555'}}>
-                            {new Date(n.createdAt).toLocaleString('es-ES')}
-                        </span>)}
+                    {n.createdAt && <span
+                        style={{color: '#555'}}>{new Date(n.createdAt).toLocaleString('es-ES')}</span>}
                 </li>))}
             </ul>
         </div>)}
 
-
         {!order.paid && (<div className={'uk-grid uk-grid-divider'}>
             <h4 className={'uk-width-1-1 uk-margin'}>Pendiente de pago</h4>
+
             <div className={'uk-width-1-2@l uk-grid'}>
                 <p className={'uk-text-bold uk-width-1-1'}>Pago con tarjeta</p>
                 <div>
-                    <button
-                        onClick={handleCardPay}
-                        disabled={isProcessing}
-                        className={'uk-button uk-button-primary uk-margin-top'}
-
-                    >
+                    <button onClick={handleCardPay} disabled={isProcessing}
+                            className={'uk-button uk-button-primary uk-margin-top'}>
                         {isProcessing ? 'Procesando...' : 'Pagar con tarjeta'}
                     </button>
-
                 </div>
             </div>
+
             <div className={'uk-width-1-2@l uk-grid'}>
                 <p className={'uk-text-bold uk-width-1-1'}>Pago en efectivo</p>
                 <div className={'uk-grid uk-child-width-1-2 uk-margin-top'}>
@@ -323,26 +424,22 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
                             onChange={(e) => setReceivedAmount(e.target.value)}
                             disabled={isProcessing}
                             placeholder="€"
+                            min="0"
+                            step="0.01"
+                            inputMode="decimal"
                         />
-                        <small style={{textAlign: 'center', width: '100%'}}>
-                            Vuelta:{' '}
-                            {receivedAmount ? Math.max(0, parseFloat(receivedAmount) - order.total).toFixed(2) : '0.00'}
-                            €
+                        <small style={{textAlign: 'center', width: '100%', display: 'block'}}>
+                            Vuelta: {formatEUR(changePreview)}
                         </small>
                     </label>
                     <div>
-                        <button
-                            onClick={handleCashPay}
-                            disabled={isProcessing}
-                            className={'uk-button uk-button-primary uk-margin'}>
+                        <button onClick={handleCashPay} disabled={isProcessing}
+                                className={'uk-button uk-button-primary uk-margin'}>
                             {isProcessing ? 'Procesando...' : 'Pagar en efectivo'}
                         </button>
                     </div>
                 </div>
-
             </div>
         </div>)}
-
-
     </div>);
 }

@@ -1,4 +1,7 @@
+import {worker} from "globals";
+
 const API_BASE = import.meta.env.VITE_API_BASE || '/api';
+import UIkit from 'uikit';
 
 
 async function request(path, token, opts = {}) {
@@ -67,7 +70,7 @@ export function fetchDates(page, token) {
     });
 }
 
-export function fetchOrders(token, {q, status, sortBy, sortOrder, startDate, endDate} = {}) {
+export function fetchOrders(token, {q, status, workerId, sortBy, sortOrder, startDate, endDate} = {}) {
     const params = new URLSearchParams();
     if (q) params.set('q', q);
     if (status && status !== 'all') params.set('status', status);
@@ -75,6 +78,7 @@ export function fetchOrders(token, {q, status, sortBy, sortOrder, startDate, end
     if (sortOrder) params.set('sortOrder', sortOrder);
     if (startDate) params.set('startDate', startDate);
     if (endDate) params.set('endDate', endDate);
+    if (workerId) params.set('workerId',parseInt(workerId,10));
     const qs = params.toString();
     return request(`/orders${qs ? `?${qs}` : ''}`, token, {method: 'GET'});
 }
@@ -92,6 +96,15 @@ export async function updateOrder(token, taskId, data) {
         }, body: JSON.stringify(data),
     });
     if (!res.ok) throw await res.json();
+
+    // Mostrar notificación de éxito
+    UIkit.notification({
+        message: 'Cambios guardados correctamente',
+        status: 'default',
+        pos: 'top-right',
+        timeout: 3000
+    });
+
     return res.json();
 }
 

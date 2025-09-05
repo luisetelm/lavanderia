@@ -10,6 +10,7 @@ export default function Tasks({token, user}) {
     const [error, setError] = useState('');
     const [query, setQuery] = useState('');
     const [filterStatus, setFilterStatus] = useState('all');
+    const [filterWorker, setFilterWorker] = useState(user.id); // Nuevo estado
     const [sortBy, setSortBy] = useState('createdAt');
     const [sortOrder, setSortOrder] = useState('desc');
     const debounceRef = useRef(null);
@@ -21,12 +22,13 @@ export default function Tasks({token, user}) {
     const location = useLocation();
     const {filterOrderId, orderNumber} = location.state || {};
 
-    const load = async (search = '', status = 'all', sort = 'createdAt', order = 'desc') => {
+    const load = async (search = '', status = 'all', workerId, sort = 'createdAt', order = 'desc') => {
         setLoading(true);
         try {
             const list = await fetchOrders(token, {
                 q: search,
                 status,
+                workerId, // Esto ahora recibirá el parámetro correctamente
                 sortBy: sort,
                 sortOrder: order
             });
@@ -40,30 +42,27 @@ export default function Tasks({token, user}) {
         }
     };
 
-// Aplicar filtro automáticamente si viene del POS
+
     useEffect(() => {
         if (filterOrderId && orderNumber) {
             setQuery(orderNumber.toString());
-            load(orderNumber.toString(), filterStatus, sortBy, sortOrder);
+            load(orderNumber.toString(), filterStatus, filterWorker, sortBy, sortOrder);
         }
-    }, [filterOrderId, orderNumber, sortBy, sortOrder]);
+    }, [filterOrderId, orderNumber, filterStatus, filterWorker, sortBy, sortOrder]);
 
-// Carga inicial
     useEffect(() => {
         if (!filterOrderId) {
-            load(query, filterStatus, sortBy, sortOrder);
+            load(query, filterStatus, filterWorker, sortBy, sortOrder);
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [token]);
 
-// Debounce al escribir en la barra de búsqueda
     useEffect(() => {
         if (debounceRef.current) clearTimeout(debounceRef.current);
         debounceRef.current = setTimeout(() => {
-            load(query, filterStatus, sortBy, sortOrder);
+            load(query, filterStatus, filterWorker, sortBy, sortOrder);
         }, 300);
         return () => clearTimeout(debounceRef.current);
-    }, [query, token, filterStatus, sortBy, sortOrder]);
+    }, [query, token, filterStatus, filterWorker, sortBy, sortOrder]);
 
     return (<div>
         <div className="section-header">
@@ -78,6 +77,9 @@ export default function Tasks({token, user}) {
                 setSortBy={setSortBy}
                 sortOrder={sortOrder}
                 setSortOrder={setSortOrder}
+                filterWorker={filterWorker}
+                setFilterWorker={setFilterWorker}
+                user={user}
             />
         </div>
 
@@ -139,7 +141,19 @@ export default function Tasks({token, user}) {
     </div>);
 }
 
-function FilterBar({value, onChange, query, setQuery, sortBy, setSortBy, sortOrder, setSortOrder}) {
+function FilterBar({
+                       value,
+                       onChange,
+                       query,
+                       setQuery,
+                       sortBy,
+                       setSortBy,
+                       sortOrder,
+                       setSortOrder,
+                       filterWorker,
+                       setFilterWorker,
+                       user
+                   }) {
     const Btn = ({val, children}) => (
         <button
             type="button"
@@ -164,21 +178,31 @@ function FilterBar({value, onChange, query, setQuery, sortBy, setSortBy, sortOrd
         </div>
         <div>
             <select
-            className="uk-select"
-            value={`${sortBy}-${sortOrder}`}
-            onChange={(e) => {
-                const [field, order] = e.target.value.split('-');
-                setSortBy(field);
-                setSortOrder(order);
-            }}
-        >
-            <option value="createdAt-desc">Fecha creación (más reciente)</option>
-            <option value="createdAt-asc">Fecha creación (más antigua)</option>
-            <option value="fechaLimite-desc">Fecha entrega (más reciente)</option>
-            <option value="fechaLimite-asc">Fecha entrega (más antigua)</option>
-            <option value="updatedAt-desc">Fecha actualización (más reciente)</option>
-            <option value="updatedAt-asc">Fecha actualización (más antigua)</option>
-        </select></div>
+                className="uk-select"
+                value={filterWorker}
+                onChange={(e) => setFilterWorker(e.target.value)}
+            >
+                <option value={user.id}>Mis tareas</option>
+                <option value="">Todas las tareas</option>
+            </select>
+        </div>
+        <div>
+            <select
+                className="uk-select"
+                value={`${sortBy}-${sortOrder}`}
+                onChange={(e) => {
+                    const [field, order] = e.target.value.split('-');
+                    setSortBy(field);
+                    setSortOrder(order);
+                }}
+            >
+                <option value="createdAt-desc">Fecha creación (más reciente)</option>
+                <option value="createdAt-asc">Fecha creación (más antigua)</option>
+                <option value="fechaLimite-desc">Fecha entrega (más reciente)</option>
+                <option value="fechaLimite-asc">Fecha entrega (más antigua)</option>
+                <option value="updatedAt-desc">Fecha actualización (más reciente)</option>
+                <option value="updatedAt-asc">Fecha actualización (más antigua)</option>
+            </select></div>
         <div>
             <div className="uk-button-group">
                 <Btn val="all">Todas</Btn>
