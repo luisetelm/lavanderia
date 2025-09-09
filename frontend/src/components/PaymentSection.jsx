@@ -197,6 +197,22 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
         }
     };
 
+    const handleCancelOrder = async () => {
+        if (!order) return;
+        if (!window.confirm('¿Seguro que quieres cancelar este pedido?')) return;
+        setIsProcessing(true);
+        try {
+            await apiUpdateOrder(token, order.id, {status: 'cancelled'});
+            await loadOrder();
+        } catch (e) {
+            console.error('Error cancelando pedido:', e);
+            setLocalError(e.error || 'Error al cancelar el pedido');
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
+
     if (loading) return <div>Cargando pedido...</div>;
     if (error) return <div style={{color: 'red'}}>{error}</div>;
     if (!order) return <div>Pedido no encontrado</div>;
@@ -221,7 +237,7 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
             {dueDate}
         </div>
 
-        <div className={'uk-grid uk-child-width-1-3@l uk-margin-top'}>
+        {order.status !== 'cancelled' && (<div className={'uk-grid uk-child-width-1-3@l uk-margin-top'}>
             <div>
                 {telefonoDisplay() && (<div>
                     <strong>Teléfono:</strong>{' '}
@@ -354,6 +370,13 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
                         Marcar como recogido
                     </button>)}
 
+                    {!order.paid && (<button
+                        className="uk-button uk-button-danger uk-width-1-1@l"
+                        onClick={handleCancelOrder}
+                        disabled={isProcessing}
+                        uk-icon={'trash'}
+                    >Cancelar</button>)}
+
                     {showModal && (<div id="confirm-modal" className="uk-modal uk-open" style={{display: 'block'}}>
                         <div className="uk-modal-dialog uk-modal-body">
                             <h2 className="uk-modal-title">
@@ -386,7 +409,7 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
                     {(localError || error) && <div style={{color: 'red', marginTop: 8}}>{localError || error}</div>}
                 </div>
             </div>
-        </div>
+        </div>)}
 
         {Array.isArray(order.notification) && order.notification.length > 0 && (<div style={{marginTop: 16}}>
             <h6>Notificaciones:</h6>
@@ -400,7 +423,7 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
             </ul>
         </div>)}
 
-        {!order.paid && (<div className={'uk-grid uk-grid-divider'}>
+        {!order.paid && order.status !== 'cancelled' &&(<div className={'uk-grid uk-grid-divider'}>
             <h4 className={'uk-width-1-1 uk-margin'}>Pendiente de pago</h4>
 
             <div className={'uk-width-1-2@l uk-grid'}>

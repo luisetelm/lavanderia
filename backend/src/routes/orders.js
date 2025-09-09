@@ -133,7 +133,6 @@ export default async function (fastify, opts) {
         const orderNum = await nextOrderNum(prisma);
 
 
-
         // Crear pedido en estado pendiente (sin pago)
         const order = await prisma.order.create({
             data: {
@@ -185,9 +184,15 @@ export default async function (fastify, opts) {
         if (status) {
             data.status = status;
             data.updatedAt = new Date();
+
+            if (status === 'cancelled') {
+                data.total = 0;
+            }
+
         } else {
             data.status = 'pending';
         }
+
 
         if (observaciones !== undefined) data.observaciones = observaciones;
         if (observacionesInternas !== undefined) data.observacionesInternas = observacionesInternas;
