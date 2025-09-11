@@ -105,14 +105,17 @@ model User {
 }
 
 model Notification {
-  id        Int      @id @default(autoincrement())
-  type      String
-  recipient String
-  content   String
-  status    String
-  sentAt    DateTime @default(now())
-  orderid   Int?
-  order     Order?   @relation(fields: [orderid], references: [id], map: "Notification_taskId_fkey")
+  id            Int      @id @default(autoincrement())
+  type          String
+  recipient     String
+  content       String
+  status        String
+  sentAt        DateTime @default(now())
+  orderid       Int?
+  statusCode    Int?
+  subid         String?  @db.VarChar(64)
+  statusMessage String?  @db.VarChar(255)
+  order         Order?   @relation(fields: [orderid], references: [id], map: "Notification_taskId_fkey")
 }
 
 model CashClosure {

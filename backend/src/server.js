@@ -8,10 +8,8 @@ import taskRoutes from './routes/tasks.js';
 import authRoutes from './routes/auth.js';
 import productsImportRoutes from './routes/products_import.js';
 import cashRoutes from './routes/cash.js';
-
-
+import notificationsRoutes from './routes/notifications.js';
 import userRoutes from './routes/users.js';
-// ...
 
 
 dotenv.config();
@@ -56,7 +54,7 @@ app.register(taskRoutes, {prefix: '/api/tasks'});
 app.register(userRoutes, {prefix: '/api/users'});
 app.register(productsImportRoutes, {prefix: '/api/products'}); // quedaría POST /api/products/import
 app.register(cashRoutes, {prefix: '/api/cash'}); // quedaría POST /api/products/import
-
+app.register(notificationsRoutes, {prefix: '/api/notifications'});
 
 // Healthcheck
 app.get('/', async () => ({status: 'ok'}));

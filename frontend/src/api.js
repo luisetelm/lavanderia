@@ -192,4 +192,11 @@ export function closeCashRegister(token, { countedAmount, notes, user }) {
     });
 }
 
+export function retryNotification(token, id, phone) {
+    return request(`/notifications/${id}/retry`, token, {
+        method: 'POST',
+        body: JSON.stringify({id, phone}),
+    });
+}
+
 

@@ -1,7 +1,7 @@
 // backend/src/routes/orders.js
 //import nextOrderNum from '../utils/generateOrderNum.js';
 import {isValidSpanishPhone} from '../utils/validatePhone.js';
-import {sendSMS} from "../services/twilio.js";
+import {sendSMScustomer} from "../services/twilio.js";
 
 export default async function (fastify, opts) {
     const prisma = fastify.prisma;
@@ -238,25 +238,41 @@ export default async function (fastify, opts) {
             },
         });
 
+
         // Si se marca como ready, notificar al cliente
         if (status === 'ready' && updated.client?.phone && sendSMS) {
             const client = updated.client;
             const orderNum = updated.orderNum || '';
-            const clientName = `${client.firstName || ''} ${client.lastName || ''}`.trim();
+            const clientName = client.firstName || '';
             const message = `Hola ${clientName}, tu pedido ${orderNum} está listo para recoger. Consulta nuestro horario de apertura: https://share.google/d4uMKGaiCaBywfRt2`;
 
             // SMS
             try {
-                await sendSMS(client.phone, message);
+                const sms = await sendSMScustomer(client.phone, message);
                 await prisma.notification.create({
                     data: {
-                        orderid: updated.id, type: 'sms', recipient: client.phone, content: message, status: 'sent',
+                        orderid: updated.id,
+                        type: 'sms',
+                        recipient: client.phone,
+                        content: message,
+                        status: 'sent',
+                        statusCode: parseInt(sms.code),
+                        subid: sms.subid,
+                        statusMessage: sms.message,
                     },
                 });
             } catch (err) {
+                const sms = await sendSMScustomer(client.phone, message);
                 await prisma.notification.create({
                     data: {
-                        orderid: updated.id, type: 'sms', recipient: client.phone, content: message, status: 'failed',
+                        orderid: updated.id,
+                        type: 'sms',
+                        recipient: client.phone,
+                        content: message,
+                        status: 'failed',
+                        statusCode: parseInt(sms.code),
+                        subid: sms.subid,
+                        statusMessage: sms.message,
                     },
                 });
             }
@@ -271,7 +287,7 @@ export default async function (fastify, opts) {
 
             // SMS
             try {
-                await sendSMS(client.phone, message);
+                await sendSMScustomer(client.phone, message);
                 await prisma.notification.create({
                     data: {
                         orderid: updated.id, type: 'sms', recipient: client.phone, content: message, status: 'sent',
@@ -370,8 +386,7 @@ export default async function (fastify, opts) {
                 client: {
                     OR: [{firstName: {contains: term, mode: 'insensitive'}}, {
                         lastName: {
-                            contains: term,
-                            mode: 'insensitive'
+                            contains: term, mode: 'insensitive'
                         }
                     }, {email: {contains: term, mode: 'insensitive'}}, {phone: {contains: term}},],
                 },

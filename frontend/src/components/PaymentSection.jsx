@@ -1,6 +1,13 @@
 import React, {useState, useEffect, useCallback} from 'react';
 import {
-    createCashMovement, fetchOrder, fetchUsers, payWithCard, payWithCash, updateOrder, updateOrder as apiUpdateOrder
+    createCashMovement,
+    fetchOrder,
+    fetchUsers,
+    payWithCard,
+    payWithCash,
+    updateOrder,
+    updateOrder as apiUpdateOrder,
+    retryNotification
 } from '../api.js';
 import {printSaleTicket, printWashLabels} from '../utils/printUtils.js';
 
@@ -163,6 +170,20 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
             // await loadOrder();
         } catch (e) {
             console.error('Error guardando notas internas:', e);
+        }
+    };
+
+    const handleRetryNotification = async (notificationId, phone) => {
+        if (!notificationId) return;
+        setIsProcessing(true);
+        try {
+            await retryNotification(token, notificationId, phone);
+            await loadOrder();
+        } catch (e) {
+            console.error('Error reintentando notificación:', e);
+            setLocalError(e.error || 'Error al reintentar notificación');
+        } finally {
+            setIsProcessing(false);
         }
     };
 
@@ -415,7 +436,9 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
             <h6>Notificaciones:</h6>
             <ul className="uk-list uk-list-divider">
                 {order.notification.map((n) => (<li key={n.id} style={{fontSize: 12, marginBottom: 6}}>
-                    <strong>{n.type}</strong> — {n.status} <br/>
+                    <strong>{n.type}</strong> — {n.status} {n.status === 'failed' && (
+                    <div className={"uk-text-danger"} uk-icon="refresh"
+                         onClick={() => handleRetryNotification(n.id, order.client.phone)}></div>)} <br/>
                     {n.content} <br/>
                     {n.createdAt && <span
                         style={{color: '#555'}}>{new Date(n.createdAt).toLocaleString('es-ES')}</span>}
@@ -423,7 +446,7 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
             </ul>
         </div>)}
 
-        {!order.paid && order.status !== 'cancelled' &&(<div className={'uk-grid uk-grid-divider'}>
+        {!order.paid && order.status !== 'cancelled' && (<div className={'uk-grid uk-grid-divider'}>
             <h4 className={'uk-width-1-1 uk-margin'}>Pendiente de pago</h4>
 
             <div className={'uk-width-1-2@l uk-grid'}>
