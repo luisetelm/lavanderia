@@ -279,11 +279,10 @@ export default async function (fastify, opts) {
 
         }
 
-        if (status === 'collected' && updated.client?.phone) {
+        if (status === 'collected' && updated.client?.phone && sendSMS) {
             const client = updated.client;
-            const orderNum = updated.orderNum || '';
             const clientName = `${client.firstName || ''} ${client.lastName || ''}`.trim();
-            const message = `Hola ${clientName}, esperamos que todo haya ido perfecto 😊 Si puedes, déjanos una reseña: https://g.page/r/Cau9_6UCpQ8ZEBI/review`;
+            const message = `Hola ${clientName}, esperamos que todo haya ido perfecto en Tinte y Burbuja 😊. Si puedes, déjanos una reseña: https://g.page/r/Cau9_6UCpQ8ZEBI/review`;
 
             // SMS
             try {
