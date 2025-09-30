@@ -1,6 +1,7 @@
 import React, {useState, useEffect, useCallback} from 'react';
 import {
     createCashMovement,
+    createInvoice,
     fetchOrder,
     fetchUsers,
     payWithCard,
@@ -20,6 +21,8 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
     const [receivedAmount, setReceivedAmount] = useState('');
     const [localError, setLocalError] = useState('');
     const [isPrinting, setIsPrinting] = useState(false);
+    const [invoiceLoading, setInvoiceLoading] = useState(false);
+    const [invoiceResult, setInvoiceResult] = useState(null);
 
     // Modal de confirmación (listo/recogido)
     const [showModal, setShowModal] = useState(false);
@@ -233,6 +236,21 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
         }
     };
 
+    const handleGenerateInvoice = async () => {
+        if (!order) return;
+        setInvoiceLoading(true);
+        setLocalError('');
+        try {
+            const res = await createInvoice(token, { orderIds: [order.id], type: 'normal' });
+            setInvoiceResult(res);
+            alert('Factura generada correctamente');
+        } catch (e) {
+            setLocalError(e.error || 'Error generando factura');
+        } finally {
+            setInvoiceLoading(false);
+        }
+    };
+
 
     if (loading) return <div>Cargando pedido...</div>;
     if (error) return <div style={{color: 'red'}}>{error}</div>;
@@ -397,6 +415,24 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
                         disabled={isProcessing}
                         uk-icon={'trash'}
                     >Cancelar</button>)}
+
+                    {/* Botón para generar factura si está cobrado y no facturado */}
+                    {order.paid && !order.invoiceId && (
+                        <button
+                            className="uk-button uk-button-primary uk-width-1-1@l"
+                            onClick={handleGenerateInvoice}
+                            disabled={invoiceLoading}
+                        >
+                            {invoiceLoading ? 'Generando factura...' : 'Generar factura'}
+                        </button>
+                    )}
+
+                    {/* Enlace al PDF si la factura se ha generado */}
+                    {invoiceResult && invoiceResult.pdfPath && (
+                        <div className="uk-alert-success uk-margin-top">
+                            Factura generada: <a href={`file://${invoiceResult.pdfPath}`} target="_blank" rel="noopener noreferrer">Descargar PDF</a>
+                        </div>
+                    )}
 
                     {showModal && (<div id="confirm-modal" className="uk-modal uk-open" style={{display: 'block'}}>
                         <div className="uk-modal-dialog uk-modal-body">

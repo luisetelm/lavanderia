@@ -199,4 +199,9 @@ export function retryNotification(token, id, phone) {
     });
 }
 
-
+export function createInvoice(token, { orderIds, type = 'normal', invoiceData = {} }) {
+    return request('/invoices', token, {
+        method: 'POST',
+        body: JSON.stringify({ orderIds, type, invoiceData })
+    });
+}

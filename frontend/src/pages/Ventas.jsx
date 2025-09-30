@@ -26,6 +26,8 @@ export default function Ventas({token}) {
 
     const [ventas, setVentas] = useState([]);
     const [loading, setLoading] = useState(false);
+    const [selectedOrders, setSelectedOrders] = useState([]);
+    const [selectionCriteria, setSelectionCriteria] = useState(null);
 
     // Al cambiar las fechas
     const handleFechaInicio = (e) => {
@@ -90,6 +92,35 @@ export default function Ventas({token}) {
         } finally {
             setLoading(false);
         }
+    };
+
+    // Función para manejar la selección de pedidos
+    const handleSelectOrder = (order) => {
+        const isSelected = selectedOrders.includes(order.id);
+        let newSelectedOrders;
+        if (isSelected) {
+            newSelectedOrders = selectedOrders.filter(id => id !== order.id);
+        } else {
+            newSelectedOrders = [...selectedOrders, order.id];
+        }
+        if (newSelectedOrders.length === 0) {
+            setSelectionCriteria(null);
+        } else if (!isSelected && newSelectedOrders.length === 1) {
+            setSelectionCriteria({
+                clientId: order.client?.id,
+                paid: order.paid
+            });
+        }
+        setSelectedOrders(newSelectedOrders);
+    };
+
+    const canSelectOrder = (order) => {
+        if (order.facturado) return false;
+        if (!selectionCriteria) return true;
+        return (
+            order.client?.id === selectionCriteria.clientId &&
+            order.paid === selectionCriteria.paid
+        );
     };
 
     return (<div>
@@ -183,6 +214,28 @@ export default function Ventas({token}) {
             </div>) : (<table className="uk-table uk-table-divider uk-table-small">
                 <thead>
                 <tr>
+                    <th>
+                        <input
+                            type="checkbox"
+                            checked={selectedOrders.length > 0 && ventas.filter(v => canSelectOrder(v)).every(v => selectedOrders.includes(v.id))}
+                            onChange={e => {
+                                if (e.target.checked) {
+                                    const validIds = ventas.filter(v => canSelectOrder(v)).map(v => v.id);
+                                    setSelectedOrders(validIds);
+                                    if (validIds.length > 0) {
+                                        const first = ventas.find(v => v.id === validIds[0]);
+                                        setSelectionCriteria({
+                                            clientId: first.client?.id,
+                                            paid: first.paid
+                                        });
+                                    }
+                                } else {
+                                    setSelectedOrders([]);
+                                    setSelectionCriteria(null);
+                                }
+                            }}
+                        />
+                    </th>
                     <th>Número</th>
                     <th>Fecha</th>
                     <th>Cliente</th>
@@ -194,13 +247,20 @@ export default function Ventas({token}) {
                 </thead>
                 <tbody>
                 {ventas.map((v) => {
-                    console.log(v)
                     const fecha = v.createdAt ? new Date(v.createdAt).toLocaleDateString('es-ES', {dateStyle: 'medium'}) : '-';
                     const cliente = v.client?.denominacionSocial || v.client?.firstName + ' ' + v.client.lastName || v.cliente || '-';
                     const total = typeof v.total === 'number' ? eur.format(v.total) : v.total ? eur.format(Number(v.total)) : '-';
                     const yaFacturado = v.status === 'collected' || Boolean(v.facturado);
 
                     return (<tr key={v.id} className={yaFacturado ? 'estado-facturado' : 'estado-pendiente'}>
+                        <td>
+                            <input
+                                type="checkbox"
+                                checked={selectedOrders.includes(v.id)}
+                                disabled={!canSelectOrder(v)}
+                                onChange={() => handleSelectOrder(v)}
+                            />
+                        </td>
                         <td>{v.orderNum}</td>
                         <td>{fecha}</td>
                         <td>{cliente}</td>
@@ -230,8 +290,6 @@ export default function Ventas({token}) {
                                 Ver pedido
                             </button>
                         </td>
-
-
                     </tr>);
                 })}
                 </tbody>

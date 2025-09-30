@@ -301,8 +301,7 @@ export default async function (fastify, opts) {
             }
 
         }
-
-
+        
         return reply.send(updated);
     });
 

@@ -10,6 +10,7 @@ import productsImportRoutes from './routes/products_import.js';
 import cashRoutes from './routes/cash.js';
 import notificationsRoutes from './routes/notifications.js';
 import userRoutes from './routes/users.js';
+import invoicesRoutes from './routes/invoices.js'; // <--- Añade esta línea
 
 
 dotenv.config();
@@ -55,6 +56,7 @@ app.register(userRoutes, {prefix: '/api/users'});
 app.register(productsImportRoutes, {prefix: '/api/products'}); // quedaría POST /api/products/import
 app.register(cashRoutes, {prefix: '/api/cash'}); // quedaría POST /api/products/import
 app.register(notificationsRoutes, {prefix: '/api/notifications'});
+app.register(invoicesRoutes, {prefix: '/api/invoices'});
 
 // Healthcheck
 app.get('/', async () => ({status: 'ok'}));
