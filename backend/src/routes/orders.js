@@ -301,7 +301,7 @@ export default async function (fastify, opts) {
             }
 
         }
-        
+
         return reply.send(updated);
     });
 
@@ -423,21 +423,32 @@ export default async function (fastify, opts) {
 
         try {
             const order = await prisma.order.findUnique({
-                where: {id: orderId}, include: {
-                    lines: {
+                where: {id: orderId},
+                include: {
+                    lines: {include: {product: true /* , variant: true */}},
+                    client: {select: {id: true, firstName: true, lastName: true, email: true, phone: true}},
+                    notification: {select: {id: true, type: true, sentAt: true, status: true, content: true}},
+                    invoiceTickets: {
                         include: {
-                            product: true, // si hay variantes y quieres su detalle, añade:
-                            // variant: true
+                            invoices: {
+                                include: {
+                                    invoiceLines: true, // si quieres las líneas de la factura también
+                                },
+                            },
                         },
-                    }, client: {
-                        select: {
-                            id: true, firstName: true, lastName: true, email: true, phone: true,
-                        }
-                    }, notification: {
-                        select: {id: true, type: true, sentAt: true, status: true, content: true}
                     },
                 },
             });
+
+// Array de facturas “aplanado”
+            const invoices = order?.invoiceTickets.map(it => it.invoices) ?? [];
+
+            invoices.map(invoice => {
+
+                // generar la ruta para descargar la factura
+                invoice.pdfPath = `/invoices_pdfs/factura_${invoice.id}.pdf`;
+            })
+
 
             if (!order) {
                 return reply.status(404).send({error: 'Pedido no encontrado'});
@@ -470,8 +481,10 @@ export default async function (fastify, opts) {
             });
 
             const serialized = {
-                ...order, lines: serializedLines,
+                ...order, lines: serializedLines, facturas: invoices,
             };
+
+            console.log('serialized', serialized);
 
             return reply.send(serialized);
         } catch (err) {

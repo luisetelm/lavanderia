@@ -45,24 +45,24 @@ model ProductVariant {
 }
 
 model Order {
-  id                    Int            @id @default(autoincrement())
-  orderNum              String         @unique
+  id                    Int              @id @default(autoincrement())
+  orderNum              String           @unique
   clientId              Int?
   total                 Float
-  paid                  Boolean        @default(false)
+  paid                  Boolean          @default(false)
   paymentMethod         String?
   observaciones         String?
   fechaLimite           DateTime?
-  createdAt             DateTime       @default(now())
-  updatedAt             DateTime       @updatedAt
-  status                String?        @default("pending")
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+  status                String?          @default("pending")
   workerId              Int?
   observacionesInternas String?
   CashMovement          CashMovement[]
   notification          Notification[]
-  client                User?          @relation("client_orders", fields: [clientId], references: [id])
+  client                User?            @relation("client_orders", fields: [clientId], references: [id])
   lines                 OrderLine[]
-  invoiceTickets invoiceTickets[]
+  invoiceTickets        invoiceTickets[]
 }
 
 model OrderLine {
@@ -103,6 +103,7 @@ model User {
   personMovements    CashMovement[] @relation("person_movements")
   cashMovements      CashMovement[] @relation("user_movements")
   orders             Order[]        @relation("client_orders")
+  invoices           invoices[]
 }
 
 model Notification {
@@ -149,15 +150,6 @@ model CashMovement {
   user         User             @relation("user_movements", fields: [userid], references: [id])
 }
 
-model invoiceCounters {
-  seriesId      BigInt
-  invoiceYear   Int
-  lastNumber    Int           @default(0)
-  invoiceSeries invoiceSeries @relation(fields: [seriesId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-
-  @@id([seriesId, invoiceYear])
-}
-
 model invoiceLines {
   id          BigInt   @id @default(autoincrement())
   invoiceId   BigInt
@@ -173,20 +165,11 @@ model invoiceLines {
   invoices    invoices @relation(fields: [invoiceId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 }
 
-model invoiceSeries {
-  id              BigInt            @id @default(autoincrement())
-  code            String            @unique
-  description     String?
-  active          Boolean           @default(true)
-  invoiceCounters invoiceCounters[]
-  invoices        invoices[]
-}
-
 model invoiceTickets {
   invoiceId BigInt
   ticketId  Int
   invoices  invoices @relation(fields: [invoiceId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  order     Order    @relation(fields: [ticketId], references: [id])
+  order     Order    @relation(fields: [ticketId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@id([invoiceId, ticketId])
   @@index([ticketId], map: "idx_invoiceTickets_ticketId")
@@ -194,8 +177,7 @@ model invoiceTickets {
 
 model invoices {
   id                 BigInt           @id @default(autoincrement())
-  seriesId           BigInt
-  number             Int?
+  number             String?          @db.VarChar
   invoiceYear        Int
   issuedAt           DateTime         @db.Timestamptz(6)
   operationDate      DateTime?        @db.Date
@@ -203,9 +185,6 @@ model invoices {
   sellerName         String
   sellerTaxId        String
   sellerAddress      String
-  customerName       String
-  customerTaxId      String?
-  customerAddress    String
   totalNet           Decimal          @default(0) @db.Decimal(12, 2)
   totalTax           Decimal          @default(0) @db.Decimal(12, 2)
   totalGross         Decimal          @default(0) @db.Decimal(12, 2)
@@ -216,11 +195,13 @@ model invoices {
   notes              String?
   createdAt          DateTime         @default(now()) @db.Timestamptz(6)
   updatedAt          DateTime         @default(now()) @db.Timestamptz(6)
+  clientId           Int?
+  paid               Boolean?
   invoiceLines       invoiceLines[]
   invoiceTickets     invoiceTickets[]
+  User               User?            @relation(fields: [clientId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_invoices_client")
   invoices           invoices?        @relation("invoicesToinvoices", fields: [rectifiesInvoiceId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   other_invoices     invoices[]       @relation("invoicesToinvoices")
-  invoiceSeries      invoiceSeries    @relation(fields: [seriesId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 }
 
 enum CashMovementType {

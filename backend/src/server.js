@@ -11,11 +11,18 @@ import cashRoutes from './routes/cash.js';
 import notificationsRoutes from './routes/notifications.js';
 import userRoutes from './routes/users.js';
 import invoicesRoutes from './routes/invoices.js'; // <--- Añade esta línea
+import fastifyStatic from '@fastify/static';
+import path from 'path';
 
 
 dotenv.config();
 const prisma = new PrismaClient();
 const app = Fastify({logger: true});
+
+BigInt.prototype.toJSON = function () {
+    return this.toString();
+};
+
 
 // Decorator para acceso a Prisma desde handlers
 app.decorate('prisma', prisma);
@@ -32,7 +39,7 @@ app.addHook('onRequest', async (request, reply) => {
 
 // JWT middleware
 app.addHook('preHandler', async (request, reply) => {
-    const publicPrefixes = ['/api/auth/login', '/api/auth/register'];
+    const publicPrefixes = ['/api/auth/login', '/api/auth/register', '/invoices_pdfs/'];
     if (publicPrefixes.some(p => request.url.startsWith(p))) return;
     const auth = request.headers.authorization;
     if (!auth || !auth.startsWith('Bearer ')) {
@@ -57,6 +64,12 @@ app.register(productsImportRoutes, {prefix: '/api/products'}); // quedaría POST
 app.register(cashRoutes, {prefix: '/api/cash'}); // quedaría POST /api/products/import
 app.register(notificationsRoutes, {prefix: '/api/notifications'});
 app.register(invoicesRoutes, {prefix: '/api/invoices'});
+
+// Servir la carpeta de PDFs de facturas de forma pública
+app.register(fastifyStatic, {
+    root: path.join(process.cwd(), 'invoices_pdfs'),
+    prefix: '/invoices_pdfs/',
+});
 
 // Healthcheck
 app.get('/', async () => ({status: 'ok'}));

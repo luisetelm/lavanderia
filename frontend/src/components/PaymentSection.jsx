@@ -241,9 +241,11 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
         setInvoiceLoading(true);
         setLocalError('');
         try {
-            const res = await createInvoice(token, { orderIds: [order.id], type: 'normal' });
+            const res = await createInvoice(token, {orderIds: [order.id], type: 'normal'});
             setInvoiceResult(res);
-            alert('Factura generada correctamente');
+            // Actualiza el estado del pedido para reflejar el cambio
+            await apiUpdateOrder(token, order.id, {invoiceTickets: res.data});
+            await loadOrder();
         } catch (e) {
             setLocalError(e.error || 'Error generando factura');
         } finally {
@@ -409,6 +411,8 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
                         Marcar como recogido
                     </button>)}
 
+                    {console.log(order)}
+
                     {!order.paid && (<button
                         className="uk-button uk-button-danger uk-width-1-1@l"
                         onClick={handleCancelOrder}
@@ -416,8 +420,8 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
                         uk-icon={'trash'}
                     >Cancelar</button>)}
 
-                    {/* Botón para generar factura si está cobrado y no facturado */}
-                    {order.paid && !order.invoiceId && (
+                    {/* Botón para generar factura si está cobrado y no facturado, o para descargar si ya existe */}
+                    {order.paid && (!order.invoiceTickets || order.invoiceTickets.length === 0) && (
                         <button
                             className="uk-button uk-button-primary uk-width-1-1@l"
                             onClick={handleGenerateInvoice}
@@ -426,12 +430,15 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
                             {invoiceLoading ? 'Generando factura...' : 'Generar factura'}
                         </button>
                     )}
-
-                    {/* Enlace al PDF si la factura se ha generado */}
-                    {invoiceResult && invoiceResult.pdfPath && (
-                        <div className="uk-alert-success uk-margin-top">
-                            Factura generada: <a href={`file://${invoiceResult.pdfPath}`} target="_blank" rel="noopener noreferrer">Descargar PDF</a>
-                        </div>
+                    {order.paid && order.invoiceTickets && order.invoiceTickets.length > 0 && order.invoiceTickets[0].invoices && order.invoiceTickets[0].invoices.pdfPath && (
+                        <a
+                            className="uk-button uk-button-primary uk-width-1-1@l"
+                            href={`http://localhost:4000${order.invoiceTickets[0].invoices.pdfPath}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                        >
+                            Descargar factura
+                        </a>
                     )}
 
                     {showModal && (<div id="confirm-modal" className="uk-modal uk-open" style={{display: 'block'}}>
