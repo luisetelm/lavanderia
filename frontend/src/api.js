@@ -205,3 +205,56 @@ export function createInvoice(token, { orderIds, type = 'normal', invoiceData = 
         body: JSON.stringify({ orderIds, type, invoiceData })
     });
 }
+
+export async function downloadInvoicePDF(token, invoiceId) {
+    const filename = `factura_${invoiceId}.pdf`;
+    const url = `${API_BASE}/invoices/pdf/${filename}`;
+
+    try {
+        const res = await fetch(url, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+
+        if (!res.ok) {
+            if (res.status === 401) {
+                window.dispatchEvent(new CustomEvent('unauthorized'));
+            }
+            throw new Error(`Error descargando factura: ${res.status}`);
+        }
+
+        // Convertir la respuesta a blob
+        const blob = await res.blob();
+
+        // Crear un enlace temporal y descargarlo
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(downloadUrl);
+
+        // Mostrar notificación de éxito
+        UIkit.notification({
+            message: 'Factura descargada correctamente',
+            status: 'success',
+            pos: 'top-right',
+            timeout: 3000
+        });
+
+        return true;
+    } catch (error) {
+        console.error('Error descargando factura:', error);
+        UIkit.notification({
+            message: 'Error al descargar la factura',
+            status: 'danger',
+            pos: 'top-right',
+            timeout: 3000
+        });
+        throw error;
+    }
+}

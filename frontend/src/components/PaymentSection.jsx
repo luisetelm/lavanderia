@@ -8,9 +8,12 @@ import {
     payWithCash,
     updateOrder,
     updateOrder as apiUpdateOrder,
-    retryNotification
+    retryNotification, downloadInvoicePDF
 } from '../api.js';
 import {printSaleTicket, printWashLabels} from '../utils/printUtils.js';
+
+// En tu componente, donde tengas el token y el ID de la factura
+
 
 export default function PaymentSection({token, orderId, onPaid, user}) {
     const [order, setOrder] = useState(null);
@@ -431,15 +434,14 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
                         </button>
                     )}
                     {order.paid && order.invoiceTickets && order.invoiceTickets.length > 0 && order.invoiceTickets[0].invoices && order.invoiceTickets[0].invoices.pdfPath && (
-                        <a
+                        <button
                             className="uk-button uk-button-primary uk-width-1-1@l"
-                            href={`http://localhost:4000${order.invoiceTickets[0].invoices.pdfPath}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                            onClick={() => downloadInvoicePDF(token, order.invoiceTickets[0].invoices.id)}
                         >
                             Descargar factura
-                        </a>
+                        </button>
                     )}
+
 
                     {showModal && (<div id="confirm-modal" className="uk-modal uk-open" style={{display: 'block'}}>
                         <div className="uk-modal-dialog uk-modal-body">

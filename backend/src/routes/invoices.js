@@ -8,6 +8,8 @@ import nodemailer from 'nodemailer';
 export default async function (fastify, opts) {
     const prisma = fastify.prisma || new PrismaClient();
 
+
+
     // Crear factura normal o simplificada
     fastify.post('/', async (req, reply) => {
         const {orderIds, type, invoiceData} = req.body; // type: 'normal' | 'simplificada'
@@ -450,6 +452,28 @@ export default async function (fastify, opts) {
                 hasPrevPage: pageNum > 0
             }
         };
+    });
+
+    // Descargar PDF de factura (protegido con JWT)
+    fastify.get('/pdf/:filename', async (request, reply) => {
+        const { filename } = request.params;
+
+        // Validar formato del nombre de archivo
+        if (!/^factura_\d+\.pdf$/.test(filename)) {
+            return reply.code(400).send({ error: 'Nombre de archivo inválido' });
+        }
+
+        const filePath = path.join(process.cwd(), 'invoices_pdfs', filename);
+
+        // Verificar que el archivo existe
+        if (!fs.existsSync(filePath)) {
+            return reply.code(404).send({ error: 'Archivo no encontrado' });
+        }
+
+        // Enviar el PDF como respuesta
+        reply.header('Content-Type', 'application/pdf');
+        reply.header('Content-Disposition', `attachment; filename="${filename}"`);
+        return reply.send(fs.createReadStream(filePath));
     });
 }
 
