@@ -345,7 +345,10 @@ export default async function (fastify, opts) {
 `;
 
 
-        const browser = await puppeteer.launch({headless: 'new'});
+        //const browser = await puppeteer.launch({headless: 'new'});
+        const browser = await puppeteer.launch({
+            args: ['--no-sandbox', '--disable-setuid-sandbox']
+        });
         const page = await browser.newPage();
         await page.setContent(html, {waitUntil: 'networkidle0'});
         await page.pdf({path: pdfPath, format: 'A4'});
