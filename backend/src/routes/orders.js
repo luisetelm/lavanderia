@@ -2,6 +2,7 @@
 //import nextOrderNum from '../utils/generateOrderNum.js';
 import {isValidSpanishPhone} from '../utils/validatePhone.js';
 import {sendSMScustomer} from "../services/twilio.js";
+import {crearFactura} from "./invoices.js";
 
 export default async function (fastify, opts) {
     const prisma = fastify.prisma;
@@ -338,13 +339,27 @@ export default async function (fastify, opts) {
                 change = received - order.total;
             }
 
+            await crearFactura(prisma, {orderIds: [orderId], type: 's'});
+
             const updated = await prisma.order.update({
                 where: {id: orderId}, data: updateData, include: {
                     lines: {include: {product: true}}, client: {
                         select: {id: true, firstName: true, lastName: true, email: true, phone: true},
                     },
+                    invoiceTickets: {
+                        include: {
+                            order: {
+                                include: {
+                                    lines: {
+                                        include: {product: true}
+                                    }
+                                }
+                            }
+                        }
+                    },
                 },
             });
+
 
             return reply.send({order: updated, change: method === 'cash' ? change : 0});
         } catch (err) {
@@ -401,10 +416,20 @@ export default async function (fastify, opts) {
         try {
             const orders = await prisma.order.findMany({
                 where, include: {
-                    lines: {include: {product: true}}, client: {
+                    lines: {include: {product: true},}, client: {
                         select: {id: true, firstName: true, lastName: true, phone: true, email: true},
                     }, notification: {
                         select: {id: true, type: true, sentAt: true, status: true, content: true}
+                    }, invoiceTickets: {
+                        include: {
+                            order: {
+                                include: {
+                                    lines: {
+                                        include: {product: true}
+                                    }
+                                }
+                            }
+                        }
                     }
                 }, orderBy: {[orderByField]: orderByDirection},
             });

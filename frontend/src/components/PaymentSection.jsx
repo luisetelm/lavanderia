@@ -25,7 +25,6 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
     const [localError, setLocalError] = useState('');
     const [isPrinting, setIsPrinting] = useState(false);
     const [invoiceLoading, setInvoiceLoading] = useState(false);
-    const [invoiceResult, setInvoiceResult] = useState(null);
 
     // Modal de confirmación (listo/recogido)
     const [showModal, setShowModal] = useState(false);
@@ -244,7 +243,7 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
         setInvoiceLoading(true);
         setLocalError('');
         try {
-            const res = await createInvoice(token, {orderIds: [order.id], type: 'normal'});
+            const res = await createInvoice(token, {orderIds: [order.id], type: 'n'});
             setInvoiceResult(res);
             // Actualiza el estado del pedido para reflejar el cambio
             await apiUpdateOrder(token, order.id, {invoiceTickets: res.data});

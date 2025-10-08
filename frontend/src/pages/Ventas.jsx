@@ -1,5 +1,10 @@
 import React, {useCallback, useEffect, useState} from 'react';
-import {fetchOrders, facturarPedido as apiFacturarPedido} from '../api.js';
+import {
+    fetchOrders,
+    facturarPedido as apiFacturarPedido,
+    createInvoice,
+    updateOrder as apiUpdateOrder
+} from '../api.js';
 import {useNavigate} from 'react-router-dom';
 
 function getPrimerDiaMes() {
@@ -94,6 +99,22 @@ export default function Ventas({token}) {
         }
     };
 
+    // Facturar todos los pedidos seleccionados
+    const handleGenerateInvoices = async () => {
+        if (selectedOrders.length === 0) return;
+        setLoading(true);
+        try {
+            await createInvoice(token, {orderIds: selectedOrders, type: 'n'});
+            await fetchVentas();
+            setSelectedOrders([]);
+            setSelectionCriteria(null);
+        } catch (e) {
+            alert(e.error || 'Error generando facturas');
+        } finally {
+            setLoading(false);
+        }
+    };
+
     // Función para manejar la selección de pedidos
     const handleSelectOrder = (order) => {
         const isSelected = selectedOrders.includes(order.id);
@@ -113,6 +134,7 @@ export default function Ventas({token}) {
         }
         setSelectedOrders(newSelectedOrders);
     };
+
 
     const canSelectOrder = (order) => {
         if (order.facturado) return false;
@@ -211,89 +233,106 @@ export default function Ventas({token}) {
                 <span className="uk-badge uk-badge-warning">Cargando ventas...</span>
             </div>) : ventas.length === 0 ? (<div className="uk-text-center uk-margin">
                 <span className="uk-badge uk-badge-muted">No hay ventas en el rango seleccionado.</span>
-            </div>) : (<table className="uk-table uk-table-divider uk-table-small">
-                <thead>
-                <tr>
-                    <th>
-                        <input
-                            type="checkbox"
-                            checked={selectedOrders.length > 0 && ventas.filter(v => canSelectOrder(v)).every(v => selectedOrders.includes(v.id))}
-                            onChange={e => {
-                                if (e.target.checked) {
-                                    const validIds = ventas.filter(v => canSelectOrder(v)).map(v => v.id);
-                                    setSelectedOrders(validIds);
-                                    if (validIds.length > 0) {
-                                        const first = ventas.find(v => v.id === validIds[0]);
-                                        setSelectionCriteria({
-                                            clientId: first.client?.id,
-                                            paid: first.paid
-                                        });
-                                    }
-                                } else {
-                                    setSelectedOrders([]);
-                                    setSelectionCriteria(null);
-                                }
-                            }}
-                        />
-                    </th>
-                    <th>Número</th>
-                    <th>Fecha</th>
-                    <th>Cliente</th>
-                    <th>Total</th>
-                    <th>Estado</th>
-                    <th>Factura</th>
-                    <th></th>
-                </tr>
-                </thead>
-                <tbody>
-                {ventas.map((v) => {
-                    const fecha = v.createdAt ? new Date(v.createdAt).toLocaleDateString('es-ES', {dateStyle: 'medium'}) : '-';
-                    const cliente = v.client?.denominacionSocial || v.client?.firstName + ' ' + v.client.lastName || v.cliente || '-';
-                    const total = typeof v.total === 'number' ? eur.format(v.total) : v.total ? eur.format(Number(v.total)) : '-';
-                    const yaFacturado = v.status === 'collected' || Boolean(v.facturado);
+            </div>) : (
+                <>
+                    {/* Botón Facturar todos */}
+                    {selectedOrders.length > 0 && (
+                        <button
+                            className="uk-button uk-button-primary uk-margin-bottom"
+                            onClick={handleGenerateInvoices}
+                            disabled={loading}
+                        >
+                            Facturar todos
+                        </button>
+                    )}
+                    <table className="uk-table uk-table-divider uk-table-small">
+                        <thead>
+                        <tr>
+                            <th>
+                                <input
+                                    type="checkbox"
+                                    checked={selectedOrders.length > 0 && ventas.filter(v => canSelectOrder(v)).every(v => selectedOrders.includes(v.id))}
+                                    onChange={e => {
+                                        if (e.target.checked) {
+                                            const validIds = ventas.filter(v => canSelectOrder(v)).map(v => v.id);
+                                            setSelectedOrders(validIds);
+                                            if (validIds.length > 0) {
+                                                const first = ventas.find(v => v.id === validIds[0]);
+                                                setSelectionCriteria({
+                                                    clientId: first.client?.id,
+                                                    paid: first.paid
+                                                });
+                                            }
+                                        } else {
+                                            setSelectedOrders([]);
+                                            setSelectionCriteria(null);
+                                        }
+                                    }}
+                                />
+                            </th>
+                            <th>Número</th>
+                            <th>Fecha</th>
+                            <th>Cliente</th>
+                            <th>Total</th>
+                            <th>Estado</th>
+                            <th>Factura</th>
+                            <th></th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {ventas.map((v) => {
+                            const fecha = v.createdAt ? new Date(v.createdAt).toLocaleDateString('es-ES', {dateStyle: 'medium'}) : '-';
+                            const cliente = v.client?.denominacionSocial || v.client?.firstName + ' ' + v.client.lastName || v.cliente || '-';
+                            const total = typeof v.total === 'number' ? eur.format(v.total) : v.total ? eur.format(Number(v.total)) : '-';
+                            const yaFacturado = v.invoiceTickets.length > 0;
 
-                    return (<tr key={v.id} className={yaFacturado ? 'estado-facturado' : 'estado-pendiente'}>
-                        <td>
-                            <input
-                                type="checkbox"
-                                checked={selectedOrders.includes(v.id)}
-                                disabled={!canSelectOrder(v)}
-                                onChange={() => handleSelectOrder(v)}
-                            />
-                        </td>
-                        <td>{v.orderNum}</td>
-                        <td>{fecha}</td>
-                        <td>{cliente}</td>
-                        <td>{total}</td>
-                        <td>
-                                        <span
-                                            className={`uk-badge ${yaFacturado ? 'uk-badge-success' : 'uk-badge-warning'}`}>
-                                            {yaFacturado ? 'Facturado' : 'Pendiente'}
-                                        </span>
-                        </td>
-                        <td>
-                            <button
-                                className="uk-button uk-button-default uk-button-small"
-                                onClick={() => facturarPedido(v.id, yaFacturado)}
-                                disabled={yaFacturado || loading}
-                                title={yaFacturado ? 'Este pedido ya está facturado' : 'Generar factura'}
+                            return (<tr key={v.id} className={yaFacturado ? 'estado-facturado' : 'estado-pendiente'}>
+                                <td>
+                                    <input
+                                        type="checkbox"
+                                        checked={selectedOrders.includes(v.id)}
+                                        disabled={!canSelectOrder(v)}
+                                        onChange={() => handleSelectOrder(v)}
+                                    />
+                                </td>
+                                <td>{v.orderNum}</td>
+                                <td>{fecha}</td>
+                                <td>{cliente}</td>
+                                <td>{total}</td>
+                                <td>
+                            <span
+                                className={`uk-badge ${yaFacturado ? 'uk-badge-success' : 'uk-badge-warning'}`}
                             >
-                                {yaFacturado ? '—' : 'Facturar'}
-                            </button>
-                        </td>
-                        <td>
-                            <button
-                                className="uk-button uk-button-primary uk-button-small"
-                                onClick={() => verPedido(v)}
-                                title="Ver tareas de este pedido"
-                            >
-                                Ver pedido
-                            </button>
-                        </td>
-                    </tr>);
-                })}
-                </tbody>
-            </table>)}
+                                {yaFacturado ? 'Facturado' : 'Pendiente'}
+                            </span>
+                                </td>
+                                <td>
+                                    {!yaFacturado && (
+                                        <button
+                                            className="uk-button uk-button-default uk-button-small"
+                                            onClick={() => facturarPedido(v.id, yaFacturado)}
+                                            disabled={yaFacturado || loading || selectedOrders.length > 0}
+                                            title={yaFacturado ? 'Este pedido ya está facturado' : 'Generar factura'}
+                                        >
+                                            {yaFacturado ? '—' : 'Facturar'}
+                                        </button>
+                                    )}
+                                </td>
+                                <td>
+                                    <button
+                                        className="uk-button uk-button-primary uk-button-small"
+                                        onClick={() => verPedido(v)}
+                                        title="Ver tareas de este pedido"
+                                    >
+                                        Ver pedido
+                                    </button>
+                                </td>
+                            </tr>);
+                        })}
+                        </tbody>
+                    </table>
+                </>
+            )}
         </div>
     </div>);
 }

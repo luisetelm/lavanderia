@@ -197,6 +197,7 @@ model invoices {
   updatedAt          DateTime         @default(now()) @db.Timestamptz(6)
   clientId           Int?
   paid               Boolean?
+  type               String?          @db.Char(1)
   invoiceLines       invoiceLines[]
   invoiceTickets     invoiceTickets[]
   User               User?            @relation(fields: [clientId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_invoices_client")
