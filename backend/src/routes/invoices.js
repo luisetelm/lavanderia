@@ -32,7 +32,7 @@ export async function crearFactura(prisma, {orderIds, type, invoiceData}) {
         throw httpError(400, 'Algún pedido no existe.');
     }
 
-    // 2) Validaciones de coherencia
+    // 2) Validaciones de coherencia0.
     const clientId = orders[0].clientId;
 
     let paid;
@@ -144,7 +144,12 @@ export async function crearFactura(prisma, {orderIds, type, invoiceData}) {
             invoice: result, cliente: {...cliente, direccionCompleta, etiquetaNombre, valorNombre}
         });
 
-        const browser = await puppeteer.launch({args: ['--no-sandbox', '--disable-setuid-sandbox']});
+        //const browser = await puppeteer.launch({args: ['--no-sandbox', '--disable-setuid-sandbox']});
+        const browser = await puppeteer.launch({
+            headless: 'new',
+            args: ['--no-sandbox','--disable-setuid-sandbox']
+        });
+
         try {
             const page = await browser.newPage();
             await page.setContent(html, {waitUntil: 'load'});
