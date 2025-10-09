@@ -3,7 +3,7 @@ import {
     fetchOrders,
     facturarPedido as apiFacturarPedido,
     createInvoice,
-    updateOrder as apiUpdateOrder
+    updateOrder as apiUpdateOrder, downloadInvoicePDF
 } from '../api.js';
 import {useNavigate} from 'react-router-dom';
 
@@ -316,6 +316,14 @@ export default function Ventas({token}) {
                                         >
                                             {yaFacturado ? '—' : 'Facturar'}
                                         </button>
+                                    )}
+
+                                    {yaFacturado && (
+                                        <button
+                                        className="uk-button uk-button-default uk-button-small"
+                                        onClick={() => downloadInvoicePDF(token, v.invoiceTickets[0].invoiceId)}
+                                        title="Ver factura"
+                                        >Descargar</button>
                                     )}
                                 </td>
                                 <td>

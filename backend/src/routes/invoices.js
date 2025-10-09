@@ -79,7 +79,6 @@ export async function crearFactura(prisma, {orderIds, type, invoiceData}) {
         }
     });
 
-    console.log(existingInvoice);
 
     if (existingInvoice) {
         throw httpError(400, 'Algún pedido ya está facturado.');
@@ -99,6 +98,52 @@ export async function crearFactura(prisma, {orderIds, type, invoiceData}) {
 
     // 2) Validaciones de coherencia0.
     const clientId = orders[0].clientId;
+
+    // Tenemos que comprobar que el cliente  tiene los datos necesarios para la factura, y no vale el valor null
+    const client = await prisma.User.findUnique({
+        where: {id: clientId},
+        select: {
+            firstName: true,
+            lastName: true,
+            denominacionsocial: true,
+            email: true,
+            tipopersona: true,
+            direccion: true,
+            codigopostal: true,
+            localidad: true,
+        }
+    });
+
+    if (!client) {
+        throw httpError(404, 'Cliente no encontrado.');
+    }
+
+    // Log inmediato para depuración: muestra el objeto cliente tal como lo devuelve Prisma
+    console.log('[crearFactura] cliente recuperado:', JSON.stringify(client));
+
+    // Helper robusto para detectar valores vacíos o inválidos
+    const isEmpty = (v) => v === null || v === undefined || (typeof v === 'string' && (v.trim() === '' || v.trim().toLowerCase() === 'null' || v.trim().toLowerCase() === 'undefined'));
+
+    // Validación explícita: email obligatorio + (denominación social o nombre) + dirección completa
+    const missing = [];
+    if (isEmpty(client.email)) missing.push('email');
+
+    const hasDenom = !isEmpty(client.denominacionsocial);
+    const hasName = !isEmpty(client.firstName) || !isEmpty(client.lastName);
+    if (!hasDenom && !hasName) missing.push('nombre o denominación social');
+
+    if (isEmpty(client.direccion)) missing.push('direccion');
+    if (isEmpty(client.codigopostal)) missing.push('codigopostal');
+    if (isEmpty(client.localidad)) missing.push('localidad');
+
+    // Log de depuración: muestra el cliente y los campos detectados como vacíos
+    if (missing.length > 0) {
+        // Uso console.log para asegurar visibilidad en stdout
+        console.log('[crearFactura] Validación cliente - valores recibidos:', client);
+        console.log('[crearFactura] Validación cliente - campos faltantes detectados:', missing);
+        throw httpError(400, `El cliente debe tener los campos obligatorios para la factura: ${missing.join(', ')}`);
+    }
+
 
     let paid;
 
@@ -199,7 +244,7 @@ export async function crearFactura(prisma, {orderIds, type, invoiceData}) {
             invoiceLines: true,
             invoiceTickets: {
                 include: {
-                    order: { include: { lines: { include: { product: true } } } }
+                    order: {include: {lines: {include: {product: true}}}}
                 }
             }
         },
@@ -240,11 +285,14 @@ export async function crearFactura(prisma, {orderIds, type, invoiceData}) {
         }
 
         // 7) Email (si hay email y SMTP correctamente configurado)
+        // Envío "best-effort": si falla el email no rompemos la creación de la factura
+        let emailSent = false;
+        let emailError = null;
         if (cliente.email) {
             const {SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, FROM_EMAIL} = process.env;
             if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASS || !FROM_EMAIL) {
-                // registra pero no revienta el flujo
                 console.warn('SMTP no configurado, no se enviará email de factura.');
+                emailError = 'SMTP not configured';
             } else {
                 const transporter = nodemailer.createTransport({
                     host: SMTP_HOST,
@@ -252,19 +300,39 @@ export async function crearFactura(prisma, {orderIds, type, invoiceData}) {
                     secure: Number(SMTP_PORT) === 465,
                     auth: {user: SMTP_USER, pass: SMTP_PASS},
                 });
-                await transporter.sendMail({
-                    from: FROM_EMAIL,
-                    to: cliente.email,
-                    subject: `Factura ${result.number} - Tinte y Burbuja`,
-                    text: `Estimado cliente,\n\nAdjuntamos la factura correspondiente a su pedido.\n\nGracias por confiar en nosotros.\n\nUn saludo,\nTinte y Burbuja`,
-                    attachments: [{filename: pdfFilename, path: pdfPath}],
-                });
+                try {
+                    // Verifica conexión/configuración con el servidor SMTP
+                    await transporter.verify();
+                } catch (err) {
+                    console.error('[crearFactura] SMTP verify failed:', err && err.message ? err.message : err);
+                    emailError = `SMTP verify failed: ${err && err.message ? err.message : String(err)}`;
+                }
+
+                if (!emailError) {
+                    try {
+                        await transporter.sendMail({
+                            from: FROM_EMAIL,
+                            to: [cliente.email, 'hola@tinteyburbuja.es'],
+                            subject: `Factura ${result.number} - Tinte y Burbuja`,
+                            text: `Estimado cliente,\n\nAdjuntamos la factura correspondiente a su pedido.\n\nGracias por confiar en nosotros.\n\nUn saludo,\nTinte y Burbuja`,
+                            attachments: [{filename: pdfFilename, path: pdfPath}],
+                        });
+                        emailSent = true;
+                    } catch (err) {
+                        console.error('[crearFactura] Error enviando email:', err && err.message ? err.message : err);
+                        emailError = `sendMail failed: ${err && err.message ? err.message : String(err)}`;
+                    }
+                }
             }
+        } else {
+            emailError = 'No cliente email';
         }
 
     }
 
-    return {...convertBigIntToString(result)};
+    // Adjuntamos info sobre email al resultado para que el frontend pueda mostrar un mensaje
+    const output = {...convertBigIntToString(result), meta: {emailSent: !!emailSent, emailError: emailError}};
+    return output;
 }
 
 // Mantén tu convertBigIntToString tal cual
@@ -471,7 +539,7 @@ export default async function (fastify) {
             const {id} = req.params;
             const invoice = await prisma.invoices.findUnique({
                 where: {id: Number(id)}, include: {
-                    client: true,
+                    User: true,
                     invoiceLines: true,
                     invoiceTickets: {
                         include: {
@@ -495,7 +563,7 @@ export default async function (fastify) {
             const skip = pageNum * pageSize;
             const total = await prisma.invoices.count();
             const invoices = await prisma.invoices.findMany({
-                skip, take: pageSize, orderBy: {issuedAt: 'desc'}, include: {client: true, invoiceTickets: true},
+                skip, take: pageSize, orderBy: {issuedAt: 'desc'}, include: {User: true, invoiceTickets: true},
             });
             return reply.send({
                 data: convertBigIntToString(invoices), meta: {
