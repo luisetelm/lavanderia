@@ -10,6 +10,7 @@ import {
     updateOrder as apiUpdateOrder,
     retryNotification, downloadInvoicePDF
 } from '../api.js';
+import UIkit from 'uikit'; // añadir al inicio del fichero si no existe
 import {printSaleTicket, printWashLabels} from '../utils/printUtils.js';
 
 // En tu componente, donde tengas el token y el ID de la factura
@@ -244,9 +245,20 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
         setLocalError('');
         try {
             const res = await createInvoice(token, {orderIds: [order.id], type: 'n'});
-            setInvoiceResult(res);
+            console.log(res);
+            const invoice = res?.data ?? res;
+            // opcional: guardar resultado para uso futuro
+            setInvoiceResult(invoice);
+            // Si la factura es tipo 'n' mostrar notificación de envío por email
+            if (invoice && invoice.type === 'n') {
+                UIkit.notification({
+                    message: 'Factura generada y enviada por correo electrónico al cliente',
+                    status: 'success',
+                    pos: 'top-right',
+                    timeout: 4000
+                });
+            }
             // Actualiza el estado del pedido para reflejar el cambio
-            await apiUpdateOrder(token, order.id, {invoiceTickets: res.data});
             await loadOrder();
         } catch (e) {
             setLocalError(e.error || 'Error generando factura');
