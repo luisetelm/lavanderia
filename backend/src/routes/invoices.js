@@ -12,6 +12,56 @@ function httpError(code, message) {
     return err;
 }
 
+// Agrupa líneas de varios pedidos por productId (o descripción) y calcula totales formateados
+function aggregateOrderLines(orders) {
+    const map = new Map();
+    for (const o of orders) {
+        const lines = o.lines || [];
+        for (const item of lines) {
+            const key = item.productId != null ? `p:${item.productId}` : `d:${(item.description || item.product?.name || '').trim()}`;
+            const unit = Number(item.unitPrice || 0);
+            const qty = Number(item.quantity || 0);
+            // intenta leer tax del propio item, si no, 21%
+            const taxPct = Number(item.taxPercent ?? item.taxRate ?? 21);
+
+            const existing = map.get(key) || {
+                productId: item.productId ?? null,
+                description: item.description ?? item.product?.name ?? `Pedido ${o.id}`,
+                quantity: 0,
+                gross: 0,
+                taxPct,
+            };
+
+            existing.quantity += qty;
+            existing.gross += unit * qty;
+            // si las líneas tienen distintos IVA, mantén el primero encontrado
+            map.set(key, existing);
+        }
+    }
+
+    return Array.from(map.values()).map((g, idx) => {
+        const tax = Number(g.taxPct || 21);
+        const quantity = Number(g.quantity || 0);
+        const gross = Number(g.gross || 0);
+        const unitPrice = quantity ? gross / quantity : 0;
+        const net = gross / (1 + tax / 100);
+        const taxAmount = gross - net;
+
+        return {
+            position: idx + 1,
+            description: g.description,
+            quantity: quantity.toFixed(3),           // Decimal(12,3)
+            unitPrice: unitPrice.toFixed(4),         // Decimal(12,4)
+            discountPct: '0.00',                     // por defecto
+            taxRatePct: tax.toFixed(2),              // Decimal(5,2)
+            netAmount: net.toFixed(2),               // Decimal(12,2)
+            taxAmount: taxAmount.toFixed(2),         // Decimal(12,2)
+            grossAmount: gross.toFixed(2),           // Decimal(12,2)
+            productId: g.productId,
+        };
+    });
+}
+
 export async function crearFactura(prisma, {orderIds, type, invoiceData}) {
 
 
@@ -22,12 +72,27 @@ export async function crearFactura(prisma, {orderIds, type, invoiceData}) {
         throw httpError(400, 'Tipo de factura inválido.');
     }
 
+    // Si alguno de los OrderIds ya está en la tabla de facturas, no se puede facturar
+    const existingInvoice = await prisma.invoiceTickets.findFirst({
+        where: {
+            ticketId: {in: orderIds}
+        }
+    });
+
+    console.log(existingInvoice);
+
+    if (existingInvoice) {
+        throw httpError(400, 'Algún pedido ya está facturado.');
+    }
+
     // 1) Obtener pedidos
     const orders = await prisma.order.findMany({
-        where: {id: {in: orderIds}}, include: {
-            client: true, lines: {include: {product: true}}, // si tus líneas están en order.lines
+        where: {id: {in: orderIds}},
+        include: {
+            lines: {include: {product: true}}, // si tus líneas están en order.lines
         },
     });
+
     if (orders.length !== orderIds.length) {
         throw httpError(400, 'Algún pedido no existe.');
     }
@@ -97,6 +162,26 @@ export async function crearFactura(prisma, {orderIds, type, invoiceData}) {
                         },
                     });
                 }
+
+                // Crear invoiceLines agrupadas por producto (una línea por producto con cantidades y totales sumados)
+                const grouped = aggregateOrderLines(orders);
+                for (const line of grouped) {
+                    await tx.invoiceLines.create({
+                        data: {
+                            invoiceId: inv.id,
+                            position: line.position,
+                            description: line.description,
+                            quantity: line.quantity,
+                            unitPrice: line.unitPrice,
+                            discountPct: line.discountPct,
+                            taxRatePct: line.taxRatePct,
+                            netAmount: line.netAmount,
+                            taxAmount: line.taxAmount,
+                            grossAmount: line.grossAmount,
+                        },
+                    });
+                }
+
                 return inv;
             } catch (e) {
                 // Si es colisión de UNIQUE en number, reintenta
@@ -111,15 +196,12 @@ export async function crearFactura(prisma, {orderIds, type, invoiceData}) {
     const result = await prisma.invoices.findUnique({
         where: {id: invoice.id}, include: {
             User: true,
+            invoiceLines: true,
             invoiceTickets: {
                 include: {
-                    order: {
-                        include: {
-                            lines: {include: {product: true}},
-                        },
-                    },
-                },
-            },
+                    order: { include: { lines: { include: { product: true } } } }
+                }
+            }
         },
     });
 
@@ -131,9 +213,8 @@ export async function crearFactura(prisma, {orderIds, type, invoiceData}) {
         if (!fs.existsSync(pdfDir)) fs.mkdirSync(pdfDir, {recursive: true});
         const pdfFilename = `factura_${invoice.id}.pdf`;
         const pdfPath = path.join(pdfDir, pdfFilename);
-        const publicUrl = `/invoices/pdf/${pdfFilename}`; // <- lo que sirves por la ruta protegida
 
-        const cliente = result.User || {};
+        const cliente = result.client || {};
         const direccionCompleta = [cliente.direccion, cliente.codigopostal, cliente.localidad, cliente.provincia, cliente.pais,].filter(Boolean).join(', ');
 
         const esFisica = (cliente.tipopersona || '').toLowerCase().includes('fís');
@@ -204,13 +285,16 @@ function buildInvoiceHtml({invoice, cliente}) {
     const paidStatus = (invoice.status ?? (invoice.paid ? 'Pagada' : 'Pendiente')).toString();
     const isPaid = paidStatus.toLowerCase().includes('pag');
 
-    const linesHtml = invoice.invoiceTickets.flatMap((t) => {
-        return t.order.lines.map((item) => {
-            const unit = Number(item.unitPrice || 0);
-            const qty = Number(item.quantity || 0);
-            const taxPct = (item.taxPercent ?? item.taxRate ?? invoice.taxPercent ?? invoice.taxRate ?? 21);
-            const lineTotal = unit * qty;
-            const desc = item.description ?? item.product?.name ?? ('Pedido ' + t.order.id);
+    // Si existen invoiceLines (agrupadas por producto), renderízalas directamente.
+    // En caso contrario, como fallback, recorremos invoiceTickets -> order.lines.
+    let linesHtml = '';
+    if (Array.isArray(invoice.invoiceLines) && invoice.invoiceLines.length > 0) {
+        linesHtml = invoice.invoiceLines.map((line) => {
+            const unit = Number(line.unitPrice || 0);
+            const qty = Number(line.quantity || 0);
+            const taxPct = Number(line.taxRatePct ?? 21);
+            const lineTotal = Number(line.grossAmount || unit * qty || 0);
+            const desc = line.description || '';
             return `
         <tr>
           <td>${desc}</td>
@@ -219,8 +303,28 @@ function buildInvoiceHtml({invoice, cliente}) {
           <td class="num">${pct(taxPct)}</td>
           <td class="num">${money(lineTotal)}</td>
         </tr>`;
-        });
-    }).join('');
+        }).join('');
+    } else if (Array.isArray(invoice.invoiceTickets)) {
+        linesHtml = invoice.invoiceTickets.flatMap((t) => {
+            const order = t.order || {};
+            const lines = order.lines || [];
+            return lines.map((item) => {
+                const unit = Number(item.unitPrice || 0);
+                const qty = Number(item.quantity || 0);
+                const taxPct = (item.taxPercent ?? item.taxRate ?? invoice.taxPercent ?? invoice.taxRate ?? 21);
+                const lineTotal = unit * qty;
+                const desc = item.description ?? item.product?.name ?? ('Pedido ' + (order.id ?? ''));
+                return `
+        <tr>
+          <td>${desc}</td>
+          <td class="num">${money(unit)}</td>
+          <td class="num">${qty}</td>
+          <td class="num">${pct(taxPct)}</td>
+          <td class="num">${money(lineTotal)}</td>
+        </tr>`;
+            });
+        }).join('');
+    }
 
     // (Tu CSS/HTML original aquí… recortado por brevedad)
     return `
@@ -366,7 +470,15 @@ export default async function (fastify) {
         try {
             const {id} = req.params;
             const invoice = await prisma.invoices.findUnique({
-                where: {id: Number(id)}, include: {client: true, invoiceTickets: true},
+                where: {id: Number(id)}, include: {
+                    client: true,
+                    invoiceLines: true,
+                    invoiceTickets: {
+                        include: {
+                            order: {include: {lines: {include: {product: true}}}}
+                        }
+                    }
+                }
             });
             if (!invoice) return reply.code(404).send({error: 'Factura no encontrada'});
             return reply.send(convertBigIntToString(invoice));
