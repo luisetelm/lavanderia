@@ -247,8 +247,6 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
             const res = await createInvoice(token, {orderIds: [order.id], type: 'n'});
             console.log(res);
             const invoice = res?.data ?? res;
-            // opcional: guardar resultado para uso futuro
-            setInvoiceResult(invoice);
             // Si la factura es tipo 'n' mostrar notificación de envío por email
             if (invoice && invoice.type === 'n') {
                 UIkit.notification({
