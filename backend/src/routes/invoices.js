@@ -147,7 +147,7 @@ export async function crearFactura(prisma, {orderIds, type, invoiceData}) {
         //const browser = await puppeteer.launch({args: ['--no-sandbox', '--disable-setuid-sandbox']});
         const browser = await puppeteer.launch({
             headless: 'new',
-            args: ['--no-sandbox','--disable-setuid-sandbox']
+            args: ['--no-sandbox', '--disable-setuid-sandbox']
         });
 
         try {
@@ -228,8 +228,7 @@ function buildInvoiceHtml({invoice, cliente}) {
 <head>
 <meta charset="utf-8" />
 <title>Factura ${invoice.number}</title>
-<style>/* … tu CSS exactamente como lo tenías … */</style>
-</head>
+<style> :root{ --accent:#0f172a; --muted:#6b7280; --line:#e5e7eb; --ok:#16a34a; /* verde */ --warn:#dc2626; /* rojo */ } *{ box-sizing:border-box; } html,body{ margin:0; padding:0; } @page{ size:A4; margin:10mm; } body{ font-family: Arial, Helvetica, sans-serif; -webkit-font-smoothing: antialiased; color:#111827; font-size:12px; line-height:1.45; background:#fff; } .header{ display:flex; align-items:center; justify-content:space-between; border-bottom:2px solid var(--line); padding-bottom:18px; margin-bottom:18px; gap:16px; } .brand{ display:flex; align-items:center; gap:12px; } .brand .title{ font-weight:700; font-size:20px; letter-spacing:.5px; color:var(--accent); text-transform:uppercase; } .logo{ height:42px; width:auto; object-fit:contain; display:block; } .seller{ text-align:right; font-size:12px; color:#111827; } .seller .name{ font-weight:700; } .status-badge{ display:inline-block; padding:4px 10px; border-radius:999px; font-size:11px; font-weight:700; line-height:1; border:1px solid currentColor; margin-top:6px; } .status-paid{ color:var(--ok); } .status-due{ color:var(--warn); } .invoice-meta{ display:grid; grid-template-columns:1fr 1fr; gap:16px; margin:16px 0 10px; } .meta-card{ border:1px solid var(--line); border-radius:8px; padding:12px 14px; background:#fff; } .meta-title{ font-size:12px; text-transform:uppercase; color:var(--muted); margin:0 0 6px; letter-spacing:.4px;} .meta-grid{ display:grid; grid-template-columns:120px 1fr; row-gap:4px; column-gap:8px; font-size:12px; } .label{ color:var(--muted); } .value{ font-weight:600; color:#111827; } .section-title{ font-size:14px; font-weight:700; margin:18px 0 8px; color:#111827; } table{ width:100%; border-collapse:collapse; } thead th{ text-align:left; font-size:11px; padding:8px 8px; background:#f8fafc; color:#374151; border-bottom:1px solid var(--line); text-transform:uppercase; letter-spacing:.3px; } tbody td{ font-size:11px; line-height:1.35; padding:6px 8px; border-bottom:1px solid var(--line); vertical-align:top; } tfoot td{ padding:6px 8px; } .num{ text-align:right; white-space:nowrap; } .totals{ margin-top:16px; display:flex; justify-content:flex-end; } .totals-table{ width:380px; border:1px solid var(--line); border-radius:10px; overflow:hidden; } .totals-table tr td{ padding:12px 14px; border-bottom:1px solid var(--line); font-size:13px; } .totals-table tr:last-child td{ border-bottom:none; } .totals-table .label{ color:#374151; } .totals-table .strong{ font-weight:800; font-size:16px; color:#0b1220; } .footnote{ margin-top:18px; font-size:11px; color:#4b5563; } .urls{ position: fixed; left: 0; bottom: 0; width: 100vw; margin: 0; padding: 10px 0 8px 0; font-size: 12px; color: #0f172a; text-align: center; background: none; z-index: 100; } @media print{ .urls{ position: fixed; left: 0; bottom: 0; width: 100vw; margin: 0; padding: 10px 0 8px 0; font-size: 12px; color: #0f172a; text-align: center; background: none; z-index: 100; } } </style></head>
 <body>
   <div class="wrapper">
     <div class="header">
