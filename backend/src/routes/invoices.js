@@ -110,7 +110,7 @@ export async function crearFactura(prisma, {orderIds, type, invoiceData}) {
     // 5) Cargar factura completa para el render
     const result = await prisma.invoices.findUnique({
         where: {id: invoice.id}, include: {
-            User: true,                 // usa "client", no "User"
+            User: true,
             invoiceTickets: {
                 include: {
                     order: {
@@ -133,7 +133,7 @@ export async function crearFactura(prisma, {orderIds, type, invoiceData}) {
         const pdfPath = path.join(pdfDir, pdfFilename);
         const publicUrl = `/invoices/pdf/${pdfFilename}`; // <- lo que sirves por la ruta protegida
 
-        const cliente = result.client || {};
+        const cliente = result.User || {};
         const direccionCompleta = [cliente.direccion, cliente.codigopostal, cliente.localidad, cliente.provincia, cliente.pais,].filter(Boolean).join(', ');
 
         const esFisica = (cliente.tipopersona || '').toLowerCase().includes('fís');
@@ -254,7 +254,7 @@ function buildInvoiceHtml({invoice, cliente}) {
       <div class="meta-card">
         <div class="meta-title">Cliente</div>
         <div class="meta-grid">
-          <div class="label">${cliente.etiquetaNombre}:</div><div class="value">${cliente.valorNombre}</div>
+          <div class="label">${cliente.etiquetaNombre}:</div><div class="value">${cliente.denominacionsocial}</div>
           <div class="label">NIF:</div><div class="value">${cliente.nif ?? ''}</div>
           <div class="label">Dirección:</div><div class="value">${cliente.direccionCompleta}</div>
         </div>
