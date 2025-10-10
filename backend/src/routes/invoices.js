@@ -3,9 +3,11 @@ import {PrismaClient} from '@prisma/client';
 import puppeteer from 'puppeteer';
 import fs from 'fs';
 import path from 'path';
-import nodemailer from 'nodemailer';
 import MailComposer from 'nodemailer/lib/mail-composer/index.js';
 import {SESClient, SendRawEmailCommand} from '@aws-sdk/client-ses';
+
+// Si no se define AWS_REGION en entorno, asumimos una región por defecto razonable.
+const DEFAULT_AWS_REGION = process.env.AWS_REGION || 'eu-west-1';
 
 // --- helpers ---
 function httpError(code, message) {
@@ -172,19 +174,36 @@ export async function crearFactura(prisma, {orderIds, type, invoiceData}) {
     const totalTax = +(totalGross - totalNet).toFixed(2);
 
     // 4) Crear factura + vínculos en una transacción
-    const year = new Date().getFullYear();
+    // Si `invoiceData` incluye una fecha (createdAt, issuedAt, operationDate), la usamos
+    // para determinar el año de la factura y las fechas `issuedAt` / `operationDate`.
+    let invoiceDate = null;
+    if (invoiceData) {
+        // Prioridad: operationDate > issuedAt > createdAt
+        const candidate = invoiceData.operationDate ?? invoiceData.issuedAt ?? invoiceData.createdAt ?? null;
+        if (candidate) {
+            const d = new Date(candidate);
+            if (!isNaN(d.getTime())) invoiceDate = d;
+            else throw httpError(400, 'invoiceData.date inválida o formato de fecha no reconocido. Usa ISO8601.');
+        }
+    }
+    const year = invoiceDate ? invoiceDate.getFullYear() : new Date().getFullYear();
+
     const invoice = await prisma.$transaction(async (tx) => {
         // número único con reintento (requiere UNIQUE en Invoice.number)
         let num;
         for (let i = 0; i < 5; i++) {
             num = await nextInvoiceNum(tx, year);
             try {
+                // Decide issuedAt / operationDate usando invoiceData si se proporcionó
+                const issuedAtValue = invoiceDate ? invoiceDate : new Date();
+                const operationDateValue = invoiceData?.operationDate ? new Date(invoiceData.operationDate) : (invoiceData?.issuedAt ? new Date(invoiceData.issuedAt) : issuedAtValue);
+
                 const inv = await tx.invoices.create({
                     data: {
                         number: num,
                         invoiceYear: year,
-                        issuedAt: new Date(),
-                        operationDate: new Date(),
+                        issuedAt: issuedAtValue,
+                        operationDate: operationDateValue,
                         currency: 'EUR',
                         sellerName: invoiceData?.sellerName || '',
                         sellerTaxId: invoiceData?.sellerTaxId || '',
@@ -286,10 +305,8 @@ export async function crearFactura(prisma, {orderIds, type, invoiceData}) {
         // 7) Email (si hay email y SMTP correctamente configurado)
         // Envío "best-effort": intentamos SES por API por defecto; si falla, se registra el error y
         // se intenta un fallback SMTP (si está configurado). Nunca lanzamos excepción por fallo de email.
-        let emailSent = false;
-        let emailError = null;
         if (cliente.email) {
-            const {SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, FROM_EMAIL} = process.env;
+            const {FROM_EMAIL} = process.env;
             const pdfContent = fs.existsSync(pdfPath) ? fs.readFileSync(pdfPath) : null;
 
             if (!pdfContent) {
@@ -308,14 +325,15 @@ export async function crearFactura(prisma, {orderIds, type, invoiceData}) {
 
                 const rawMessageBuffer = await mail.compile().build();
 
-                const sesClient = new SESClient({region: process.env.AWS_REGION});
+                const sesClient = new SESClient({region: DEFAULT_AWS_REGION});
                 const command = new SendRawEmailCommand({RawMessage: {Data: rawMessageBuffer}});
-
+                // Envío por API SES; si falla, lo dejamos en logs pero no abortamos la creación de factura.
                 await sesClient.send(command);
-                emailSent = true;
+                // marcamos en el objeto result el estado del envío (best-effort)
+                result.emailSent = true;
             } catch (err) {
                 console.error('[crearFactura] Error enviando email vía SES:', err && err.message ? err.message : err);
-                emailError = `SES send failed: ${err && err.message ? err.message : String(err)}`;
+                result.emailError = `SES send failed: ${err && err.message ? err.message : String(err)}`;
                 // No lanzamos; seguimos y probamos fallback SMTP más abajo
             }
 

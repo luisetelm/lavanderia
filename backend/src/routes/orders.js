@@ -345,8 +345,7 @@ export default async function (fastify, opts) {
                 where: {id: orderId}, data: updateData, include: {
                     lines: {include: {product: true}}, client: {
                         select: {id: true, firstName: true, lastName: true, email: true, phone: true},
-                    },
-                    invoiceTickets: {
+                    }, invoiceTickets: {
                         include: {
                             order: {
                                 include: {
@@ -422,13 +421,7 @@ export default async function (fastify, opts) {
                         select: {id: true, type: true, sentAt: true, status: true, content: true}
                     }, invoiceTickets: {
                         include: {
-                            order: {
-                                include: {
-                                    lines: {
-                                        include: {product: true}
-                                    }
-                                }
-                            }
+                            invoices: true
                         }
                     }
                 }, orderBy: {[orderByField]: orderByDirection},
@@ -448,8 +441,7 @@ export default async function (fastify, opts) {
 
         try {
             const order = await prisma.order.findUnique({
-                where: {id: orderId},
-                include: {
+                where: {id: orderId}, include: {
                     lines: {include: {product: true /* , variant: true */}},
                     client: {select: {id: true, firstName: true, lastName: true, email: true, phone: true}},
                     notification: {select: {id: true, type: true, sentAt: true, status: true, content: true}},

@@ -1,11 +1,11 @@
 import React, {useCallback, useEffect, useState} from 'react';
 import {
     fetchOrders,
-    facturarPedido as apiFacturarPedido,
     createInvoice,
-    updateOrder as apiUpdateOrder, downloadInvoicePDF
+    downloadInvoicePDF
 } from '../api.js';
 import {useNavigate} from 'react-router-dom';
+import * as XLSX from 'xlsx';
 
 function getPrimerDiaMes() {
     const hoy = new Date();
@@ -33,6 +33,86 @@ export default function Ventas({token}) {
     const [loading, setLoading] = useState(false);
     const [selectedOrders, setSelectedOrders] = useState([]);
     const [selectionCriteria, setSelectionCriteria] = useState(null);
+
+    // Exportar ventas actuales a XLSX usando SheetJS
+    const exportVentasXLSX = () => {
+        if (!Array.isArray(ventas) || ventas.length === 0) {
+            alert('No hay datos para exportar');
+            return;
+        }
+
+        const columns = [
+            {key: 'id', label: 'ID'},
+            {key: 'orderNum', label: 'Número'},
+            {key: 'createdAt', label: 'Fecha (ISO)'},
+            {key: 'fechaFormateada', label: 'Fecha'},
+            {key: 'clientId', label: 'Cliente ID'},
+            {key: 'cliente', label: 'Cliente'},
+            {key: 'clientEmail', label: 'Email cliente'},
+            {key: 'total', label: 'Total (num)'},
+            {key: 'totalFormatted', label: 'Total'},
+            {key: 'paid', label: 'Pagado'},
+            {key: 'facturado', label: 'Facturado'},
+            {key: 'invoiceCount', label: 'Nº Facturas'},
+            {key: 'invoiceNumbers', label: 'Números factura'},
+            {key: 'invoiceIds', label: 'Invoice IDs'},
+            {key: 'notes', label: 'Notas'},
+            {key: 'clienteExtra', label: 'Cliente extra (raw)'}
+        ];
+
+        const rows = ventas.map(v => {
+            const fecha = v.createdAt ? new Date(v.createdAt) : null;
+            const fechaFormateada = fecha ? fecha.toLocaleDateString('es-ES', {dateStyle: 'medium'}) : '';
+            const cliente = v.client?.denominacionSocial || (v.client?.firstName ? `${v.client.firstName} ${v.client.lastName || ''}` : v.cliente) || '';
+            const clientEmail = v.client?.email || '';
+            const invoiceIds = (Array.isArray(v.invoiceTickets) ? v.invoiceTickets.map(it => it.invoiceId || (it.invoices && it.invoices.id) || '') : []).filter(Boolean).join(';');
+            const invoiceCount = Array.isArray(v.invoiceTickets) ? v.invoiceTickets.length : 0;
+            // Extraer números de factura de forma segura (varias posibles rutas según backend)
+            const invoiceNumbers = Array.isArray(v.invoiceTickets) ? v.invoiceTickets.map(it => {
+                return it?.invoices?.number ?? it?.invoices?.id ?? it?.number ?? it?.invoiceNumber ?? '';
+            }).filter(Boolean).join(';') : '';
+
+            return {
+                id: v.id || '',
+                orderNum: v.orderNum || '',
+                createdAt: v.createdAt || '',
+                fechaFormateada,
+                clientId: v.client?.id || '',
+                cliente,
+                clientEmail,
+                total: typeof v.total === 'number' ? v.total : (v.total ? Number(v.total) : ''),
+                totalFormatted: typeof v.total === 'number' ? eur.format(v.total) : (v.total ? eur.format(Number(v.total)) : ''),
+                paid: typeof v.paid === 'boolean' ? v.paid : !!v.paid,
+                facturado: !!v.facturado || invoiceCount > 0,
+                invoiceCount,
+                invoiceNumbers,
+                invoiceIds,
+                notes: v.notes || v.note || '',
+                clienteExtra: JSON.stringify(v.client || {})
+            };
+        });
+
+        // Construir matriz 2D con encabezados en el orden de `columns`
+        const aoa = [columns.map(c => c.label)];
+        rows.forEach(r => {
+            aoa.push(columns.map(c => {
+                // Mantener tipos: number/boolean se conservan, resto a string
+                const val = r[c.key];
+                if (val === null || val === undefined) return '';
+                return val;
+            }));
+        });
+
+        const ws = XLSX.utils.aoa_to_sheet(aoa);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Ventas');
+
+        const start = fechaInicio || '';
+        const end = fechaFin || '';
+        const filename = `ventas_${start}_${end}.xlsx`;
+
+        XLSX.writeFile(wb, filename);
+    };
 
     // Al cambiar las fechas
     const handleFechaInicio = (e) => {
@@ -81,23 +161,6 @@ export default function Ventas({token}) {
     useEffect(() => {
         fetchVentas();
     }, [fetchVentas]);
-
-    // Facturar pedido usando api.js
-    const facturarPedido = async (orderId, yaFacturado) => {
-        if (yaFacturado) return; // nada que hacer
-        const confirmar = window.confirm('¿Generar factura para este pedido?');
-        if (!confirmar) return;
-
-        setLoading(true);
-        try {
-            await apiFacturarPedido(orderId);
-            await fetchVentas(); // refrescar ventas
-        } catch (err) {
-            alert('Error al facturar pedido');
-        } finally {
-            setLoading(false);
-        }
-    };
 
     // Facturar todos los pedidos seleccionados
     const handleGenerateInvoices = async () => {
@@ -208,7 +271,7 @@ export default function Ventas({token}) {
         </div>
         <div className="uk-card uk-card-default uk-card-body">
 
-            <form className="uk-form-stacked uk-grid-small uk-flex-middle" uk-grid="true">
+            <form className="uk-form-stacked uk-grid-small uk-flex-middle" data-uk-grid="true">
                 <div>
                     <label className="uk-form-label">Desde:</label>
                     <input
@@ -245,6 +308,15 @@ export default function Ventas({token}) {
                             Facturar todos
                         </button>
                     )}
+                    {/* Botón Exportar */}
+                    <button
+                        className="uk-button uk-button-default uk-margin-small-left uk-margin-bottom"
+                        onClick={exportVentasXLSX}
+                        disabled={loading || ventas.length === 0}
+                        type="button"
+                    >
+                        Exportar
+                    </button>
                     <table className="uk-table uk-table-divider uk-table-small">
                         <thead>
                         <tr>
@@ -307,24 +379,126 @@ export default function Ventas({token}) {
                             </span>
                                 </td>
                                 <td>
-                                    {!yaFacturado && (
-                                        <button
-                                            className="uk-button uk-button-default uk-button-small"
-                                            onClick={() => facturarPedido(v.id, yaFacturado)}
-                                            disabled={yaFacturado || loading || selectedOrders.length > 0}
-                                            title={yaFacturado ? 'Este pedido ya está facturado' : 'Generar factura'}
-                                        >
-                                            {yaFacturado ? '—' : 'Facturar'}
-                                        </button>
+                                    {/* Manejo de facturas: sin factura, simplificada (type === 's') o normal (type === 'n') */}
+                                    {v.invoiceTickets.length === 0 && (
+                                        <div className="uk-button-group">
+                                            <button
+                                                className="uk-button uk-button-default uk-button-small"
+                                                onClick={async () => {
+                                                    // Emitir factura simplificada (type 's')
+                                                    try {
+                                                        setLoading(true);
+                                                        const resp = await createInvoice(token, {
+                                                            orderIds: [v.id],
+                                                            type: 's',
+                                                            invoiceData: {
+                                                                operationDate: v.createdAt,
+                                                                issuedAt: v.createdAt
+                                                            },
+                                                        })
+                                                        if (resp?.emailError) {
+                                                            console.warn('Factura creada pero fallo envío de email:', resp.emailError);
+                                                            alert('Factura creada, pero no se pudo enviar el email: ' + resp.emailError);
+                                                        }
+                                                        await fetchVentas();
+                                                    } catch (err) {
+                                                        // No detener la ejecución, sólo mostrar mensaje
+                                                        console.error('Error al generar factura simplificada', err);
+                                                        alert('No se pudo generar la factura simplificada: ' + (err.error || err.message || err));
+                                                    } finally {
+                                                        setLoading(false);
+                                                    }
+                                                }}
+                                                disabled={loading || selectedOrders.length > 0}
+                                                title="Emitir factura simplificada"
+                                            >
+                                                Simplificada
+                                            </button>
+                                            <button
+                                                className="uk-button uk-button-primary uk-button-small"
+                                                onClick={async () => {
+                                                    // Emitir factura normal (type 'n')
+                                                    try {
+                                                        setLoading(true);
+                                                        const resp = await createInvoice(token, {
+                                                            orderIds: [v.id],
+                                                            type: 'n'
+                                                        });
+                                                        if (resp?.emailError) {
+                                                            console.warn('Factura creada pero fallo envío de email:', resp.emailError);
+                                                            alert('Factura creada, pero no se pudo enviar el email: ' + resp.emailError);
+                                                        }
+                                                        await fetchVentas();
+                                                    } catch (err) {
+                                                        console.error('Error al generar factura normal', err);
+                                                        alert('No se pudo generar la factura normal: ' + (err.error || err.message || err));
+                                                    } finally {
+                                                        setLoading(false);
+                                                    }
+                                                }}
+                                                disabled={loading || selectedOrders.length > 0}
+                                                title="Emitir factura normal"
+                                            >
+                                                Normal
+                                            </button>
+                                        </div>
                                     )}
 
-                                    {yaFacturado && (
-                                        <button
-                                        className="uk-button uk-button-default uk-button-small"
-                                        onClick={() => downloadInvoicePDF(token, v.invoiceTickets[0].invoiceId)}
-                                        title="Ver factura"
-                                        >Descargar</button>
-                                    )}
+                                    {v.invoiceTickets.length > 0 && (() => {
+                                        // Tomar la primera factura asociada
+                                        const inv = v.invoiceTickets[0].invoices || v.invoiceTickets[0];
+                                        const type = inv?.type || inv?.invoices?.type || null;
+                                        if (type === 's') {
+                                            // Factura simplificada: permitir convertir a normal y descargar
+                                            return (
+                                                <div className="uk-button-group">
+                                                    <button
+                                                        className="uk-button uk-button-warning uk-button-small"
+                                                        onClick={async () => {
+                                                            // Convertir a factura normal: emitimos una nueva factura tipo 'n' para el mismo ticket
+                                                            try {
+                                                                setLoading(true);
+                                                                // Llamamos a createInvoice con el id del ticket/order. Se asume que el backend sabe convertir.
+                                                                const resp = await createInvoice(token, {
+                                                                    orderIds: [v.id],
+                                                                    type: 'n'
+                                                                });
+                                                                if (resp?.emailError) {
+                                                                    console.warn('Factura convertida pero fallo envío de email:', resp.emailError);
+                                                                    alert('Factura convertida, pero no se pudo enviar el email: ' + resp.emailError);
+                                                                }
+                                                                await fetchVentas();
+                                                            } catch (err) {
+                                                                console.error('Error al convertir a factura normal', err);
+                                                                alert('No se pudo convertir la factura a normal: ' + (err.error || err.message || err));
+                                                            } finally {
+                                                                setLoading(false);
+                                                            }
+                                                        }}
+                                                        disabled={loading || selectedOrders.length > 0}
+                                                        title="Convertir a factura normal"
+                                                    >
+                                                        Convertir a normal
+                                                    </button>
+                                                    <button
+                                                        className="uk-button uk-button-default uk-button-small"
+                                                        onClick={() => downloadInvoicePDF(token, v.invoiceTickets[0].invoiceId)}
+                                                        title="Ver factura"
+                                                    >
+                                                        Descargar
+                                                    </button>
+                                                </div>
+                                            );
+                                        }
+                                        // Si ya es normal, sólo descargar
+                                        return (
+                                            <button
+                                                className="uk-button uk-button-default uk-button-small"
+                                                onClick={() => downloadInvoicePDF(token, v.invoiceTickets[0].invoiceId)}
+                                                title="Ver factura"
+                                            >Descargar</button>
+                                        );
+                                    })()}
                                 </td>
                                 <td>
                                     <button
