@@ -99,49 +99,53 @@ export async function crearFactura(prisma, {orderIds, type, invoiceData}) {
     // 2) Validaciones de coherencia0.
     const clientId = orders[0].clientId;
 
-    // Tenemos que comprobar que el cliente  tiene los datos necesarios para la factura, y no vale el valor null
-    const client = await prisma.User.findUnique({
-        where: {id: clientId},
-        select: {
-            firstName: true,
-            lastName: true,
-            denominacionsocial: true,
-            email: true,
-            tipopersona: true,
-            direccion: true,
-            codigopostal: true,
-            localidad: true,
+    if (type === 'n') {
+
+        // Tenemos que comprobar que el cliente  tiene los datos necesarios para la factura, y no vale el valor null
+        const client = await prisma.User.findUnique({
+            where: {id: clientId},
+            select: {
+                firstName: true,
+                lastName: true,
+                denominacionsocial: true,
+                email: true,
+                tipopersona: true,
+                direccion: true,
+                codigopostal: true,
+                localidad: true,
+            }
+        });
+
+        if (!client) {
+            throw httpError(404, 'Cliente no encontrado.');
         }
-    });
 
-    if (!client) {
-        throw httpError(404, 'Cliente no encontrado.');
-    }
+        // Log inmediato para depuración: muestra el objeto cliente tal como lo devuelve Prisma
+        console.log('[crearFactura] cliente recuperado:', JSON.stringify(client));
 
-    // Log inmediato para depuración: muestra el objeto cliente tal como lo devuelve Prisma
-    console.log('[crearFactura] cliente recuperado:', JSON.stringify(client));
+        // Helper robusto para detectar valores vacíos o inválidos
+        const isEmpty = (v) => v === null || v === undefined || (typeof v === 'string' && (v.trim() === '' || v.trim().toLowerCase() === 'null' || v.trim().toLowerCase() === 'undefined'));
 
-    // Helper robusto para detectar valores vacíos o inválidos
-    const isEmpty = (v) => v === null || v === undefined || (typeof v === 'string' && (v.trim() === '' || v.trim().toLowerCase() === 'null' || v.trim().toLowerCase() === 'undefined'));
+        // Validación explícita: email obligatorio + (denominación social o nombre) + dirección completa
+        const missing = [];
+        if (isEmpty(client.email)) missing.push('email');
 
-    // Validación explícita: email obligatorio + (denominación social o nombre) + dirección completa
-    const missing = [];
-    if (isEmpty(client.email)) missing.push('email');
+        const hasDenom = !isEmpty(client.denominacionsocial);
+        const hasName = !isEmpty(client.firstName) || !isEmpty(client.lastName);
+        if (!hasDenom && !hasName) missing.push('nombre o denominación social');
 
-    const hasDenom = !isEmpty(client.denominacionsocial);
-    const hasName = !isEmpty(client.firstName) || !isEmpty(client.lastName);
-    if (!hasDenom && !hasName) missing.push('nombre o denominación social');
+        if (isEmpty(client.direccion)) missing.push('direccion');
+        if (isEmpty(client.codigopostal)) missing.push('codigopostal');
+        if (isEmpty(client.localidad)) missing.push('localidad');
 
-    if (isEmpty(client.direccion)) missing.push('direccion');
-    if (isEmpty(client.codigopostal)) missing.push('codigopostal');
-    if (isEmpty(client.localidad)) missing.push('localidad');
+        // Log de depuración: muestra el cliente y los campos detectados como vacíos
+        if (missing.length > 0) {
+            // Uso console.log para asegurar visibilidad en stdout
+            console.log('[crearFactura] Validación cliente - valores recibidos:', client);
+            console.log('[crearFactura] Validación cliente - campos faltantes detectados:', missing);
+            throw httpError(400, `El cliente debe tener los campos obligatorios para la factura: ${missing.join(', ')}`);
+        }
 
-    // Log de depuración: muestra el cliente y los campos detectados como vacíos
-    if (missing.length > 0) {
-        // Uso console.log para asegurar visibilidad en stdout
-        console.log('[crearFactura] Validación cliente - valores recibidos:', client);
-        console.log('[crearFactura] Validación cliente - campos faltantes detectados:', missing);
-        throw httpError(400, `El cliente debe tener los campos obligatorios para la factura: ${missing.join(', ')}`);
     }
 
 
