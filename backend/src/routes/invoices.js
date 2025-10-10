@@ -259,7 +259,7 @@ export async function crearFactura(prisma, {orderIds, type, invoiceData}) {
         const pdfFilename = `factura_${invoice.id}.pdf`;
         const pdfPath = path.join(pdfDir, pdfFilename);
 
-        const cliente = result.client || {};
+        const cliente = result.User || {};
         const direccionCompleta = [cliente.direccion, cliente.codigopostal, cliente.localidad, cliente.provincia, cliente.pais,].filter(Boolean).join(', ');
 
         const esFisica = (cliente.tipopersona || '').toLowerCase().includes('fís');
