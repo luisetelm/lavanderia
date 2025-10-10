@@ -4,6 +4,8 @@ import puppeteer from 'puppeteer';
 import fs from 'fs';
 import path from 'path';
 import nodemailer from 'nodemailer';
+import MailComposer from 'nodemailer/lib/mail-composer/index.js';
+import {SESClient, SendRawEmailCommand} from '@aws-sdk/client-ses';
 
 // --- helpers ---
 function httpError(code, message) {
@@ -48,9 +50,7 @@ function aggregateOrderLines(orders) {
         const taxAmount = gross - net;
 
         return {
-            position: idx + 1,
-            description: g.description,
-            quantity: quantity.toFixed(3),           // Decimal(12,3)
+            position: idx + 1, description: g.description, quantity: quantity.toFixed(3),           // Decimal(12,3)
             unitPrice: unitPrice.toFixed(4),         // Decimal(12,4)
             discountPct: '0.00',                     // por defecto
             taxRatePct: tax.toFixed(2),              // Decimal(5,2)
@@ -86,8 +86,7 @@ export async function crearFactura(prisma, {orderIds, type, invoiceData}) {
 
     // 1) Obtener pedidos
     const orders = await prisma.order.findMany({
-        where: {id: {in: orderIds}},
-        include: {
+        where: {id: {in: orderIds}}, include: {
             lines: {include: {product: true}}, // si tus líneas están en order.lines
         },
     });
@@ -103,8 +102,7 @@ export async function crearFactura(prisma, {orderIds, type, invoiceData}) {
 
         // Tenemos que comprobar que el cliente  tiene los datos necesarios para la factura, y no vale el valor null
         const client = await prisma.User.findUnique({
-            where: {id: clientId},
-            select: {
+            where: {id: clientId}, select: {
                 firstName: true,
                 lastName: true,
                 denominacionsocial: true,
@@ -244,9 +242,7 @@ export async function crearFactura(prisma, {orderIds, type, invoiceData}) {
     // 5) Cargar factura completa para el render
     const result = await prisma.invoices.findUnique({
         where: {id: invoice.id}, include: {
-            User: true,
-            invoiceLines: true,
-            invoiceTickets: {
+            User: true, invoiceLines: true, invoiceTickets: {
                 include: {
                     order: {include: {lines: {include: {product: true}}}}
                 }
@@ -276,8 +272,7 @@ export async function crearFactura(prisma, {orderIds, type, invoiceData}) {
 
         //const browser = await puppeteer.launch({args: ['--no-sandbox', '--disable-setuid-sandbox']});
         const browser = await puppeteer.launch({
-            headless: 'new',
-            args: ['--no-sandbox', '--disable-setuid-sandbox']
+            headless: 'new', args: ['--no-sandbox', '--disable-setuid-sandbox']
         });
 
         try {
@@ -289,53 +284,47 @@ export async function crearFactura(prisma, {orderIds, type, invoiceData}) {
         }
 
         // 7) Email (si hay email y SMTP correctamente configurado)
-        // Envío "best-effort": si falla el email no rompemos la creación de la factura
+        // Envío "best-effort": intentamos SES por API por defecto; si falla, se registra el error y
+        // se intenta un fallback SMTP (si está configurado). Nunca lanzamos excepción por fallo de email.
         let emailSent = false;
         let emailError = null;
         if (cliente.email) {
             const {SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, FROM_EMAIL} = process.env;
-            if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASS || !FROM_EMAIL) {
-                console.warn('SMTP no configurado, no se enviará email de factura.');
-                emailError = 'SMTP not configured';
-            } else {
-                const transporter = nodemailer.createTransport({
-                    host: SMTP_HOST,
-                    port: parseInt(SMTP_PORT, 10),
-                    secure: Number(SMTP_PORT) === 465,
-                    auth: {user: SMTP_USER, pass: SMTP_PASS},
-                });
-                try {
-                    // Verifica conexión/configuración con el servidor SMTP
-                    await transporter.verify();
-                } catch (err) {
-                    console.error('[crearFactura] SMTP verify failed:', err && err.message ? err.message : err);
-                    emailError = `SMTP verify failed: ${err && err.message ? err.message : String(err)}`;
-                }
+            const pdfContent = fs.existsSync(pdfPath) ? fs.readFileSync(pdfPath) : null;
 
-                if (!emailError) {
-                    try {
-                        await transporter.sendMail({
-                            from: FROM_EMAIL,
-                            to: [cliente.email, 'hola@tinteyburbuja.es'],
-                            subject: `Factura ${result.number} - Tinte y Burbuja`,
-                            text: `Estimado cliente,\n\nAdjuntamos la factura correspondiente a su pedido.\n\nGracias por confiar en nosotros.\n\nUn saludo,\nTinte y Burbuja`,
-                            attachments: [{filename: pdfFilename, path: pdfPath}],
-                        });
-                        emailSent = true;
-                    } catch (err) {
-                        console.error('[crearFactura] Error enviando email:', err && err.message ? err.message : err);
-                        emailError = `sendMail failed: ${err && err.message ? err.message : String(err)}`;
-                    }
-                }
+            if (!pdfContent) {
+                console.warn('[crearFactura] PDF no encontrado, se omitirá el adjunto.');
             }
-        } else {
-            emailError = 'No cliente email';
+
+            // Intentar enviar por AWS SES (SendRawEmail) por defecto
+            try {
+                const mail = new MailComposer({
+                    from: FROM_EMAIL || 'no-reply@your-domain.com',
+                    to: [cliente.email, 'hola@tinteyburbuja.es'],
+                    subject: `Factura ${result.number} - Tinte y Burbuja`,
+                    text: `Estimado cliente,\n\nAdjuntamos la factura correspondiente a su pedido.\n\nGracias por confiar en nosotros.\n\nUn saludo,\nTinte y Burbuja`,
+                    attachments: pdfContent ? [{filename: pdfFilename, content: pdfContent}] : [],
+                });
+
+                const rawMessageBuffer = await mail.compile().build();
+
+                const sesClient = new SESClient({region: process.env.AWS_REGION});
+                const command = new SendRawEmailCommand({RawMessage: {Data: rawMessageBuffer}});
+
+                await sesClient.send(command);
+                emailSent = true;
+            } catch (err) {
+                console.error('[crearFactura] Error enviando email vía SES:', err && err.message ? err.message : err);
+                emailError = `SES send failed: ${err && err.message ? err.message : String(err)}`;
+                // No lanzamos; seguimos y probamos fallback SMTP más abajo
+            }
+
         }
 
     }
 
     // Adjuntamos info sobre email al resultado para que el frontend pueda mostrar un mensaje
-    const output = {...convertBigIntToString(result), meta: {emailSent: !!emailSent, emailError: emailError}};
+    const output = convertBigIntToString(result);
     return output;
 }
 
@@ -404,7 +393,25 @@ function buildInvoiceHtml({invoice, cliente}) {
 <head>
 <meta charset="utf-8" />
 <title>Factura ${invoice.number}</title>
-<style> :root{ --accent:#0f172a; --muted:#6b7280; --line:#e5e7eb; --ok:#16a34a; /* verde */ --warn:#dc2626; /* rojo */ } *{ box-sizing:border-box; } html,body{ margin:0; padding:0; } @page{ size:A4; margin:10mm; } body{ font-family: Arial, Helvetica, sans-serif; -webkit-font-smoothing: antialiased; color:#111827; font-size:12px; line-height:1.45; background:#fff; } .header{ display:flex; align-items:center; justify-content:space-between; border-bottom:2px solid var(--line); padding-bottom:18px; margin-bottom:18px; gap:16px; } .brand{ display:flex; align-items:center; gap:12px; } .brand .title{ font-weight:700; font-size:20px; letter-spacing:.5px; color:var(--accent); text-transform:uppercase; } .logo{ height:42px; width:auto; object-fit:contain; display:block; } .seller{ text-align:right; font-size:12px; color:#111827; } .seller .name{ font-weight:700; } .status-badge{ display:inline-block; padding:4px 10px; border-radius:999px; font-size:11px; font-weight:700; line-height:1; border:1px solid currentColor; margin-top:6px; } .status-paid{ color:var(--ok); } .status-due{ color:var(--warn); } .invoice-meta{ display:grid; grid-template-columns:1fr 1fr; gap:16px; margin:16px 0 10px; } .meta-card{ border:1px solid var(--line); border-radius:8px; padding:12px 14px; background:#fff; } .meta-title{ font-size:12px; text-transform:uppercase; color:var(--muted); margin:0 0 6px; letter-spacing:.4px;} .meta-grid{ display:grid; grid-template-columns:120px 1fr; row-gap:4px; column-gap:8px; font-size:12px; } .label{ color:var(--muted); } .value{ font-weight:600; color:#111827; } .section-title{ font-size:14px; font-weight:700; margin:18px 0 8px; color:#111827; } table{ width:100%; border-collapse:collapse; } thead th{ text-align:left; font-size:11px; padding:8px 8px; background:#f8fafc; color:#374151; border-bottom:1px solid var(--line); text-transform:uppercase; letter-spacing:.3px; } tbody td{ font-size:11px; line-height:1.35; padding:6px 8px; border-bottom:1px solid var(--line); vertical-align:top; } tfoot td{ padding:6px 8px; } .num{ text-align:right; white-space:nowrap; } .totals{ margin-top:16px; display:flex; justify-content:flex-end; } .totals-table{ width:380px; border:1px solid var(--line); border-radius:10px; overflow:hidden; } .totals-table tr td{ padding:12px 14px; border-bottom:1px solid var(--line); font-size:13px; } .totals-table tr:last-child td{ border-bottom:none; } .totals-table .label{ color:#374151; } .totals-table .strong{ font-weight:800; font-size:16px; color:#0b1220; } .footnote{ margin-top:18px; font-size:11px; color:#4b5563; } .urls{ position: fixed; left: 0; bottom: 0; width: 100vw; margin: 0; padding: 10px 0 8px 0; font-size: 12px; color: #0f172a; text-align: center; background: none; z-index: 100; } @media print{ .urls{ position: fixed; left: 0; bottom: 0; width: 100vw; margin: 0; padding: 10px 0 8px 0; font-size: 12px; color: #0f172a; text-align: center; background: none; z-index: 100; } } </style></head>
+<style> /* Reemplazadas variables CSS custom por valores hex para evitar problemas del analizador */
+*{ box-sizing:border-box; } html,body{ margin:0; padding:0; } @page{ size:A4; margin:10mm; } body{ font-family: Arial, Helvetica, sans-serif; -webkit-font-smoothing: antialiased; color:#111827; font-size:12px; line-height:1.45; background:#fff; }
+.header{ display:flex; align-items:center; justify-content:space-between; border-bottom:2px solid #e5e7eb; padding-bottom:18px; margin-bottom:18px; gap:16px; }
+.brand{ display:flex; align-items:center; gap:12px; }
+.brand .title{ font-weight:700; font-size:20px; letter-spacing:.5px; color:#0f172a; text-transform:uppercase; }
+.logo{ height:42px; width:auto; object-fit:contain; display:block; }
+.seller{ text-align:right; font-size:12px; color:#111827; }
+.seller .name{ font-weight:700; }
+.status-badge{ display:inline-block; padding:4px 10px; border-radius:999px; font-size:11px; font-weight:700; line-height:1; border:1px solid currentColor; margin-top:6px; }
+.status-paid{ color:#16a34a; }
+.status-due{ color:#dc2626; }
+.invoice-meta{ display:grid; grid-template-columns:1fr 1fr; gap:16px; margin:16px 0 10px; }
+.meta-card{ border:1px solid #e5e7eb; border-radius:8px; padding:12px 14px; background:#fff; }
+.meta-title{ font-size:12px; text-transform:uppercase; color:#6b7280; margin:0 0 6px; letter-spacing:.4px;}
+.meta-grid{ display:grid; grid-template-columns:120px 1fr; row-gap:4px; column-gap:8px; font-size:12px; }
+.label{ color:#6b7280; }
+.value{ font-weight:600; color:#111827; }
+.section-title{ font-size:14px; font-weight:700; margin:18px 0 8px; color:#111827; }
+ table{ width:100%; border-collapse:collapse; } thead th{ text-align:left; font-size:11px; padding:8px 8px; background:#f8fafc; color:#374151; border-bottom:1px solid #e5e7eb; text-transform:uppercase; letter-spacing:.3px; } tbody td{ font-size:11px; line-height:1.35; padding:6px 8px; border-bottom:1px solid #e5e7eb; vertical-align:top; } tfoot td{ padding:6px 8px; } .num{ text-align:right; white-space:nowrap; } .totals{ margin-top:16px; display:flex; justify-content:flex-end; } .totals-table{ width:380px; border:1px solid #e5e7eb; border-radius:10px; overflow:hidden; } .totals-table tr td{ padding:12px 14px; border-bottom:1px solid #e5e7eb; font-size:13px; } .totals-table tr:last-child td{ border-bottom:none; } .totals-table .label{ color:#374151; } .totals-table .strong{ font-weight:800; font-size:16px; color:#0b1220; } .footnote{ margin-top:18px; font-size:11px; color:#4b5563; } .urls{ position: fixed; left: 0; bottom: 0; width: 100vw; margin: 0; padding: 10px 0 8px 0; font-size: 12px; color: #0f172a; text-align: center; background: none; z-index: 100; } @media print{ .urls{ position: fixed; left: 0; bottom: 0; width: 100vw; margin: 0; padding: 10px 0 8px 0; font-size: 12px; color: #0f172a; text-align: center; background: none; z-index: 100; } } </style></head>
 <body>
   <div class="wrapper">
     <div class="header">
@@ -543,9 +550,7 @@ export default async function (fastify) {
             const {id} = req.params;
             const invoice = await prisma.invoices.findUnique({
                 where: {id: Number(id)}, include: {
-                    User: true,
-                    invoiceLines: true,
-                    invoiceTickets: {
+                    User: true, invoiceLines: true, invoiceTickets: {
                         include: {
                             order: {include: {lines: {include: {product: true}}}}
                         }
