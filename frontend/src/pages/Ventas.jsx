@@ -1,3 +1,4 @@
+// javascript
 import React, {useCallback, useEffect, useState} from 'react';
 import {
     fetchOrders,
@@ -304,6 +305,7 @@ export default function Ventas({token}) {
                             className="uk-button uk-button-primary uk-margin-bottom"
                             onClick={handleGenerateInvoices}
                             disabled={loading}
+                            type="button"
                         >
                             Facturar todos
                         </button>
@@ -386,7 +388,6 @@ export default function Ventas({token}) {
                                                 className="uk-button uk-button-default uk-button-small"
                                                 onClick={async (e) => {
                                                     e?.preventDefault();
-
                                                     // Emitir factura simplificada (type 's')
                                                     try {
                                                         setLoading(true);
@@ -419,7 +420,8 @@ export default function Ventas({token}) {
                                             </button>
                                             <button
                                                 className="uk-button uk-button-primary uk-button-small"
-                                                onClick={async () => {
+                                                onClick={async (e) => {
+                                                    e?.preventDefault();
                                                     // Emitir factura normal (type 'n')
                                                     try {
                                                         setLoading(true);
@@ -441,6 +443,7 @@ export default function Ventas({token}) {
                                                 }}
                                                 disabled={loading || selectedOrders.length > 0}
                                                 title="Emitir factura normal"
+                                                type="button"
                                             >
                                                 Normal
                                             </button>
@@ -457,7 +460,8 @@ export default function Ventas({token}) {
                                                 <div className="uk-button-group">
                                                     <button
                                                         className="uk-button uk-button-warning uk-button-small"
-                                                        onClick={async () => {
+                                                        onClick={async (e) => {
+                                                            e?.preventDefault();
                                                             // Convertir a factura normal: emitimos una nueva factura tipo 'n' para el mismo ticket
                                                             try {
                                                                 setLoading(true);
@@ -480,13 +484,15 @@ export default function Ventas({token}) {
                                                         }}
                                                         disabled={loading || selectedOrders.length > 0}
                                                         title="Convertir a factura normal"
+                                                        type="button"
                                                     >
                                                         Convertir a normal
                                                     </button>
                                                     <button
                                                         className="uk-button uk-button-default uk-button-small"
-                                                        onClick={() => downloadInvoicePDF(token, v.invoiceTickets[0].invoiceId)}
+                                                        onClick={(e) => { e?.preventDefault(); downloadInvoicePDF(token, v.invoiceTickets[0].invoiceId); }}
                                                         title="Ver factura"
+                                                        type="button"
                                                     >
                                                         Descargar
                                                     </button>
@@ -497,8 +503,9 @@ export default function Ventas({token}) {
                                         return (
                                             <button
                                                 className="uk-button uk-button-default uk-button-small"
-                                                onClick={() => downloadInvoicePDF(token, v.invoiceTickets[0].invoiceId)}
+                                                onClick={(e) => { e?.preventDefault(); downloadInvoicePDF(token, v.invoiceTickets[0].invoiceId); }}
                                                 title="Ver factura"
+                                                type="button"
                                             >Descargar</button>
                                         );
                                     })()}
@@ -508,6 +515,7 @@ export default function Ventas({token}) {
                                         className="uk-button uk-button-primary uk-button-small"
                                         onClick={() => verPedido(v)}
                                         title="Ver tareas de este pedido"
+                                        type="button"
                                     >
                                         Ver pedido
                                     </button>
