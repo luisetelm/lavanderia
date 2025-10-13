@@ -385,6 +385,8 @@ export default function Ventas({token}) {
                                             <button
                                                 className="uk-button uk-button-default uk-button-small"
                                                 onClick={async () => {
+                                                    e?.preventDefault();
+
                                                     // Emitir factura simplificada (type 's')
                                                     try {
                                                         setLoading(true);
@@ -411,6 +413,7 @@ export default function Ventas({token}) {
                                                 }}
                                                 disabled={loading || selectedOrders.length > 0}
                                                 title="Emitir factura simplificada"
+                                                type="button"
                                             >
                                                 Simplificada
                                             </button>
