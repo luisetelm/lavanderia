@@ -388,7 +388,6 @@ export default function Ventas({token}) {
                                                 className="uk-button uk-button-default uk-button-small"
                                                 onClick={async (e) => {
                                                     e?.preventDefault();
-                                                    // Emitir factura simplificada (type 's')
                                                     try {
                                                         setLoading(true);
                                                         const resp = await createInvoice(token, {
@@ -398,14 +397,33 @@ export default function Ventas({token}) {
                                                                 operationDate: v.createdAt,
                                                                 issuedAt: v.createdAt
                                                             },
-                                                        })
+                                                        });
+
                                                         if (resp?.emailError) {
                                                             console.warn('Factura creada pero fallo envío de email:', resp.emailError);
                                                             alert('Factura creada, pero no se pudo enviar el email: ' + resp.emailError);
+                                                        } else {
+                                                            alert('Factura simplificada creada con éxito');
                                                         }
-                                                        await fetchVentas();
+
+                                                        // Actualizar solo esta venta en el estado local
+                                                        setVentas(prevVentas => prevVentas.map(venta => {
+                                                            if (venta.id === v.id) {
+                                                                return {
+                                                                    ...venta,
+                                                                    facturado: true,
+                                                                    invoiceTickets: resp.invoiceTickets || [{
+                                                                        invoiceId: resp.invoiceId,
+                                                                        invoices: {
+                                                                            type: 's',
+                                                                            id: resp.invoiceId
+                                                                        }
+                                                                    }]
+                                                                };
+                                                            }
+                                                            return venta;
+                                                        }));
                                                     } catch (err) {
-                                                        // No detener la ejecución, sólo mostrar mensaje
                                                         console.error('Error al generar factura simplificada', err);
                                                         alert('No se pudo generar la factura simplificada: ' + (err.error || err.message || err));
                                                     } finally {
@@ -418,6 +436,7 @@ export default function Ventas({token}) {
                                             >
                                                 Simplificada
                                             </button>
+
                                             <button
                                                 className="uk-button uk-button-primary uk-button-small"
                                                 onClick={async (e) => {
