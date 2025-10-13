@@ -3,7 +3,8 @@ import React, {useCallback, useEffect, useState} from 'react';
 import {
     fetchOrders,
     createInvoice,
-    downloadInvoicePDF
+    downloadInvoicePDF,
+    fetchOrder
 } from '../api.js';
 import {useNavigate} from 'react-router-dom';
 import * as XLSX from 'xlsx';
@@ -34,6 +35,29 @@ export default function Ventas({token}) {
     const [loading, setLoading] = useState(false);
     const [selectedOrders, setSelectedOrders] = useState([]);
     const [selectionCriteria, setSelectionCriteria] = useState(null);
+
+    // Helper: normalizar una orden para que siempre tenga invoiceTickets como array
+    const normalizeOrder = (o) => ({
+        ...o,
+        invoiceTickets: Array.isArray(o?.invoiceTickets) ? o.invoiceTickets : [],
+        client: o?.client || null
+    });
+
+    // Refrescar una única orden y actualizar sólo esa fila en el estado (evita recargar toda la lista y perder scroll)
+    const refreshOrder = async (orderId) => {
+        try {
+            const fresh = await fetchOrder(token, orderId);
+            setVentas(prev => prev.map(p => p.id === orderId ? normalizeOrder(fresh) : p));
+        } catch (err) {
+            console.error('Error refrescando orden', err);
+            // Si falla, podemos recargar la lista completa como fallback
+            try {
+                await fetchVentas();
+            } catch (e) {
+                // noop
+            }
+        }
+    };
 
     // Exportar ventas actuales a XLSX usando SheetJS
     const exportVentasXLSX = () => {
@@ -143,7 +167,8 @@ export default function Ventas({token}) {
             if (fechaInicio) params.startDate = fechaInicio;
             if (fechaFin) params.endDate = fechaFin;
             const data = await fetchOrders(token, params);
-            setVentas(Array.isArray(data) ? data : []);
+            // Normalizar para evitar errores al acceder a invoiceTickets
+            setVentas(Array.isArray(data) ? data.map(normalizeOrder) : []);
             console.log('Ventas:', data);
         } catch (err) {
             console.error('Error al cargar ventas:', err);
@@ -388,9 +413,9 @@ export default function Ventas({token}) {
                                                 className="uk-button uk-button-default uk-button-small"
                                                 onClick={async (e) => {
                                                     e?.preventDefault();
-                                                    // Emitir factura simplificada (type 's')
+                                                    // Emitir factura simplificada (type 's') y actualizar sólo la fila
                                                     try {
-                                                        setLoading(true);
+                                                        //setLoading(true);
                                                         const resp = await createInvoice(token, {
                                                             orderIds: [v.id],
                                                             type: 's',
@@ -399,17 +424,18 @@ export default function Ventas({token}) {
                                                                 issuedAt: v.createdAt
                                                             },
                                                         })
+                                                        console.log('resp', resp);
                                                         if (resp?.emailError) {
                                                             console.warn('Factura creada pero fallo envío de email:', resp.emailError);
                                                             alert('Factura creada, pero no se pudo enviar el email: ' + resp.emailError);
                                                         }
-                                                        await fetchVentas();
+                                                        // Actualizar sólo la orden modificada para no perder scroll
+                                                        // await refreshOrder(v.id);
                                                     } catch (err) {
-                                                        // No detener la ejecución, sólo mostrar mensaje
                                                         console.error('Error al generar factura simplificada', err);
                                                         alert('No se pudo generar la factura simplificada: ' + (err.error || err.message || err));
                                                     } finally {
-                                                        setLoading(false);
+                                                        //setLoading(false);
                                                     }
                                                 }}
                                                 disabled={loading || selectedOrders.length > 0}
@@ -422,7 +448,7 @@ export default function Ventas({token}) {
                                                 className="uk-button uk-button-primary uk-button-small"
                                                 onClick={async (e) => {
                                                     e?.preventDefault();
-                                                    // Emitir factura normal (type 'n')
+                                                    // Emitir factura normal (type 'n') y actualizar sólo la fila
                                                     try {
                                                         setLoading(true);
                                                         const resp = await createInvoice(token, {
@@ -433,7 +459,7 @@ export default function Ventas({token}) {
                                                             console.warn('Factura creada pero fallo envío de email:', resp.emailError);
                                                             alert('Factura creada, pero no se pudo enviar el email: ' + resp.emailError);
                                                         }
-                                                        await fetchVentas();
+                                                        await refreshOrder(v.id);
                                                     } catch (err) {
                                                         console.error('Error al generar factura normal', err);
                                                         alert('No se pudo generar la factura normal: ' + (err.error || err.message || err));
@@ -450,9 +476,10 @@ export default function Ventas({token}) {
                                         </div>
                                     )}
 
-                                    {v.invoiceTickets.length > 0 && (() => {
+                                    {(v.invoiceTickets || []).length > 0 && (() => {
                                         // Tomar la primera factura asociada
-                                        const inv = v.invoiceTickets[0].invoices || v.invoiceTickets[0];
+                                        const firstTicket = (v.invoiceTickets || [])[0];
+                                        const inv = firstTicket?.invoices || firstTicket;
                                         const type = inv?.type || inv?.invoices?.type || null;
                                         if (type === 's') {
                                             // Factura simplificada: permitir convertir a normal y descargar
@@ -474,7 +501,7 @@ export default function Ventas({token}) {
                                                                     console.warn('Factura convertida pero fallo envío de email:', resp.emailError);
                                                                     alert('Factura convertida, pero no se pudo enviar el email: ' + resp.emailError);
                                                                 }
-                                                                await fetchVentas();
+                                                                await refreshOrder(v.id);
                                                             } catch (err) {
                                                                 console.error('Error al convertir a factura normal', err);
                                                                 alert('No se pudo convertir la factura a normal: ' + (err.error || err.message || err));
@@ -490,7 +517,7 @@ export default function Ventas({token}) {
                                                     </button>
                                                     <button
                                                         className="uk-button uk-button-default uk-button-small"
-                                                        onClick={(e) => { e?.preventDefault(); downloadInvoicePDF(token, v.invoiceTickets[0].invoiceId); }}
+                                                        onClick={(e) => { e?.preventDefault(); downloadInvoicePDF(token, firstTicket?.invoiceId); }}
                                                         title="Ver factura"
                                                         type="button"
                                                     >
@@ -503,7 +530,7 @@ export default function Ventas({token}) {
                                         return (
                                             <button
                                                 className="uk-button uk-button-default uk-button-small"
-                                                onClick={(e) => { e?.preventDefault(); downloadInvoicePDF(token, v.invoiceTickets[0].invoiceId); }}
+                                                onClick={(e) => { e?.preventDefault(); downloadInvoicePDF(token, firstTicket?.invoiceId); }}
                                                 title="Ver factura"
                                                 type="button"
                                             >Descargar</button>
@@ -529,3 +556,4 @@ export default function Ventas({token}) {
         </div>
     </div>);
 }
+
