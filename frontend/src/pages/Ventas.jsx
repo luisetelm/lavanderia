@@ -143,8 +143,20 @@ export default function Ventas({token}) {
             if (fechaInicio) params.startDate = fechaInicio;
             if (fechaFin) params.endDate = fechaFin;
             const data = await fetchOrders(token, params);
-            setVentas(Array.isArray(data) ? data : []);
-            console.log('Ventas:', data);
+            setVentas(prev =>
+                prev.map(o => o.id === v.id
+                    ? {
+                        ...o,
+                        facturado: true,
+                        invoiceTickets: [
+                            ...(o.invoiceTickets || []),
+                            // usa lo que te devuelva el backend; aquí dejo un fallback
+                            { invoiceId: resp?.invoiceId ?? resp?.id, invoices: { type: 'n', number: resp?.number } }
+                        ]
+                    }
+                    : o
+                )
+            );            console.log('Ventas:', data);
         } catch (err) {
             console.error('Error al cargar ventas:', err);
         } finally {
@@ -384,58 +396,6 @@ export default function Ventas({token}) {
                                     {/* Manejo de facturas: sin factura, simplificada (type === 's') o normal (type === 'n') */}
                                     {v.invoiceTickets.length === 0 && (
                                         <div className="uk-button-group">
-                                            <button
-                                                className="uk-button uk-button-default uk-button-small"
-                                                onClick={async (e) => {
-                                                    e?.preventDefault();
-                                                    try {
-                                                        setLoading(true);
-                                                        const resp = await createInvoice(token, {
-                                                            orderIds: [v.id],
-                                                            type: 's',
-                                                            invoiceData: {
-                                                                operationDate: v.createdAt,
-                                                                issuedAt: v.createdAt
-                                                            },
-                                                        });
-
-                                                        if (resp?.emailError) {
-                                                            console.warn('Factura creada pero fallo envío de email:', resp.emailError);
-                                                            alert('Factura creada, pero no se pudo enviar el email: ' + resp.emailError);
-                                                        } else {
-                                                            alert('Factura simplificada creada con éxito');
-                                                        }
-
-                                                        // Actualizar solo esta venta en el estado local
-                                                        setVentas(prevVentas => prevVentas.map(venta => {
-                                                            if (venta.id === v.id) {
-                                                                return {
-                                                                    ...venta,
-                                                                    facturado: true,
-                                                                    invoiceTickets: resp.invoiceTickets || [{
-                                                                        invoiceId: resp.invoiceId,
-                                                                        invoices: {
-                                                                            type: 's',
-                                                                            id: resp.invoiceId
-                                                                        }
-                                                                    }]
-                                                                };
-                                                            }
-                                                            return venta;
-                                                        }));
-                                                    } catch (err) {
-                                                        console.error('Error al generar factura simplificada', err);
-                                                        alert('No se pudo generar la factura simplificada: ' + (err.error || err.message || err));
-                                                    } finally {
-                                                        setLoading(false);
-                                                    }
-                                                }}
-                                                disabled={loading || selectedOrders.length > 0}
-                                                title="Emitir factura simplificada"
-                                                type="button"
-                                            >
-                                                Simplificada
-                                            </button>
 
                                             <button
                                                 className="uk-button uk-button-primary uk-button-small"
