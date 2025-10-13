@@ -384,7 +384,7 @@ export default function Ventas({token}) {
                                         <div className="uk-button-group">
                                             <button
                                                 className="uk-button uk-button-default uk-button-small"
-                                                onClick={async () => {
+                                                onClick={async (e) => {
                                                     e?.preventDefault();
 
                                                     // Emitir factura simplificada (type 's')
