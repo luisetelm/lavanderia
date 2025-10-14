@@ -173,6 +173,11 @@ export async function crearFactura(prisma, {orderIds, type, invoiceData}) {
     const totalNet = +(totalGross / 1.21).toFixed(2);
     const totalTax = +(totalGross - totalNet).toFixed(2);
 
+    // Validación adicional: no permitir facturar importes 0
+    if (!totalGross || Number(totalGross) === 0) {
+        throw httpError(400, 'No se puede facturar: importe 0 €');
+    }
+
     // 4) Crear factura + vínculos en una transacción
     // Si `invoiceData` incluye una fecha (createdAt, issuedAt, operationDate), la usamos
     // para determinar el año de la factura y las fechas `issuedAt` / `operationDate`.
@@ -342,8 +347,7 @@ export async function crearFactura(prisma, {orderIds, type, invoiceData}) {
     }
 
     // Adjuntamos info sobre email al resultado para que el frontend pueda mostrar un mensaje
-    const output = convertBigIntToString(result);
-    return output;
+    return convertBigIntToString(result);
 }
 
 // Mantén tu convertBigIntToString tal cual

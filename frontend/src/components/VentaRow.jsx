@@ -18,6 +18,7 @@ export default function VentaRow({
     const [rowLoading, setRowLoading] = useState(false);
     const [orderDetail, setOrderDetail] = useState(null);
     const [orderLoading, setOrderLoading] = useState(false);
+console.log(venta);
 
     useEffect(() => {
         let mounted = true;
@@ -64,22 +65,56 @@ export default function VentaRow({
         ? eur.format(venta.total)
         : venta.total ? eur.format(Number(venta.total)) : '-';
 
+    // Nuevo: total numérico usado para validar si se puede facturar
+    const numericTotal = typeof venta.total === 'number'
+        ? venta.total
+        : venta.total ? Number(venta.total) : (orderDetail?.total ? Number(orderDetail.total) : 0);
+    const isZeroAmount = !numericTotal || numericTotal === 0;
+
     const rawTickets = orderDetail?.invoiceTickets ?? venta?.invoiceTickets ?? [];
     const invoiceTickets = Array.isArray(rawTickets) ? rawTickets : (rawTickets ? [rawTickets] : []);
     const yaFacturado = invoiceTickets.length > 0;
 
+    // Extraer número de factura de forma robusta
+    const _firstTicket = invoiceTickets[0];
+    const _inv = _firstTicket?.invoices || _firstTicket;
+    const invoiceNumber = _firstTicket?.invoiceNumber
+        ?? _firstTicket?.invoiceNum
+        ?? _firstTicket?.invoiceId
+        ?? _inv?.number
+        ?? _inv?.invoiceNumber
+        ?? _inv?.invoiceId
+        ?? _inv?.id
+        ?? '';
+
+    const paymentMethodLabel = venta?.paymentMethod
+        ? (venta.paymentMethod === 'card' ? 'Tarjeta'
+            : venta.paymentMethod === 'cash' ? 'Efectivo'
+            : venta.paymentMethod === 'transfer' ? 'Transferencia'
+            : venta.paymentMethod)
+        : '-';
+
     const handleCreateSimplifiedInvoice = async (e) => {
         e?.preventDefault();
         setRowLoading(true);
+        if (isZeroAmount) {
+            setRowLoading(false);
+            alert('No se puede facturar: importe 0 €');
+            return;
+        }
         try {
+
+            const invoiceData = venta.paymentMethod === 'card' ? {
+                operationDate: venta.createdAt,
+                issuedAt: venta.createdAt
+            } : undefined;
+
             const resp = await createInvoice(token, {
                 orderIds: [venta.id],
                 type: 's',
-                invoiceData: {
-                    operationDate: venta.createdAt,
-                    issuedAt: venta.createdAt
-                },
+                invoiceData
             });
+
             if (resp?.emailError) {
                 console.warn('Factura creada pero fallo envío de email:', resp.emailError);
                 alert('Factura creada, pero no se pudo enviar el email: ' + resp.emailError);
@@ -97,6 +132,11 @@ export default function VentaRow({
     const handleCreateNormalInvoice = async (e) => {
         e?.preventDefault();
         setRowLoading(true);
+        if (isZeroAmount) {
+            setRowLoading(false);
+            alert('No se puede facturar: importe 0 €');
+            return;
+        }
         try {
             const resp = await createInvoice(token, {
                 orderIds: [venta.id],
@@ -145,7 +185,7 @@ export default function VentaRow({
                     <button
                         className="uk-button uk-button-default uk-button-small"
                         onClick={handleCreateSimplifiedInvoice}
-                        disabled={rowLoading || globalLoading}
+                        disabled={rowLoading || globalLoading || isZeroAmount}
                         title="Emitir factura simplificada"
                         type="button"
                     >
@@ -154,7 +194,7 @@ export default function VentaRow({
                     <button
                         className="uk-button uk-button-primary uk-button-small"
                         onClick={handleCreateNormalInvoice}
-                        disabled={rowLoading || globalLoading}
+                        disabled={rowLoading || globalLoading || isZeroAmount}
                         title="Emitir factura normal"
                         type="button"
                     >
@@ -216,9 +256,19 @@ export default function VentaRow({
             <td>{cliente}</td>
             <td>{total}</td>
             <td>
-                <span className={`uk-badge ${yaFacturado ? 'uk-badge-success' : 'uk-badge-warning'}`}>
-                    {yaFacturado ? 'Facturado' : 'Pendiente'}
-                </span>
+                <div>
+                    <span className={`uk-badge ${yaFacturado ? 'uk-badge-success' : 'uk-badge-warning'}`}>
+                        {yaFacturado ? 'Facturado' : 'Pendiente'}
+                    </span>
+                    <div style={{ fontSize: '0.8em', marginTop: 4 }}>
+                        {yaFacturado && invoiceNumber ? (
+                            <div>Factura: <strong>{invoiceNumber}</strong></div>
+                        ) : (
+                            <div>&nbsp;</div>
+                        )}
+                        <div>Método: <strong>{paymentMethodLabel}</strong></div>
+                    </div>
+                </div>
             </td>
             <td>
                 {orderLoading ? 'Cargando...' : renderInvoiceButtons()}

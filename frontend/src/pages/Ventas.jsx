@@ -80,8 +80,8 @@ export default function Ventas({token}) {
             {key: 'paid', label: 'Pagado'},
             {key: 'facturado', label: 'Facturado'},
             {key: 'invoiceCount', label: 'Nº Facturas'},
-            {key: 'invoiceNumbers', label: 'Números factura'},
-            {key: 'invoiceIds', label: 'Invoice IDs'},
+            // Eliminamos columna con números de factura por petición del usuario
+            {key: 'paymentMethod', label: 'Método de pago'},
             {key: 'notes', label: 'Notas'},
             {key: 'clienteExtra', label: 'Cliente extra (raw)'}
         ];
@@ -91,12 +91,15 @@ export default function Ventas({token}) {
             const fechaFormateada = fecha ? fecha.toLocaleDateString('es-ES', {dateStyle: 'medium'}) : '';
             const cliente = v.client?.denominacionSocial || (v.client?.firstName ? `${v.client.firstName} ${v.client.lastName || ''}` : v.cliente) || '';
             const clientEmail = v.client?.email || '';
-            const invoiceIds = (Array.isArray(v.invoiceTickets) ? v.invoiceTickets.map(it => it.invoiceId || (it.invoices && it.invoices.id) || '') : []).filter(Boolean).join(';');
             const invoiceCount = Array.isArray(v.invoiceTickets) ? v.invoiceTickets.length : 0;
-            // Extraer números de factura de forma segura (varias posibles rutas según backend)
-            const invoiceNumbers = Array.isArray(v.invoiceTickets) ? v.invoiceTickets.map(it => {
-                return it?.invoices?.number ?? it?.invoices?.id ?? it?.number ?? it?.invoiceNumber ?? '';
-            }).filter(Boolean).join(';') : '';
+
+            // Mapeo amigable del método de pago para la exportación
+            const paymentMethod = v.paymentMethod ? (
+                v.paymentMethod === 'card' ? 'Tarjeta' :
+                v.paymentMethod === 'cash' ? 'Efectivo' :
+                v.paymentMethod === 'transfer' ? 'Transferencia' :
+                v.paymentMethod
+            ) : '';
 
             return {
                 id: v.id || '',
@@ -111,8 +114,7 @@ export default function Ventas({token}) {
                 paid: typeof v.paid === 'boolean' ? v.paid : !!v.paid,
                 facturado: !!v.facturado || invoiceCount > 0,
                 invoiceCount,
-                invoiceNumbers,
-                invoiceIds,
+                paymentMethod,
                 notes: v.notes || v.note || '',
                 clienteExtra: JSON.stringify(v.client || {})
             };
