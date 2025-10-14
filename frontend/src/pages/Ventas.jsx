@@ -170,7 +170,6 @@ export default function Ventas({token}) {
             const data = await fetchOrders(token, params);
             // Normalizar para evitar errores al acceder a invoiceTickets
             setVentas(Array.isArray(data) ? data.map(normalizeOrder) : []);
-            console.log('Ventas:', data);
         } catch (err) {
             console.error('Error al cargar ventas:', err);
         } finally {

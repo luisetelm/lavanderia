@@ -426,12 +426,17 @@ export default async function (fastify, opts) {
                     }
                 }, orderBy: {[orderByField]: orderByDirection},
             });
+
+
+
             return reply.send(orders);
+
         } catch (err) {
             console.error('Error en GET /api/orders:', err);
             return reply.status(500).send({error: 'Error al obtener pedidos'});
         }
     });
+
     fastify.get('/:id', async (req, reply) => {
         const prisma = fastify.prisma;
         const orderId = Number(req.params.id);
@@ -447,29 +452,47 @@ export default async function (fastify, opts) {
                     notification: {select: {id: true, type: true, sentAt: true, status: true, content: true}},
                     invoiceTickets: {
                         include: {
-                            invoices: {
-                                include: {
-                                    invoiceLines: true, // si quieres las líneas de la factura también
-                                },
-                            },
+                            invoices: true
                         },
                     },
                 },
             });
 
-// Array de facturas “aplanado”
-            const invoices = order?.invoiceTickets.map(it => it.invoices) ?? [];
-
-            invoices.map(invoice => {
-
-                // generar la ruta para descargar la factura
-                invoice.pdfPath = `/invoices_pdfs/factura_${invoice.id}.pdf`;
-            })
-
 
             if (!order) {
                 return reply.status(404).send({error: 'Pedido no encontrado'});
             }
+
+
+            // Aplanar/normalizar facturas de forma segura
+            const invoices = [];
+            const invoiceTickets = order.invoiceTickets;
+
+            if (Array.isArray(invoiceTickets)) {
+                invoiceTickets.forEach(it => {
+                    const inv = it?.invoices;
+                    if (!inv) return;
+                    if (Array.isArray(inv)) inv.forEach(i => invoices.push(i));
+                    else invoices.push(inv);
+                });
+            } else if (invoiceTickets && typeof invoiceTickets === 'object') {
+                // caso donde invoiceTickets es un objeto único
+                const inv = invoiceTickets.invoices;
+                if (inv) {
+                    if (Array.isArray(inv)) inv.forEach(i => invoices.push(i));
+                    else invoices.push(inv);
+                }
+            }
+
+            // Generar ruta pdf solo para facturas válidas
+            invoices.forEach(invoice => {
+                if (invoice && invoice.id) {
+                    invoice.pdfPath = `/invoices_pdfs/factura_${invoice.id}.pdf`;
+                }
+            });
+
+            console.log('invoices', invoices);
+
 
             // Normalizar/cocinar la línea para que tenga todo lo que el frontend espera:
             const serializedLines = order.lines.map((l) => {
@@ -501,12 +524,110 @@ export default async function (fastify, opts) {
                 ...order, lines: serializedLines, facturas: invoices,
             };
 
-            console.log('serialized', serialized);
-
             return reply.send(serialized);
         } catch (err) {
             console.error('Error en GET /orders/:id:', err);
             return reply.status(500).send({error: 'Error al obtener el pedido'});
+        }
+    });
+
+    fastify.patch('/lines/:lineId', async (req, reply) => {
+        const prisma = fastify.prisma;
+        const lineId = Number(req.params.lineId);
+        const {discount} = req.body;
+
+        if (isNaN(lineId)) {
+            return reply.status(400).send({error: 'ID de línea inválido'});
+        }
+
+        try {
+            // Obtener la línea actual con su pedido
+            const currentLine = await prisma.orderLine.findUnique({
+                where: {id: lineId},
+                include: {order: true}
+            });
+
+            if (!currentLine) {
+                return reply.status(404).send({error: 'Línea no encontrada'});
+            }
+
+            // Verificar que el pedido no esté pagado
+            if (currentLine.order.paid) {
+                return reply.status(400).send({error: 'No se puede modificar una línea de un pedido ya pagado'});
+            }
+
+            // Validar descuento
+            if (discount !== undefined) {
+                const discountValue = parseFloat(discount);
+                if (isNaN(discountValue) || discountValue < 0 || discountValue > 100) {
+                    return reply.status(400).send({error: 'El descuento debe ser un porcentaje entre 0 y 100'});
+                }
+
+                // Calcular nuevo totalPrice con descuento
+                const subtotal = currentLine.unitPrice * currentLine.quantity;
+                const discountAmount = (subtotal * discountValue) / 100;
+                const newTotalPrice = subtotal - discountAmount;
+
+                // Actualizar la línea
+                await prisma.orderLine.update({
+                    where: {id: lineId},
+                    data: {
+                        discount: discountValue,
+                        totalPrice: parseFloat(newTotalPrice.toFixed(2))
+                    }
+                });
+            }
+
+            // Recalcular el total del pedido
+            const allLines = await prisma.orderLine.findMany({
+                where: {orderId: currentLine.orderId}
+            });
+
+            const newOrderTotal = allLines.reduce((sum, line) => {
+                return sum + (line.id === lineId
+                    ? parseFloat((currentLine.unitPrice * currentLine.quantity * (1 - (discount || 0) / 100)).toFixed(2))
+                    : line.totalPrice);
+            }, 0);
+
+            // Actualizar el total del pedido
+            await prisma.order.update({
+                where: {id: currentLine.orderId},
+                data: {total: parseFloat(newOrderTotal.toFixed(2))}
+            });
+
+            // Devolver el pedido actualizado completo
+            const updatedOrder = await prisma.order.findUnique({
+                where: {id: currentLine.orderId},
+                include: {
+                    lines: {include: {product: true}},
+                    client: {
+                        select: {
+                            id: true,
+                            firstName: true,
+                            lastName: true,
+                            email: true,
+                            phone: true
+                        }
+                    },
+                    notification: {
+                        select: {
+                            id: true,
+                            type: true,
+                            sentAt: true,
+                            status: true,
+                            content: true
+                        }
+                    },
+                    invoiceTickets: {
+                        include: {invoices: true}
+                    }
+                }
+            });
+
+            return reply.send(updatedOrder);
+        } catch (err) {
+            console.error('Error actualizando línea:', err);
+            return reply.status(500).send({error: 'Error al actualizar la línea'});
         }
     });
 

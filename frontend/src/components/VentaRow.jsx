@@ -1,19 +1,55 @@
-import React, { useState } from 'react';
+// javascript
+// Archivo: `frontend/src/components/VentaRow.jsx`
+import React, { useState, useEffect } from 'react';
 import { createInvoice, downloadInvoicePDF, fetchOrder } from '../api.js';
 
 const eur = new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' });
 
 export default function VentaRow({
-    venta,
-    token,
-    isSelected,
-    canSelect,
-    onSelect,
-    onRefresh,
-    onVerPedido,
-    globalLoading
-}) {
+                                     venta,
+                                     token,
+                                     isSelected,
+                                     canSelect,
+                                     onSelect,
+                                     onRefresh,
+                                     onVerPedido,
+                                     globalLoading
+                                 }) {
     const [rowLoading, setRowLoading] = useState(false);
+    const [orderDetail, setOrderDetail] = useState(null);
+    const [orderLoading, setOrderLoading] = useState(false);
+
+    useEffect(() => {
+        let mounted = true;
+        const loadOrder = async () => {
+            if (!token || !venta?.id) return;
+            setOrderLoading(true);
+            try {
+                const data = await fetchOrder(token, venta.id);
+                if (!mounted) return;
+                setOrderDetail(data);
+            } catch (err) {
+                console.error('Error al obtener order individual', err);
+            } finally {
+                if (mounted) setOrderLoading(false);
+            }
+        };
+        loadOrder();
+        return () => { mounted = false; };
+    }, [token, venta?.id]);
+
+    const refetchOrderDetail = async () => {
+        if (!token || !venta?.id) return;
+        setOrderLoading(true);
+        try {
+            const data = await fetchOrder(token, venta.id);
+            setOrderDetail(data);
+        } catch (err) {
+            console.error('Error al re-fetch order', err);
+        } finally {
+            setOrderLoading(false);
+        }
+    };
 
     const fecha = venta.createdAt
         ? new Date(venta.createdAt).toLocaleDateString('es-ES', { dateStyle: 'medium' })
@@ -28,7 +64,9 @@ export default function VentaRow({
         ? eur.format(venta.total)
         : venta.total ? eur.format(Number(venta.total)) : '-';
 
-    const yaFacturado = venta.invoiceTickets.length > 0;
+    const rawTickets = orderDetail?.invoiceTickets ?? venta?.invoiceTickets ?? [];
+    const invoiceTickets = Array.isArray(rawTickets) ? rawTickets : (rawTickets ? [rawTickets] : []);
+    const yaFacturado = invoiceTickets.length > 0;
 
     const handleCreateSimplifiedInvoice = async (e) => {
         e?.preventDefault();
@@ -42,12 +80,12 @@ export default function VentaRow({
                     issuedAt: venta.createdAt
                 },
             });
-            console.log('resp', resp);
             if (resp?.emailError) {
                 console.warn('Factura creada pero fallo envío de email:', resp.emailError);
                 alert('Factura creada, pero no se pudo enviar el email: ' + resp.emailError);
             }
             await onRefresh(venta.id);
+            await refetchOrderDetail(); // <-- re-fetch para renderizar la fila actualizada
         } catch (err) {
             console.error('Error al generar factura simplificada', err);
             alert('No se pudo generar la factura simplificada: ' + (err.error || err.message || err));
@@ -69,6 +107,7 @@ export default function VentaRow({
                 alert('Factura creada, pero no se pudo enviar el email: ' + resp.emailError);
             }
             await onRefresh(venta.id);
+            await refetchOrderDetail(); // <-- re-fetch
         } catch (err) {
             console.error('Error al generar factura normal', err);
             alert('No se pudo generar la factura normal: ' + (err.error || err.message || err));
@@ -90,6 +129,7 @@ export default function VentaRow({
                 alert('Factura convertida, pero no se pudo enviar el email: ' + resp.emailError);
             }
             await onRefresh(venta.id);
+            await refetchOrderDetail(); // <-- re-fetch
         } catch (err) {
             console.error('Error al convertir a factura normal', err);
             alert('No se pudo convertir la factura a normal: ' + (err.error || err.message || err));
@@ -99,7 +139,7 @@ export default function VentaRow({
     };
 
     const renderInvoiceButtons = () => {
-        if (venta.invoiceTickets.length === 0) {
+        if (invoiceTickets.length === 0) {
             return (
                 <div className="uk-button-group">
                     <button
@@ -124,7 +164,7 @@ export default function VentaRow({
             );
         }
 
-        const firstTicket = venta.invoiceTickets[0];
+        const firstTicket = invoiceTickets[0];
         const inv = firstTicket?.invoices || firstTicket;
         const type = inv?.type || inv?.invoices?.type || null;
 
@@ -140,17 +180,18 @@ export default function VentaRow({
                     >
                         {rowLoading ? 'Procesando...' : 'Convertir a normal'}
                     </button>
-
                 </div>
             );
         }
+
+        const invoiceIdToDownload = firstTicket?.invoiceId || inv?.id || inv?.invoiceId;
 
         return (
             <button
                 className="uk-button uk-button-default uk-button-small"
                 onClick={(e) => {
                     e?.preventDefault();
-                    downloadInvoicePDF(token, firstTicket?.invoiceId);
+                    if (invoiceIdToDownload) downloadInvoicePDF(token, invoiceIdToDownload);
                 }}
                 title="Ver factura"
                 type="button"
@@ -180,12 +221,12 @@ export default function VentaRow({
                 </span>
             </td>
             <td>
-                {renderInvoiceButtons()}
+                {orderLoading ? 'Cargando...' : renderInvoiceButtons()}
             </td>
             <td>
                 <button
                     className="uk-button uk-button-primary uk-button-small"
-                    onClick={() => onVerPedido(venta)}
+                    onClick={() => onVerPedido(orderDetail || venta)}
                     title="Ver tareas de este pedido"
                     type="button"
                 >
@@ -195,4 +236,3 @@ export default function VentaRow({
         </tr>
     );
 }
-

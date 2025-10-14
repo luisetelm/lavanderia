@@ -8,7 +8,9 @@ import {
     payWithCash,
     updateOrder,
     updateOrder as apiUpdateOrder,
-    retryNotification, downloadInvoicePDF
+    retryNotification,
+    downloadInvoicePDF,
+    updateOrderLine
 } from '../api.js';
 import UIkit from 'uikit'; // añadir al inicio del fichero si no existe
 import {printSaleTicket, printWashLabels} from '../utils/printUtils.js';
@@ -26,6 +28,8 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
     const [localError, setLocalError] = useState('');
     const [isPrinting, setIsPrinting] = useState(false);
     const [invoiceLoading, setInvoiceLoading] = useState(false);
+    const [editingLineId, setEditingLineId] = useState(null);
+    const [lineDiscounts, setLineDiscounts] = useState({});
 
     // Modal de confirmación (listo/recogido)
     const [showModal, setShowModal] = useState(false);
@@ -239,6 +243,54 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
         }
     };
 
+    const handleLineDiscountChange = (lineId, value) => {
+        setLineDiscounts(prev => ({
+            ...prev,
+            [lineId]: value
+        }));
+    };
+
+    const handleApplyLineDiscount = async (line) => {
+        if (!order || !line) return;
+
+        const discount = parseFloat(lineDiscounts[line.id] !== undefined ? lineDiscounts[line.id] : line.discount || 0);
+
+        if (isNaN(discount) || discount < 0 || discount > 100) {
+            UIkit.notification({
+                message: 'El descuento debe ser un número entre 0 y 100',
+                status: 'danger',
+                pos: 'top-right',
+                timeout: 3000
+            });
+            return;
+        }
+
+        try {
+            const updatedOrder = await updateOrderLine(token, line.id, { discount });
+            setOrder(updatedOrder);
+            setEditingLineId(null);
+            setLineDiscounts(prev => {
+                const newState = { ...prev };
+                delete newState[line.id];
+                return newState;
+            });
+            UIkit.notification({
+                message: `Descuento del ${discount}% aplicado correctamente`,
+                status: 'success',
+                pos: 'top-right',
+                timeout: 2000
+            });
+        } catch (e) {
+            console.error('Error aplicando descuento:', e);
+            UIkit.notification({
+                message: e.error || 'Error al aplicar el descuento',
+                status: 'danger',
+                pos: 'top-right',
+                timeout: 3000
+            });
+        }
+    };
+
     const handleGenerateInvoice = async () => {
         if (!order) return;
         setInvoiceLoading(true);
@@ -264,7 +316,6 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
             setInvoiceLoading(false);
         }
     };
-
 
     if (loading) return <div>Cargando pedido...</div>;
     if (error) return <div style={{color: 'red'}}>{error}</div>;
@@ -352,21 +403,95 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
             </div>
 
             <div>
-                <div style={{fontWeight: 'bold'}}>Líneas:</div>
+                <div style={{fontWeight: 'bold', marginBottom: 8}}>Líneas:</div>
                 {(order.lines || []).map((l) => {
                     const name = l.productName || l.product?.name || `#${l.productId}`;
-                    const lineTotal = Number(l.unitPrice || 0) * Number(l.quantity || 0);
+                    const subtotal = Number(l.unitPrice || 0) * Number(l.quantity || 0);
+                    const discountAmount = (subtotal * (l.discount || 0)) / 100;
+                    const lineTotal = subtotal - discountAmount;
+                    const isEditing = editingLineId === l.id;
+                    const canEdit = !order.paid && order.status !== 'cancelled';
+
                     return (<div
                         key={l.id}
-                        style={{display: 'flex', justifyContent: 'space-between', fontSize: 12, marginTop: 2}}
+                        style={{
+                            marginBottom: 8,
+                            padding: '6px 0',
+                            borderBottom: '1px solid #e5e5e5'
+                        }}
                     >
-                        <div>
-                            {l.quantity}x {name}
+                        <div style={{display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4}}>
+                            <div>
+                                {l.quantity}x {name}
+                            </div>
+                            <div>{formatEUR(lineTotal)}</div>
                         </div>
-                        <div>{formatEUR(lineTotal)}</div>
+
+                        {/* Descuento por línea */}
+                        {canEdit ? (
+                            <div style={{display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#666'}}>
+                                <span>Descuento:</span>
+                                <input
+                                    type="number"
+                                    className="uk-input uk-form-small"
+                                    style={{width: '50px', padding: '1px 4px', fontSize: 11, height: '22px'}}
+                                    value={lineDiscounts[l.id] !== undefined ? lineDiscounts[l.id] : (l.discount || 0)}
+                                    onChange={(e) => handleLineDiscountChange(l.id, e.target.value)}
+                                    onFocus={() => setEditingLineId(l.id)}
+                                    onBlur={() => {
+                                        if (lineDiscounts[l.id] !== undefined && lineDiscounts[l.id] !== l.discount) {
+                                            handleApplyLineDiscount(l);
+                                        } else {
+                                            setEditingLineId(null);
+                                        }
+                                    }}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                            handleApplyLineDiscount(l);
+                                        } else if (e.key === 'Escape') {
+                                            setLineDiscounts(prev => {
+                                                const newState = { ...prev };
+                                                delete newState[l.id];
+                                                return newState;
+                                            });
+                                            setEditingLineId(null);
+                                        }
+                                    }}
+                                    placeholder="%"
+                                    min="0"
+                                    max="100"
+                                />
+                                <span>%</span>
+                                {!isEditing && (
+                                    <span
+                                        className="uk-icon-link"
+                                        uk-icon="icon: pencil; ratio: 0.7"
+                                        style={{cursor: 'pointer', color: '#1e87f0'}}
+                                        onClick={() => {
+                                            setEditingLineId(l.id);
+                                            const input = document.querySelector(`input[type="number"]`);
+                                            if (input) setTimeout(() => input.focus(), 0);
+                                        }}
+                                    ></span>
+                                )}
+                                {l.discount > 0 && (
+                                    <span style={{color: '#f0506e', marginLeft: 4}}>
+                                        (-{formatEUR(discountAmount)})
+                                    </span>
+                                )}
+                            </div>
+                        ) : (
+                            l.discount > 0 && (
+                                <div style={{fontSize: 11, color: '#666'}}>
+                                    Descuento ({l.discount}%): -{formatEUR(discountAmount)}
+                                </div>
+                            )
+                        )}
                     </div>);
                 })}
-                <div style={{marginTop: 10, display: 'flex', justifyContent: 'space-between', fontWeight: 'bold'}}>
+
+                {/* Total */}
+                <div style={{marginTop: 10, display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', paddingTop: 8, borderTop: '2px solid #333'}}>
                     <div>Total:</div>
                     <div>{formatEUR(order.total)}</div>
                 </div>

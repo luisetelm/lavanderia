@@ -45,24 +45,24 @@ model ProductVariant {
 }
 
 model Order {
-  id                    Int              @id @default(autoincrement())
-  orderNum              String           @unique
+  id                    Int             @id @default(autoincrement())
+  orderNum              String          @unique
   clientId              Int?
   total                 Float
-  paid                  Boolean          @default(false)
+  paid                  Boolean         @default(false)
   paymentMethod         String?
   observaciones         String?
   fechaLimite           DateTime?
-  createdAt             DateTime         @default(now())
-  updatedAt             DateTime         @updatedAt
-  status                String?          @default("pending")
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+  status                String?         @default("pending")
   workerId              Int?
   observacionesInternas String?
   CashMovement          CashMovement[]
   notification          Notification[]
-  client                User?            @relation("client_orders", fields: [clientId], references: [id])
+  client                User?           @relation("client_orders", fields: [clientId], references: [id])
   lines                 OrderLine[]
-  invoiceTickets        invoiceTickets[]
+  invoiceTickets        invoiceTickets?
 }
 
 model OrderLine {
@@ -74,6 +74,7 @@ model OrderLine {
   unitPrice  Float
   totalPrice Float
   notes      String?
+  discount   Float?          @default(0)
   order      Order           @relation(fields: [orderId], references: [id])
   product    Product         @relation(fields: [productId], references: [id])
   variant    ProductVariant? @relation(fields: [variantId], references: [id])
@@ -167,7 +168,7 @@ model invoiceLines {
 
 model invoiceTickets {
   invoiceId BigInt
-  ticketId  Int
+  ticketId  Int      @unique(map: "invoicetickets_pk")
   invoices  invoices @relation(fields: [invoiceId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   order     Order    @relation(fields: [ticketId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 

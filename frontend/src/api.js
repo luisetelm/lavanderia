@@ -108,6 +108,20 @@ export async function updateOrder(token, taskId, data) {
     return res.json();
 }
 
+export async function updateOrderLine(token, lineId, data) {
+    const res = await fetch(`/api/orders/lines/${lineId}`, {
+        method: 'PATCH',
+        headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data),
+    });
+    if (!res.ok) throw await res.json();
+
+    return res.json();
+}
+
 export async function fetchUsers(token, {q = '', role, page = 0, size = 50} = {}) {
     const params = new URLSearchParams({page, size});
     if (q) params.set('q', q);
