@@ -3,8 +3,9 @@ import {PrismaClient} from '@prisma/client';
 import puppeteer from 'puppeteer';
 import fs from 'fs';
 import path from 'path';
-import MailComposer from 'nodemailer/lib/mail-composer/index.js';
-import {SESClient, SendRawEmailCommand} from '@aws-sdk/client-ses';
+import nodemailer from 'nodemailer';
+
+
 
 // Si no se define AWS_REGION en entorno, asumimos una región por defecto razonable.
 const DEFAULT_AWS_REGION = process.env.AWS_REGION || 'eu-west-1';
@@ -128,19 +129,30 @@ export async function crearFactura(prisma, {orderIds, type, invoiceData}) {
 
         // Validación explícita: email obligatorio + (denominación social o nombre) + dirección completa
         const missing = [];
+
+        // Email obligatorio
         if (isEmpty(client.email)) missing.push('email');
 
+        // Tipo de persona obligatorio
+        if (isEmpty(client.tipopersona)) missing.push('tipo de persona');
+
+        // NIF obligatorio
+        if (isEmpty(client.nif)) missing.push('NIF/CIF');
+
+        // Nombre o denominación social según tipo de persona
         const hasDenom = !isEmpty(client.denominacionsocial);
         const hasName = !isEmpty(client.firstName) || !isEmpty(client.lastName);
-        if (!hasDenom && !hasName) missing.push('nombre o denominación social');
 
+        if (!hasDenom && !hasName) {
+            missing.push('nombre o denominación social');
+        }
+
+        // Dirección completa obligatoria
         if (isEmpty(client.direccion)) missing.push('direccion');
         if (isEmpty(client.codigopostal)) missing.push('codigopostal');
         if (isEmpty(client.localidad)) missing.push('localidad');
 
-        // Log de depuración: muestra el cliente y los campos detectados como vacíos
         if (missing.length > 0) {
-            // Uso console.log para asegurar visibilidad en stdout
             console.log('[crearFactura] Validación cliente - valores recibidos:', client);
             console.log('[crearFactura] Validación cliente - campos faltantes detectados:', missing);
             throw httpError(400, `El cliente debe tener los campos obligatorios para la factura: ${missing.join(', ')}`);
@@ -187,8 +199,7 @@ export async function crearFactura(prisma, {orderIds, type, invoiceData}) {
         const candidate = invoiceData.operationDate ?? invoiceData.issuedAt ?? invoiceData.createdAt ?? null;
         if (candidate) {
             const d = new Date(candidate);
-            if (!isNaN(d.getTime())) invoiceDate = d;
-            else throw httpError(400, 'invoiceData.date inválida o formato de fecha no reconocido. Usa ISO8601.');
+            if (!isNaN(d.getTime())) invoiceDate = d; else throw httpError(400, 'invoiceData.date inválida o formato de fecha no reconocido. Usa ISO8601.');
         }
     }
     const year = invoiceDate ? invoiceDate.getFullYear() : new Date().getFullYear();
@@ -307,43 +318,39 @@ export async function crearFactura(prisma, {orderIds, type, invoiceData}) {
             await browser.close();
         }
 
-        // 7) Email (si hay email y SMTP correctamente configurado)
-        // Envío "best-effort": intentamos SES por API por defecto; si falla, se registra el error y
-        // se intenta un fallback SMTP (si está configurado). Nunca lanzamos excepción por fallo de email.
+        // 7) Email con AWS SES
         if (cliente.email) {
-            const {FROM_EMAIL} = process.env;
-            const pdfContent = fs.existsSync(pdfPath) ? fs.readFileSync(pdfPath) : null;
+            const {FROM_EMAIL, SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS} = process.env;
 
-            if (!pdfContent) {
-                console.warn('[crearFactura] PDF no encontrado, se omitirá el adjunto.');
-            }
-
-            // Intentar enviar por AWS SES (SendRawEmail) por defecto
             try {
-                const mail = new MailComposer({
-                    from: FROM_EMAIL || 'no-reply@your-domain.com',
-                    to: [cliente.email, 'hola@tinteyburbuja.es'],
-                    subject: `Factura ${result.number} - Tinte y Burbuja`,
-                    text: `Estimado cliente,\n\nAdjuntamos la factura correspondiente a su pedido.\n\nGracias por confiar en nosotros.\n\nUn saludo,\nTinte y Burbuja`,
-                    attachments: pdfContent ? [{filename: pdfFilename, content: pdfContent}] : [],
+                const transporter = nodemailer.createTransport({
+                    host: SMTP_HOST, port: parseInt(SMTP_PORT || '587'), secure: false, // true para 465, false para otros puertos
+                    auth: {
+                        user: SMTP_USER, pass: SMTP_PASS
+                    }
                 });
 
-                const rawMessageBuffer = await mail.compile().build();
+                const pdfContent = fs.existsSync(pdfPath) ? fs.readFileSync(pdfPath) : null;
 
-                const sesClient = new SESClient({region: DEFAULT_AWS_REGION});
-                const command = new SendRawEmailCommand({RawMessage: {Data: rawMessageBuffer}});
-                // Envío por API SES; si falla, lo dejamos en logs pero no abortamos la creación de factura.
-                await sesClient.send(command);
-                // marcamos en el objeto result el estado del envío (best-effort)
+                const mailOptions = {
+                    from: FROM_EMAIL,
+                    to: [cliente.email, 'hola@tinteyburbuja.com'],
+                    subject: `Factura ${result.number} - Tinte y Burbuja`,
+                    text: `Estimado cliente,\n\nAdjuntamos la factura correspondiente a su pedido.\n\nGracias por confiar en nosotros.\n\nUn saludo,\nTinte y Burbuja`,
+                    attachments: pdfContent ? [{
+                        filename: pdfFilename, content: pdfContent
+                    }] : []
+                };
+
+                const info = await transporter.sendMail(mailOptions);
+                console.log('[crearFactura] Email enviado correctamente:', info.messageId);
                 result.emailSent = true;
+                result.messageId = info.messageId;
             } catch (err) {
-                console.error('[crearFactura] Error enviando email vía SES:', err && err.message ? err.message : err);
-                result.emailError = `SES send failed: ${err && err.message ? err.message : String(err)}`;
-                // No lanzamos; seguimos y probamos fallback SMTP más abajo
+                console.error('[crearFactura] Error enviando email:', err);
+                result.emailError = `Email send failed: ${err.message}`;
             }
-
         }
-
     }
 
     // Adjuntamos info sobre email al resultado para que el frontend pueda mostrar un mensaje

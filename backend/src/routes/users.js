@@ -125,6 +125,47 @@ export default async function (fastify, opts) {
                 provincia: true,
                 codigopostal: true,
                 pais: true,
+                orders: {
+                    select: {
+                        id: true,
+                        orderNum: true,
+                        status: true,
+                        total: true,
+                        paid: true,
+                        paymentMethod: true,
+                        observaciones: true,
+                        fechaLimite: true,
+                        createdAt: true,
+                        updatedAt: true,
+                        lines: {
+                            select: {
+                                id: true,
+                                productId: true,
+                                variantId: true,
+                                quantity: true,
+                                unitPrice: true,
+                                totalPrice: true,
+                                discount: true,
+                                notes: true,
+                                product: {
+                                    select: {
+                                        name: true,
+                                        description: true
+                                    }
+                                },
+                                variant: {
+                                    select: {
+                                        name: true
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    orderBy: {
+                        createdAt: 'desc'
+                    }
+                },
+
             },
         });
         if (!user) return reply.status(404).send({error: 'Usuario no encontrado'});
