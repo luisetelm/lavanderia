@@ -41,6 +41,8 @@ export default function Ventas({token}) {
     // Sustituimos el filtro de facturados/no facturados por tipo de factura: 's' simplificada | 'n' normal
     const [invoiceTypeFilter, setInvoiceTypeFilter] = useState(null); // 's' | 'n' | null
     const [methodFilter, setMethodFilter] = useState(null); // 'cash' | 'card' | null
+    // NUEVO: solo importes positivos (> 0 €)
+    const [onlyPositive, setOnlyPositive] = useState(() => localStorage.getItem('ventas_onlyPositive') === '1');
 
     // Helper: normalizar una orden para que siempre tenga invoiceTickets como array
     const normalizeOrder = (o) => ({
@@ -215,6 +217,9 @@ export default function Ventas({token}) {
             // payment method
             if (methodFilter === 'cash' && v.paymentMethod !== 'cash') return false;
             if (methodFilter === 'card' && v.paymentMethod !== 'card') return false;
+            // NUEVO: solo importes > 0
+            const totalNum = Number(v.total);
+            if (onlyPositive && !(totalNum > 0)) return false;
             return true;
         });
     };
@@ -292,7 +297,18 @@ export default function Ventas({token}) {
         setPaidFilter(null);
         setInvoiceTypeFilter(null);
         setMethodFilter(null);
+        setOnlyPositive(false);
+        localStorage.setItem('ventas_onlyPositive', '0');
     };
+    // NUEVO: toggle para importes > 0 €
+    const toggleOnlyPositive = () => {
+        setOnlyPositive(prev => {
+            const next = !prev;
+            localStorage.setItem('ventas_onlyPositive', next ? '1' : '0');
+            return next;
+        });
+    };
+
 
     // Clases de botón según activo/inactivo
     const btnCls = (active) => `uk-button ${active ? 'uk-button-primary' : 'uk-button-default'}`;
@@ -304,7 +320,7 @@ export default function Ventas({token}) {
             <div className="uk-flex uk-flex-wrap uk-flex-middle uk-grid-small" uk-grid="true">
                 <div>
                     <button
-                        className={btnCls(!paidFilter && !invoiceTypeFilter && !methodFilter)}
+                        className={btnCls(!paidFilter && !invoiceTypeFilter && !methodFilter && !onlyPositive)}
                         onClick={() => clearFilters()}
                         type="button"
                     >
@@ -371,6 +387,16 @@ export default function Ventas({token}) {
                             Tarjeta
                         </button>
                     </div>
+                </div>
+                {/* NUEVO: botón solo importes > 0 € */}
+                <div>
+                    <button
+                        className={btnCls(onlyPositive)}
+                        onClick={toggleOnlyPositive}
+                        type="button"
+                    >
+                        Importes &gt; 0 €
+                    </button>
                 </div>
             </div>
 

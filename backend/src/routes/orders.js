@@ -81,11 +81,15 @@ export default async function (fastify, opts) {
         let total = 0;
         const lineCreates = [];
 
+        // Obtener el cliente (ya calculado arriba) para conocer su descuento
+        const userDiscount = client?.discount ? Number(client.discount) : 0;
+        const discountPct = (!isNaN(userDiscount) && userDiscount > 0) ? Math.min(100, Math.max(0, userDiscount)) : 0;
+
         for (const l of lines) {
             const product = await prisma.product.findUnique({where: {id: l.productId}});
             if (!product) return reply.status(400).send({error: `Producto inválido: ${l.productId}`});
 
-            // Determinar qué precio usar según si el cliente es gran cliente
+            // Determinar precio base según gran cliente
             let unitPrice = product.basePrice;
             if (client.isbigclient && product.bigClientPrice && product.bigClientPrice > 0) {
                 unitPrice = parseFloat(product.bigClientPrice);
@@ -98,7 +102,10 @@ export default async function (fastify, opts) {
             }
 
             const quantity = l.quantity || 1;
-            const totalPrice = unitPrice * quantity;
+            // Calcular total con descuento por línea (mismo criterio que en PATCH /lines/:lineId)
+            const subtotal = unitPrice * quantity;
+            const totalPrice = discountPct > 0 ? subtotal * (1 - discountPct / 100) : subtotal;
+
             total += totalPrice;
 
             lineCreates.push({
@@ -106,6 +113,7 @@ export default async function (fastify, opts) {
                 variantId: l.variantId || null,
                 quantity,
                 unitPrice,
+                discount: discountPct,
                 totalPrice,
                 notes: l.notes || '',
             });
@@ -416,15 +424,24 @@ export default async function (fastify, opts) {
             const orders = await prisma.order.findMany({
                 where, include: {
                     lines: {
-                        include: {product: true},
-                    },
-                    client: {
+                        select: {
+                            id: true,
+                            productId: true,
+                            variantId: true,
+                            quantity: true,
+                            unitPrice: true,
+                            totalPrice: true,
+                            notes: true,
+                            discount: true,
+                            product: {
+                                select: {id: true, name: true, basePrice: true}
+                            }
+                        }
+                    }, client: {
                         select: {id: true, firstName: true, lastName: true, phone: true, email: true},
-                    },
-                    notification: {
+                    }, notification: {
                         select: {id: true, type: true, sentAt: true, status: true, content: true}
-                    },
-                    invoiceTickets: {
+                    }, invoiceTickets: {
                         include: {
                             invoices: true
                         }
@@ -457,7 +474,21 @@ export default async function (fastify, opts) {
         try {
             const order = await prisma.order.findUnique({
                 where: {id: orderId}, include: {
-                    lines: {include: {product: true /* , variant: true */}},
+                    lines: {
+                        select: {
+                            id: true,
+                            productId: true,
+                            variantId: true,
+                            quantity: true,
+                            unitPrice: true,
+                            totalPrice: true,
+                            notes: true,
+                            discount: true,
+                            product: {
+                                select: {id: true, name: true, basePrice: true}
+                            }
+                        }
+                    },
                     client: {select: {id: true, firstName: true, lastName: true, email: true, phone: true}},
                     notification: {select: {id: true, type: true, sentAt: true, status: true, content: true}},
                     invoiceTickets: {
@@ -482,15 +513,13 @@ export default async function (fastify, opts) {
                 invoiceTickets.forEach(it => {
                     const inv = it?.invoices;
                     if (!inv) return;
-                    if (Array.isArray(inv)) inv.forEach(i => invoices.push(i));
-                    else invoices.push(inv);
+                    if (Array.isArray(inv)) inv.forEach(i => invoices.push(i)); else invoices.push(inv);
                 });
             } else if (invoiceTickets && typeof invoiceTickets === 'object') {
                 // caso donde invoiceTickets es un objeto único
                 const inv = invoiceTickets.invoices;
                 if (inv) {
-                    if (Array.isArray(inv)) inv.forEach(i => invoices.push(i));
-                    else invoices.push(inv);
+                    if (Array.isArray(inv)) inv.forEach(i => invoices.push(i)); else invoices.push(inv);
                 }
             }
 
@@ -524,6 +553,7 @@ export default async function (fastify, opts) {
                     product: {
                         id: l.product?.id, name: l.product?.name, basePrice: l.product?.basePrice,
                     },
+                    discount: l.discount,
                 };
             });
 
@@ -550,8 +580,7 @@ export default async function (fastify, opts) {
         try {
             // Obtener la línea actual con su pedido
             const currentLine = await prisma.orderLine.findUnique({
-                where: {id: lineId},
-                include: {order: true}
+                where: {id: lineId}, include: {order: true}
             });
 
             if (!currentLine) {
@@ -577,10 +606,8 @@ export default async function (fastify, opts) {
 
                 // Actualizar la línea
                 await prisma.orderLine.update({
-                    where: {id: lineId},
-                    data: {
-                        discount: discountValue,
-                        totalPrice: parseFloat(newTotalPrice.toFixed(2))
+                    where: {id: lineId}, data: {
+                        discount: discountValue, totalPrice: parseFloat(newTotalPrice.toFixed(2))
                     }
                 });
             }
@@ -591,41 +618,26 @@ export default async function (fastify, opts) {
             });
 
             const newOrderTotal = allLines.reduce((sum, line) => {
-                return sum + (line.id === lineId
-                    ? parseFloat((currentLine.unitPrice * currentLine.quantity * (1 - (discount || 0) / 100)).toFixed(2))
-                    : line.totalPrice);
+                return sum + (line.id === lineId ? parseFloat((currentLine.unitPrice * currentLine.quantity * (1 - (discount || 0) / 100)).toFixed(2)) : line.totalPrice);
             }, 0);
 
             // Actualizar el total del pedido
             await prisma.order.update({
-                where: {id: currentLine.orderId},
-                data: {total: parseFloat(newOrderTotal.toFixed(2))}
+                where: {id: currentLine.orderId}, data: {total: parseFloat(newOrderTotal.toFixed(2))}
             });
 
             // Devolver el pedido actualizado completo
             const updatedOrder = await prisma.order.findUnique({
-                where: {id: currentLine.orderId},
-                include: {
-                    lines: {include: {product: true}},
-                    client: {
+                where: {id: currentLine.orderId}, include: {
+                    lines: {include: {product: true}}, client: {
                         select: {
-                            id: true,
-                            firstName: true,
-                            lastName: true,
-                            email: true,
-                            phone: true
+                            id: true, firstName: true, lastName: true, email: true, phone: true
                         }
-                    },
-                    notification: {
+                    }, notification: {
                         select: {
-                            id: true,
-                            type: true,
-                            sentAt: true,
-                            status: true,
-                            content: true
+                            id: true, type: true, sentAt: true, status: true, content: true
                         }
-                    },
-                    invoiceTickets: {
+                    }, invoiceTickets: {
                         include: {invoices: true}
                     }
                 }

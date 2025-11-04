@@ -19,6 +19,7 @@ export default function UserForm({ initial = {}, onSave, token, onCancel }) {
     provincia: initial.provincia || '',
     codigopostal: initial.codigopostal || '',
     pais: initial.pais || '',
+    discount: typeof initial.discount === 'number' ? initial.discount : 0,
   });
 
   const [error, setError] = useState('');
@@ -29,10 +30,18 @@ export default function UserForm({ initial = {}, onSave, token, onCancel }) {
     setSaving(true);
     setError('');
     try {
+      // Validación 0-100 del descuento
+      const d = Number(form.discount);
+      if (isNaN(d) || d < 0 || d > 100) {
+        setError('El descuento debe ser un número entre 0 y 100');
+        setSaving(false);
+        return;
+      }
+      const payload = { ...form, discount: d };
       if (initial.id) {
-        await updateUser(token, initial.id, form);
+        await updateUser(token, initial.id, payload);
       } else {
-        await createUser(token, form);
+        await createUser(token, payload);
       }
       if (onSave) onSave();
     } catch (err) {
@@ -280,6 +289,24 @@ export default function UserForm({ initial = {}, onSave, token, onCancel }) {
               </div>
             </div>
           </div>
+
+          {/* Descuento 0-100 */}
+          <div className="uk-width-1-2@s">
+            <div className="uk-margin">
+              <label className="uk-form-label">Descuento (%)</label>
+              <div className="uk-form-controls">
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={1}
+                  className="uk-input"
+                  value={form.discount}
+                  onChange={(e) => setForm((f) => ({ ...f, discount: e.target.value }))}
+                />
+              </div>
+            </div>
+          </div>
         </div>
 
         <div className="uk-margin">
@@ -302,4 +329,3 @@ export default function UserForm({ initial = {}, onSave, token, onCancel }) {
     </div>
   );
 }
-

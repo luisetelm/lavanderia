@@ -1,6 +1,6 @@
 import React, {useEffect, useState} from 'react';
 import UIkit from 'uikit';
-import {fetchUsers} from '../api.js';
+import {fetchUsers, updateUser} from '../api.js';
 import Pagination from '../components/Pagination.jsx';
 import { useNavigate } from 'react-router-dom';
 import UserForm from '../components/UserForm.jsx';
@@ -39,6 +39,21 @@ function Users({token}) {
     useEffect(() => {
         load();
     }, [token, searchTerm, currentPage]);
+
+    const saveDiscount = async (user, value) => {
+        const d = Number(value);
+        if (isNaN(d) || d < 0 || d > 100) {
+            UIkit.notification({message: 'El descuento debe estar entre 0 y 100', status: 'warning'});
+            return;
+        }
+        try {
+            await updateUser(token, user.id, { discount: d });
+            setUsers(prev => prev.map(u => u.id === user.id ? { ...u, discount: d } : u));
+            UIkit.notification({message: 'Descuento actualizado', status: 'success'});
+        } catch (e) {
+            UIkit.notification({message: e.error || 'Error actualizando descuento', status: 'danger'});
+        }
+    };
 
     return (
         <div>
@@ -88,6 +103,7 @@ function Users({token}) {
                                             <th>Rol</th>
                                             <th>Teléfono</th>
                                             <th>Estado</th>
+                                            <th style={{width: 130}}>Descuento (%)</th>
                                             <th>Acciones</th>
                                         </tr>
                                         </thead>
@@ -118,6 +134,28 @@ function Users({token}) {
                                                     </span>
                                                 </td>
                                                 <td>
+                                                    <input
+                                                        type="number"
+                                                        min={0}
+                                                        max={100}
+                                                        step={1}
+                                                        className="uk-input uk-form-width-small"
+                                                        value={typeof u.discount === 'number' ? u.discount : (u.discount ? Number(u.discount) : 0)}
+                                                        onChange={(e) => {
+                                                            const val = e.target.value;
+                                                            setUsers(prev => prev.map(x => x.id === u.id ? { ...x, discount: val } : x));
+                                                        }}
+                                                        onBlur={(e) => saveDiscount(u, e.target.value)}
+                                                        onKeyDown={(e) => {
+                                                            if (e.key === 'Enter') {
+                                                                e.preventDefault();
+                                                                saveDiscount(u, e.currentTarget.value);
+                                                                e.currentTarget.blur();
+                                                            }
+                                                        }}
+                                                    />
+                                                </td>
+                                                <td>
                                                     <button
                                                         className="uk-button uk-button-primary uk-button-small"
                                                         onClick={() => navigate(`/usuarios/${u.id}`)}
@@ -129,7 +167,7 @@ function Users({token}) {
                                         ))}
                                         {users.length === 0 && (
                                             <tr>
-                                                <td colSpan="6" className="uk-text-center uk-text-muted">
+                                                <td colSpan="7" className="uk-text-center uk-text-muted">
                                                     {searchTerm ? 'No se encontraron usuarios con esa búsqueda.' : 'No hay usuarios.'}
                                                 </td>
                                             </tr>

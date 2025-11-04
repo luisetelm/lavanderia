@@ -214,13 +214,14 @@ export default function POS({token, user}) {
 
         const linesPayload = cart.map((c) => {
             const product = products.find(p => p.id === c.productId);
-            const isBigClient = selectedUser?.isBigClient;
-            const appliedPrice = getPriceForClient(product, isBigClient);
+            const isBigClient = selectedUser?.isbigclient;
+            const discount = typeof selectedUser?.discount === 'number' ? selectedUser.discount : Number(selectedUser?.discount || 0);
+            const appliedPrice = getPriceForClient(product, isBigClient, discount);
 
             return {
                 productId: c.productId,
                 quantity: c.quantity,
-                unitPrice: appliedPrice // Enviar el precio que se aplicó
+                unitPrice: appliedPrice // precio con tarifa y descuento ya aplicados
             };
         });
 
@@ -259,18 +260,26 @@ export default function POS({token, user}) {
 
 
 
-    const getPriceForClient = (product, isClient = false) => {
-        if (isClient && product.bigClientPrice && product.bigClientPrice > 0) {
-            return product.bigClientPrice;
+    const getPriceForClient = (product, isClient = false, discountPct = 0) => {
+        // Precio base según gran cliente
+        let price = (isClient && product.bigClientPrice && product.bigClientPrice > 0)
+            ? Number(product.bigClientPrice)
+            : Number(product.basePrice);
+        // Aplicar descuento de usuario (0-100)
+        const d = Number(discountPct || 0);
+        if (!isNaN(d) && d > 0) {
+            const factor = Math.max(0, Math.min(100, d));
+            price = price * (1 - factor / 100);
         }
-        return product.basePrice;
+        return price;
     };
 
     const total = cart.reduce((sum, c) => {
         const p = products.find((prod) => prod.id === c.productId);
-        // Comprobar si el cliente seleccionado es gran cliente
         const isbigclient = selectedUser && selectedUser.isbigclient;
-        return sum + (p ? getPriceForClient(p, isbigclient) : 0) * c.quantity;
+        const discount = typeof selectedUser?.discount === 'number' ? selectedUser.discount : Number(selectedUser?.discount || 0);
+        const linePrice = p ? getPriceForClient(p, isbigclient, discount) : 0;
+        return sum + linePrice * c.quantity;
     }, 0);
 
     const updateQuantity = (productId, newQuantity) => {

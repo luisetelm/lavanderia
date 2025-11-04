@@ -85,6 +85,7 @@ export default async function (fastify, opts) {
                 provincia: true,
                 codigopostal: true,
                 pais: true,
+                discount: true,
             }, orderBy: {createdAt: 'desc'}, skip, take: pageSize,
         });
 
@@ -125,6 +126,7 @@ export default async function (fastify, opts) {
                 provincia: true,
                 codigopostal: true,
                 pais: true,
+                discount: true,
             },
         });
         if (!user) return reply.status(404).send({error: 'Usuario no encontrado'});
@@ -176,7 +178,8 @@ export default async function (fastify, opts) {
             localidad,
             provincia,
             codigopostal,
-            pais
+            pais,
+            discount,
         } = req.body;
 
         if (!firstName || !lastName || !email || !password) {
@@ -188,6 +191,16 @@ export default async function (fastify, opts) {
 
         const exists = await prisma.user.findUnique({where: {email}});
         if (exists) return reply.status(400).send({error: 'Email ya registrado'});
+
+        // Validación de discount 0-100 si llega
+        let discountValue = 0;
+        if (discount !== undefined) {
+            const d = parseFloat(discount);
+            if (isNaN(d) || d < 0 || d > 100) {
+                return reply.status(400).send({error: 'discount debe ser un número entre 0 y 100'});
+            }
+            discountValue = d;
+        }
 
         const hashed = await hash(password, 10);
         const user = await prisma.user.create({
@@ -208,6 +221,7 @@ export default async function (fastify, opts) {
                 provincia: provincia || null,
                 codigopostal: codigopostal || null,
                 pais: pais || null,
+                discount: discountValue,
             }, select: {
                 id: true,
                 firstName: true,
@@ -225,6 +239,7 @@ export default async function (fastify, opts) {
                 provincia: true,
                 codigopostal: true,
                 pais: true,
+                discount: true,
             },
         });
 
@@ -254,7 +269,8 @@ export default async function (fastify, opts) {
             localidad,
             provincia,
             codigopostal,
-            pais
+            pais,
+            discount,
         } = req.body;
         const data = {
             firstName,
@@ -273,6 +289,14 @@ export default async function (fastify, opts) {
             codigopostal,
             pais,
         };
+        // Validación y asignación de discount (0-100) si viene
+        if (discount !== undefined) {
+            const d = parseFloat(discount);
+            if (isNaN(d) || d < 0 || d > 100) {
+                return reply.status(400).send({error: 'discount debe ser un número entre 0 y 100'});
+            }
+            data.discount = d;
+        }
         if (password) {
             data.password = await hash(password, 10);
         }
@@ -298,6 +322,7 @@ export default async function (fastify, opts) {
                     provincia: true,
                     codigopostal: true,
                     pais: true,
+                    discount: true,
                 },
             });
             return user;

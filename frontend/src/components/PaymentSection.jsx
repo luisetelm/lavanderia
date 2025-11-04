@@ -408,6 +408,7 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
                     const name = l.productName || l.product?.name || `#${l.productId}`;
                     const subtotal = Number(l.unitPrice || 0) * Number(l.quantity || 0);
                     const discountAmount = (subtotal * (l.discount || 0)) / 100;
+                    console.log(l);
                     const lineTotal = subtotal - discountAmount;
                     const isEditing = editingLineId === l.id;
                     const canEdit = !order.paid && order.status !== 'cancelled';

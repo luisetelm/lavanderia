@@ -332,7 +332,7 @@ export async function crearFactura(prisma, {orderIds, type, invoiceData}) {
                 });
                 await transporter.sendMail({
                     from: {name: FROM_NAME || 'Tinte y Burbuja', address: FROM_EMAIL},
-                    to: [cliente.email, 'hola@tinteyburbuja.es'],
+                    to: [cliente.email, 'hola@tinteyburbuja.com'],
                     subject: `Factura ${result.number} - Tinte y Burbuja`,
                     text: `Estimado cliente,\n\nAdjuntamos la factura correspondiente a su pedido.\n\nGracias por confiar en nosotros.\n\nUn saludo,\nTinte y Burbuja`,
                     attachments: pdfContent ? [{filename: pdfFilename, content: pdfContent}] : [],
