@@ -18,7 +18,6 @@ export default function VentaRow({
     const [rowLoading, setRowLoading] = useState(false);
     const [orderDetail, setOrderDetail] = useState(null);
     const [orderLoading, setOrderLoading] = useState(false);
-console.log(venta);
 
     useEffect(() => {
         let mounted = true;

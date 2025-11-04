@@ -38,7 +38,8 @@ export default function Ventas({token}) {
 
     // NUEVO: estado de filtros (mutuamente excluyentes por categoría)
     const [paidFilter, setPaidFilter] = useState(null); // 'paid' | 'unpaid' | null
-    const [invoicedFilter, setInvoicedFilter] = useState(null); // 'invoiced' | 'not_invoiced' | null
+    // Sustituimos el filtro de facturados/no facturados por tipo de factura: 's' simplificada | 'n' normal
+    const [invoiceTypeFilter, setInvoiceTypeFilter] = useState(null); // 's' | 'n' | null
     const [methodFilter, setMethodFilter] = useState(null); // 'cash' | 'card' | null
 
     // Helper: normalizar una orden para que siempre tenga invoiceTickets como array
@@ -50,6 +51,19 @@ export default function Ventas({token}) {
 
     // Helper: saber si está facturado
     const isInvoiced = (o) => Boolean(o?.facturado) || (Array.isArray(o?.invoiceTickets) && o.invoiceTickets.length > 0);
+
+    // Helper: obtener tipos de factura presentes en la orden ('s' y/o 'n')
+    const getInvoiceTypes = (o) => {
+        const types = new Set();
+        if (o.factura === undefined) {
+            types.add('sinfactura');
+            return types;
+        } else {
+            if (o.factura.type === 's') types.add('s');
+            if (o.factura.type === 'n') types.add('n');
+            return types;
+        }
+    };
 
     // Refrescar una única orden y actualizar sólo esa fila en el estado (evita recargar toda la lista y perder scroll)
     const refreshOrder = async (orderId) => {
@@ -104,9 +118,9 @@ export default function Ventas({token}) {
             // Mapeo amigable del método de pago para la exportación
             const paymentMethod = v.paymentMethod ? (
                 v.paymentMethod === 'card' ? 'Tarjeta' :
-                v.paymentMethod === 'cash' ? 'Efectivo' :
-                v.paymentMethod === 'transfer' ? 'Transferencia' :
-                v.paymentMethod
+                    v.paymentMethod === 'cash' ? 'Efectivo' :
+                        v.paymentMethod === 'transfer' ? 'Transferencia' :
+                            v.paymentMethod
             ) : '';
 
             return {
@@ -193,10 +207,11 @@ export default function Ventas({token}) {
             // paid
             if (paidFilter === 'paid' && !v.paid) return false;
             if (paidFilter === 'unpaid' && v.paid) return false;
-            // invoiced
-            const inv = isInvoiced(v);
-            if (invoicedFilter === 'invoiced' && !inv) return false;
-            if (invoicedFilter === 'not_invoiced' && inv) return false;
+            // invoice type: si hay filtro, incluir solo pedidos que tengan alguna factura del tipo seleccionado
+            if (invoiceTypeFilter) {
+                const types = getInvoiceTypes(v);
+                if (!types.has(invoiceTypeFilter)) return false;
+            }
             // payment method
             if (methodFilter === 'cash' && v.paymentMethod !== 'cash') return false;
             if (methodFilter === 'card' && v.paymentMethod !== 'card') return false;
@@ -267,15 +282,15 @@ export default function Ventas({token}) {
     const togglePaid = (which) => {
         setPaidFilter(prev => prev === which ? null : which);
     };
-    const toggleInvoiced = (which) => {
-        setInvoicedFilter(prev => prev === which ? null : which);
+    const toggleInvoiceType = (which) => {
+        setInvoiceTypeFilter(prev => prev === which ? null : which);
     };
     const toggleMethod = (which) => {
         setMethodFilter(prev => prev === which ? null : which);
     };
     const clearFilters = () => {
         setPaidFilter(null);
-        setInvoicedFilter(null);
+        setInvoiceTypeFilter(null);
         setMethodFilter(null);
     };
 
@@ -289,7 +304,7 @@ export default function Ventas({token}) {
             <div className="uk-flex uk-flex-wrap uk-flex-middle uk-grid-small" uk-grid="true">
                 <div>
                     <button
-                        className={btnCls(!paidFilter && !invoicedFilter && !methodFilter)}
+                        className={btnCls(!paidFilter && !invoiceTypeFilter && !methodFilter)}
                         onClick={() => clearFilters()}
                         type="button"
                     >
@@ -317,18 +332,25 @@ export default function Ventas({token}) {
                 <div>
                     <div className="uk-button-group">
                         <button
-                            className={btnCls(invoicedFilter === 'not_invoiced')}
-                            onClick={() => toggleInvoiced('not_invoiced')}
+                            className={btnCls(invoiceTypeFilter === 'sinfactura')}
+                            onClick={() => toggleInvoiceType('sinfactura')}
                             type="button"
                         >
-                            No facturados
+                            Sin Facturar
                         </button>
                         <button
-                            className={btnCls(invoicedFilter === 'invoiced')}
-                            onClick={() => toggleInvoiced('invoiced')}
+                            className={btnCls(invoiceTypeFilter === 's')}
+                            onClick={() => toggleInvoiceType('s')}
                             type="button"
                         >
-                            Facturados
+                            F. Simplificadas
+                        </button>
+                        <button
+                            className={btnCls(invoiceTypeFilter === 'n')}
+                            onClick={() => toggleInvoiceType('n')}
+                            type="button"
+                        >
+                            F. Normales
                         </button>
                     </div>
                 </div>

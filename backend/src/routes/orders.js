@@ -220,8 +220,6 @@ export default async function (fastify, opts) {
             }
         }
 
-        console.log('data', data);
-
 
         if (Object.keys(data).length === 0) {
             return reply.status(400).send({error: 'Nada para actualizar'});
@@ -339,7 +337,9 @@ export default async function (fastify, opts) {
                 change = received - order.total;
             }
 
-            await crearFactura(prisma, {orderIds: [orderId], type: 's'});
+            if (method === 'card') {
+                await crearFactura(prisma, {orderIds: [orderId], type: 's'});
+            }
 
             const updated = await prisma.order.update({
                 where: {id: orderId}, data: updateData, include: {
@@ -415,11 +415,16 @@ export default async function (fastify, opts) {
         try {
             const orders = await prisma.order.findMany({
                 where, include: {
-                    lines: {include: {product: true},}, client: {
+                    lines: {
+                        include: {product: true},
+                    },
+                    client: {
                         select: {id: true, firstName: true, lastName: true, phone: true, email: true},
-                    }, notification: {
+                    },
+                    notification: {
                         select: {id: true, type: true, sentAt: true, status: true, content: true}
-                    }, invoiceTickets: {
+                    },
+                    invoiceTickets: {
                         include: {
                             invoices: true
                         }
@@ -427,7 +432,12 @@ export default async function (fastify, opts) {
                 }, orderBy: {[orderByField]: orderByDirection},
             });
 
-
+            orders.forEach(order => {
+                const inv = order?.invoiceTickets?.invoices;
+                if (inv) {
+                    order.factura = inv;
+                }
+            })
 
             return reply.send(orders);
 
@@ -490,9 +500,6 @@ export default async function (fastify, opts) {
                     invoice.pdfPath = `/invoices_pdfs/factura_${invoice.id}.pdf`;
                 }
             });
-
-            console.log('invoices', invoices);
-
 
             // Normalizar/cocinar la línea para que tenga todo lo que el frontend espera:
             const serializedLines = order.lines.map((l) => {
