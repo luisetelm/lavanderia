@@ -7,6 +7,7 @@ import Inventory from './pages/Inventory';
 import Users from './pages/Users';
 import Ventas from './pages/Ventas';
 import AuthRedirect from './components/AuthRedirect';
+import UserEdit from './pages/UserEdit.jsx';
 
 
 export default function App() {
@@ -84,6 +85,7 @@ export default function App() {
                     <Route path="/productos" element={<Inventory token={token}/>}/>
                     <Route path="/tareas" element={<Tasks token={token} user={user}/>}/>
                     <Route path="/usuarios" element={<Users token={token}/>}/>
+                    <Route path="/usuarios/:id" element={<UserEdit token={token} />}/>
                     <Route path="/ventas" element={<Ventas token={token}/>}/>
                     <Route path="*" element={<div>Ruta no encontrada</div>}/>
                     <Route path="/login" element={<Login onLogin={handleLogin}/>}/>

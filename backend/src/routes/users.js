@@ -128,7 +128,34 @@ export default async function (fastify, opts) {
             },
         });
         if (!user) return reply.status(404).send({error: 'Usuario no encontrado'});
-        return user;
+
+        // Incluir pedidos del usuario (como cliente)
+        const orders = await prisma.order.findMany({
+            where: {clientId: Number(id)},
+            select: {
+                id: true,
+                orderNum: true,
+                status: true,
+                total: true,
+                paid: true,
+                paymentMethod: true,
+                createdAt: true,
+                fechaLimite: true,
+                updatedAt: true,
+                lines: {
+                    select: {
+                        id: true,
+                        quantity: true,
+                        unitPrice: true,
+                        totalPrice: true,
+                        product: {select: {id: true, name: true}},
+                    }
+                }
+            },
+            orderBy: {createdAt: 'desc'}
+        });
+
+        return { ...user, orders };
     });
 
     // Crear usuario

@@ -3,7 +3,6 @@ import React, {useCallback, useEffect, useState} from 'react';
 import {
     fetchOrders,
     createInvoice,
-    downloadInvoicePDF,
     fetchOrder
 } from '../api.js';
 import {useNavigate} from 'react-router-dom';
@@ -37,12 +36,20 @@ export default function Ventas({token}) {
     const [selectedOrders, setSelectedOrders] = useState([]);
     const [selectionCriteria, setSelectionCriteria] = useState(null);
 
+    // NUEVO: estado de filtros (mutuamente excluyentes por categoría)
+    const [paidFilter, setPaidFilter] = useState(null); // 'paid' | 'unpaid' | null
+    const [invoicedFilter, setInvoicedFilter] = useState(null); // 'invoiced' | 'not_invoiced' | null
+    const [methodFilter, setMethodFilter] = useState(null); // 'cash' | 'card' | null
+
     // Helper: normalizar una orden para que siempre tenga invoiceTickets como array
     const normalizeOrder = (o) => ({
         ...o,
         invoiceTickets: Array.isArray(o?.invoiceTickets) ? o.invoiceTickets : [],
         client: o?.client || null
     });
+
+    // Helper: saber si está facturado
+    const isInvoiced = (o) => Boolean(o?.facturado) || (Array.isArray(o?.invoiceTickets) && o.invoiceTickets.length > 0);
 
     // Refrescar una única orden y actualizar sólo esa fila en el estado (evita recargar toda la lista y perder scroll)
     const refreshOrder = async (orderId) => {
@@ -60,9 +67,10 @@ export default function Ventas({token}) {
         }
     };
 
-    // Exportar ventas actuales a XLSX usando SheetJS
+    // Exportar ventas actuales a XLSX usando SheetJS (usar lista filtrada)
     const exportVentasXLSX = () => {
-        if (!Array.isArray(ventas) || ventas.length === 0) {
+        const ventasFiltradas = getVentasFiltradas();
+        if (!Array.isArray(ventasFiltradas) || ventasFiltradas.length === 0) {
             alert('No hay datos para exportar');
             return;
         }
@@ -86,7 +94,7 @@ export default function Ventas({token}) {
             {key: 'clienteExtra', label: 'Cliente extra (raw)'}
         ];
 
-        const rows = ventas.map(v => {
+        const rows = ventasFiltradas.map(v => {
             const fecha = v.createdAt ? new Date(v.createdAt) : null;
             const fechaFormateada = fecha ? fecha.toLocaleDateString('es-ES', {dateStyle: 'medium'}) : '';
             const cliente = v.client?.denominacionSocial || (v.client?.firstName ? `${v.client.firstName} ${v.client.lastName || ''}` : v.cliente) || '';
@@ -179,11 +187,29 @@ export default function Ventas({token}) {
         }
     }, [fechaInicio, fechaFin]);
 
-// Calcula KPIs
-    const totalVentas = ventas.reduce((sum, v) => sum + (Number(v.total) || 0), 0);
-    const cantidadPedidos = ventas.length;
-    const pedidosPendientes = ventas.filter(v => !(v.paid === false)).length;
-    const pedidosFacturados = ventas.filter(v => (v.facturado === true)).length;
+    // NUEVO: aplicar filtros a la lista
+    const getVentasFiltradas = () => {
+        return ventas.filter(v => {
+            // paid
+            if (paidFilter === 'paid' && !v.paid) return false;
+            if (paidFilter === 'unpaid' && v.paid) return false;
+            // invoiced
+            const inv = isInvoiced(v);
+            if (invoicedFilter === 'invoiced' && !inv) return false;
+            if (invoicedFilter === 'not_invoiced' && inv) return false;
+            // payment method
+            if (methodFilter === 'cash' && v.paymentMethod !== 'cash') return false;
+            if (methodFilter === 'card' && v.paymentMethod !== 'card') return false;
+            return true;
+        });
+    };
+
+    // Calcula KPIs sobre la lista filtrada
+    const ventasFiltradas = getVentasFiltradas();
+    const totalVentas = ventasFiltradas.reduce((sum, v) => sum + (Number(v.total) || 0), 0);
+    const cantidadPedidos = ventasFiltradas.length;
+    const pedidosPendientes = ventasFiltradas.filter(v => v.paid === false).length;
+    const pedidosFacturados = ventasFiltradas.filter(v => isInvoiced(v)).length;
 
 
     useEffect(() => {
@@ -227,8 +253,9 @@ export default function Ventas({token}) {
     };
 
 
+    // Actualizar: no permitir seleccionar pedidos facturados (usando invoiceTickets)
     const canSelectOrder = (order) => {
-        if (order.facturado) return false;
+        if (isInvoiced(order)) return false;
         if (!selectionCriteria) return true;
         return (
             order.client?.id === selectionCriteria.clientId &&
@@ -236,38 +263,93 @@ export default function Ventas({token}) {
         );
     };
 
+    // Handlers de filtros con toggle
+    const togglePaid = (which) => {
+        setPaidFilter(prev => prev === which ? null : which);
+    };
+    const toggleInvoiced = (which) => {
+        setInvoicedFilter(prev => prev === which ? null : which);
+    };
+    const toggleMethod = (which) => {
+        setMethodFilter(prev => prev === which ? null : which);
+    };
+    const clearFilters = () => {
+        setPaidFilter(null);
+        setInvoicedFilter(null);
+        setMethodFilter(null);
+    };
+
+    // Clases de botón según activo/inactivo
+    const btnCls = (active) => `uk-button ${active ? 'uk-button-primary' : 'uk-button-default'}`;
+
     return (<div>
         <div className="section-header">
             <h2 className="uk-margin-remove">Ventas</h2>
 
-            <div className="{uk-button-group}">
-                <button
-                    className="uk-button uk-button-default"
-                    onClick={() => {
-                        fetchVentas();
-                    }}
-                    type="button"
-                >
-                    Todos
-                </button>
-                <button
-                    className="uk-button uk-button-default"
-                    onClick={() => {
-                        setVentas(ventas.filter(v => (v.paid === false)));
-                    }}
-                    type="button"
-                >
-                    Pendientes
-                </button>
-                <button
-                    className="uk-button uk-button-default"
-                    onClick={() => {
-                        setVentas(ventas.filter(v => v.paid === true));
-                    }}
-                    type="button"
-                >
-                    Pagados
-                </button>
+            <div className="uk-flex uk-flex-wrap uk-flex-middle uk-grid-small" uk-grid="true">
+                <div>
+                    <button
+                        className={btnCls(!paidFilter && !invoicedFilter && !methodFilter)}
+                        onClick={() => clearFilters()}
+                        type="button"
+                    >
+                        Todos
+                    </button>
+                </div>
+                <div>
+                    <div className="uk-button-group">
+                        <button
+                            className={btnCls(paidFilter === 'unpaid')}
+                            onClick={() => togglePaid('unpaid')}
+                            type="button"
+                        >
+                            Pendientes de cobro
+                        </button>
+                        <button
+                            className={btnCls(paidFilter === 'paid')}
+                            onClick={() => togglePaid('paid')}
+                            type="button"
+                        >
+                            Cobrados
+                        </button>
+                    </div>
+                </div>
+                <div>
+                    <div className="uk-button-group">
+                        <button
+                            className={btnCls(invoicedFilter === 'not_invoiced')}
+                            onClick={() => toggleInvoiced('not_invoiced')}
+                            type="button"
+                        >
+                            No facturados
+                        </button>
+                        <button
+                            className={btnCls(invoicedFilter === 'invoiced')}
+                            onClick={() => toggleInvoiced('invoiced')}
+                            type="button"
+                        >
+                            Facturados
+                        </button>
+                    </div>
+                </div>
+                <div>
+                    <div className="uk-button-group">
+                        <button
+                            className={btnCls(methodFilter === 'cash')}
+                            onClick={() => toggleMethod('cash')}
+                            type="button"
+                        >
+                            Efectivo
+                        </button>
+                        <button
+                            className={btnCls(methodFilter === 'card')}
+                            onClick={() => toggleMethod('card')}
+                            type="button"
+                        >
+                            Tarjeta
+                        </button>
+                    </div>
+                </div>
             </div>
 
         </div>
@@ -335,7 +417,7 @@ export default function Ventas({token}) {
                         <button
                             className="uk-button uk-button-default"
                             onClick={exportVentasXLSX}
-                            disabled={loading || ventas.length === 0}
+                            disabled={loading || ventasFiltradas.length === 0}
                             type="button"
                         >
                             Exportar XLSX
@@ -346,7 +428,7 @@ export default function Ventas({token}) {
 
             {loading ? (<div className="uk-text-center uk-margin">
                 <span className="uk-badge uk-badge-warning">Cargando ventas...</span>
-            </div>) : ventas.length === 0 ? (<div className="uk-text-center uk-margin">
+            </div>) : ventasFiltradas.length === 0 ? (<div className="uk-text-center uk-margin">
                 <span className="uk-badge uk-badge-muted">No hay ventas en el rango seleccionado.</span>
             </div>) : (
                 <>
@@ -356,13 +438,13 @@ export default function Ventas({token}) {
                             <th>
                                 <input
                                     type="checkbox"
-                                    checked={selectedOrders.length > 0 && ventas.filter(v => canSelectOrder(v)).every(v => selectedOrders.includes(v.id))}
+                                    checked={selectedOrders.length > 0 && ventasFiltradas.filter(v => canSelectOrder(v)).every(v => selectedOrders.includes(v.id))}
                                     onChange={e => {
                                         if (e.target.checked) {
-                                            const validIds = ventas.filter(v => canSelectOrder(v)).map(v => v.id);
+                                            const validIds = ventasFiltradas.filter(v => canSelectOrder(v)).map(v => v.id);
                                             setSelectedOrders(validIds);
                                             if (validIds.length > 0) {
-                                                const first = ventas.find(v => v.id === validIds[0]);
+                                                const first = ventasFiltradas.find(v => v.id === validIds[0]);
                                                 setSelectionCriteria({
                                                     clientId: first.client?.id,
                                                     paid: first.paid
@@ -385,7 +467,7 @@ export default function Ventas({token}) {
                         </tr>
                         </thead>
                         <tbody>
-                        {ventas.map((v) => (
+                        {ventasFiltradas.map((v) => (
                             <VentaRow
                                 key={v.id}
                                 venta={v}
