@@ -5,6 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import MailComposer from 'nodemailer/lib/mail-composer/index.js';
 import {SESClient, SendRawEmailCommand} from '@aws-sdk/client-ses';
+import nodemailer from 'nodemailer';
 
 // Si no se define AWS_REGION en entorno, asumimos una región por defecto razonable.
 const DEFAULT_AWS_REGION = process.env.AWS_REGION || 'eu-west-1';
@@ -311,35 +312,39 @@ export async function crearFactura(prisma, {orderIds, type, invoiceData}) {
         // Envío "best-effort": intentamos SES por API por defecto; si falla, se registra el error y
         // se intenta un fallback SMTP (si está configurado). Nunca lanzamos excepción por fallo de email.
         if (cliente.email) {
-            const {FROM_EMAIL} = process.env;
+            const {FROM_EMAIL, FROM_NAME, SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS} = process.env;
             const pdfContent = fs.existsSync(pdfPath) ? fs.readFileSync(pdfPath) : null;
 
             if (!pdfContent) {
                 console.warn('[crearFactura] PDF no encontrado, se omitirá el adjunto.');
             }
 
-            // Intentar enviar por AWS SES (SendRawEmail) por defecto
-            try {
-                const mail = new MailComposer({
-                    from: FROM_EMAIL || 'no-reply@your-domain.com',
+            const sendViaSMTP = async () => {
+                const transporter = nodemailer.createTransport({
+                    host: SMTP_HOST,
+                    port: Number(SMTP_PORT) || 587,
+                    secure: false,
+                    requireTLS: true,
+                    auth: {
+                        user: SMTP_USER,
+                        pass: SMTP_PASS,
+                    },
+                });
+                await transporter.sendMail({
+                    from: {name: FROM_NAME || 'Tinte y Burbuja', address: FROM_EMAIL},
                     to: [cliente.email, 'hola@tinteyburbuja.es'],
                     subject: `Factura ${result.number} - Tinte y Burbuja`,
                     text: `Estimado cliente,\n\nAdjuntamos la factura correspondiente a su pedido.\n\nGracias por confiar en nosotros.\n\nUn saludo,\nTinte y Burbuja`,
                     attachments: pdfContent ? [{filename: pdfFilename, content: pdfContent}] : [],
                 });
-
-                const rawMessageBuffer = await mail.compile().build();
-
-                const sesClient = new SESClient({region: DEFAULT_AWS_REGION});
-                const command = new SendRawEmailCommand({RawMessage: {Data: rawMessageBuffer}});
-                // Envío por API SES; si falla, lo dejamos en logs pero no abortamos la creación de factura.
-                await sesClient.send(command);
-                // marcamos en el objeto result el estado del envío (best-effort)
                 result.emailSent = true;
-            } catch (err) {
-                console.error('[crearFactura] Error enviando email vía SES:', err && err.message ? err.message : err);
-                result.emailError = `SES send failed: ${err && err.message ? err.message : String(err)}`;
-                // No lanzamos; seguimos y probamos fallback SMTP más abajo
+            };
+
+            try {
+                await sendViaSMTP();
+            } catch (errPrimary) {
+                console.error('[crearFactura] Error en primer método de envío:', errPrimary && errPrimary.message ? errPrimary.message : errPrimary);
+                result.emailError = `Primary send failed: ${errPrimary && errPrimary.message ? errPrimary.message : String(errPrimary)}`;
             }
 
         }
