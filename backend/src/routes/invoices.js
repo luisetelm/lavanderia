@@ -65,6 +65,159 @@ function aggregateOrderLines(orders) {
     });
 }
 
+// Función para convertir una factura simplificada a normal
+async function convertirSimplificadaANormal(prisma, invoiceId, orderIds) {
+    // 1) Obtener la factura existente con sus relaciones
+    const existingInvoice = await prisma.invoices.findUnique({
+        where: {id: invoiceId},
+        include: {
+            User: true,
+            invoiceLines: true,
+            invoiceTickets: {
+                include: {
+                    order: {include: {lines: {include: {product: true}}}}
+                }
+            }
+        }
+    });
+
+    if (!existingInvoice) {
+        throw httpError(404, 'Factura no encontrada.');
+    }
+
+    const clientId = existingInvoice.clientId;
+
+    // 2) Validar datos del cliente para factura normal
+    const client = await prisma.User.findUnique({
+        where: {id: clientId},
+        select: {
+            firstName: true,
+            lastName: true,
+            denominacionsocial: true,
+            email: true,
+            tipopersona: true,
+            direccion: true,
+            codigopostal: true,
+            localidad: true,
+            provincia: true,
+            pais: true,
+            nif: true,
+        }
+    });
+
+    if (!client) {
+        throw httpError(404, 'Cliente no encontrado.');
+    }
+
+    const isEmpty = (v) => v === null || v === undefined || (typeof v === 'string' && (v.trim() === '' || v.trim().toLowerCase() === 'null' || v.trim().toLowerCase() === 'undefined'));
+
+    const missing = [];
+    if (isEmpty(client.email)) missing.push('email');
+
+    const hasDenom = !isEmpty(client.denominacionsocial);
+    const hasName = !isEmpty(client.firstName) || !isEmpty(client.lastName);
+    if (!hasDenom && !hasName) missing.push('nombre o denominación social');
+
+    if (isEmpty(client.direccion)) missing.push('direccion');
+    if (isEmpty(client.codigopostal)) missing.push('codigopostal');
+    if (isEmpty(client.localidad)) missing.push('localidad');
+
+    if (missing.length > 0) {
+        throw httpError(400, `El cliente debe tener los campos obligatorios para la factura: ${missing.join(', ')}`);
+    }
+
+    // 3) Actualizar el tipo de factura de 's' a 'n'
+    const updatedInvoice = await prisma.invoices.update({
+        where: {id: invoiceId},
+        data: {type: 'n'}
+    });
+
+    // 4) Cargar la factura actualizada con todas las relaciones
+    const result = await prisma.invoices.findUnique({
+        where: {id: invoiceId},
+        include: {
+            User: true,
+            invoiceLines: true,
+            invoiceTickets: {
+                include: {
+                    order: {include: {lines: {include: {product: true}}}}
+                }
+            }
+        }
+    });
+
+    // 5) Generar PDF para la factura normal
+    const pdfDir = path.join(process.cwd(), 'invoices_pdfs');
+    if (!fs.existsSync(pdfDir)) fs.mkdirSync(pdfDir, {recursive: true});
+    const pdfFilename = `factura_${invoiceId}.pdf`;
+    const pdfPath = path.join(pdfDir, pdfFilename);
+
+    const cliente = result.User || {};
+    const direccionCompleta = [cliente.direccion, cliente.codigopostal, cliente.localidad, cliente.provincia, cliente.pais].filter(Boolean).join(', ');
+
+    const esFisica = (cliente.tipopersona || '').toLowerCase().includes('fís');
+    const etiquetaNombre = esFisica ? 'Nombre' : 'Denominación social';
+    const valorNombre = esFisica ? `${cliente.firstName || ''} ${cliente.lastName || ''}`.trim() : (cliente.denominacionsocial || `${cliente.firstName || ''} ${cliente.lastName || ''}`.trim());
+
+    const html = buildInvoiceHtml({
+        invoice: result,
+        cliente: {...cliente, direccionCompleta, etiquetaNombre, valorNombre}
+    });
+
+    const browser = await puppeteer.launch({
+        headless: 'new',
+        args: ['--no-sandbox', '--disable-setuid-sandbox']
+    });
+
+    try {
+        const page = await browser.newPage();
+        await page.setContent(html, {waitUntil: 'load'});
+        await page.pdf({path: pdfPath, format: 'A4', printBackground: true});
+    } finally {
+        await browser.close();
+    }
+
+    // 6) Enviar email con el PDF
+    if (cliente.email) {
+        const {FROM_EMAIL, FROM_NAME, SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS} = process.env;
+        const pdfContent = fs.existsSync(pdfPath) ? fs.readFileSync(pdfPath) : null;
+
+        if (!pdfContent) {
+            console.warn('[convertirSimplificadaANormal] PDF no encontrado, se omitirá el adjunto.');
+        }
+
+        const sendViaSMTP = async () => {
+            const transporter = nodemailer.createTransport({
+                host: SMTP_HOST,
+                port: Number(SMTP_PORT) || 587,
+                secure: false,
+                requireTLS: true,
+                auth: {
+                    user: SMTP_USER,
+                    pass: SMTP_PASS,
+                },
+            });
+            await transporter.sendMail({
+                from: {name: FROM_NAME || 'Tinte y Burbuja', address: FROM_EMAIL},
+                to: [cliente.email, 'hola@tinteyburbuja.com'],
+                subject: `Factura ${result.number} - Tinte y Burbuja`,
+                text: `Estimado cliente,\n\nAdjuntamos la factura correspondiente a su pedido.\n\nGracias por confiar en nosotros.\n\nUn saludo,\nTinte y Burbuja`,
+                attachments: pdfContent ? [{filename: pdfFilename, content: pdfContent}] : [],
+            });
+            result.emailSent = true;
+        };
+
+        try {
+            await sendViaSMTP();
+        } catch (errPrimary) {
+            console.error('[convertirSimplificadaANormal] Error en envío de email:', errPrimary?.message || errPrimary);
+            result.emailError = `Email send failed: ${errPrimary?.message || String(errPrimary)}`;
+        }
+    }
+
+    return convertBigIntToString(result);
+}
+
 export async function crearFactura(prisma, {orderIds, type, invoiceData}) {
 
 
@@ -75,15 +228,39 @@ export async function crearFactura(prisma, {orderIds, type, invoiceData}) {
         throw httpError(400, 'Tipo de factura inválido.');
     }
 
-    // Si alguno de los OrderIds ya está en la tabla de facturas, no se puede facturar
-    const existingInvoice = await prisma.invoiceTickets.findFirst({
+    // Si alguno de los OrderIds ya está en la tabla de facturas, verificamos si podemos convertir
+    const existingInvoiceTicket = await prisma.invoiceTickets.findFirst({
         where: {
             ticketId: {in: orderIds}
+        },
+        include: {
+            invoices: true
         }
     });
 
+    // Si existe factura y estamos pidiendo normal, verificamos si es simplificada para convertir
+    if (existingInvoiceTicket) {
+        const existingInvoice = existingInvoiceTicket.invoices;
 
-    if (existingInvoice) {
+        // Si ya es normal o rectificativa, no se puede volver a facturar
+        if (existingInvoice.type === 'n') {
+            throw httpError(400, 'Algún pedido ya tiene factura normal.');
+        }
+        if (existingInvoice.type === 'rectificativa') {
+            throw httpError(400, 'Algún pedido ya tiene factura rectificativa.');
+        }
+
+        // Si es simplificada y pedimos normal, convertimos
+        if (existingInvoice.type === 's' && type === 'n') {
+            // Convertir de simplificada a normal
+            return await convertirSimplificadaANormal(prisma, existingInvoice.id, orderIds);
+        }
+
+        // Si es simplificada y pedimos otra simplificada, error
+        if (existingInvoice.type === 's' && type === 's') {
+            throw httpError(400, 'Algún pedido ya tiene factura simplificada.');
+        }
+
         throw httpError(400, 'Algún pedido ya está facturado.');
     }
 
