@@ -36,10 +36,12 @@ export default function UserEdit({ token }) {
       const orderTotal = order.total || 0;
       acc.totalIngresos += orderTotal;
 
-      // Calcular descuentos sumando los descuentos de cada línea
+      // Calcular descuentos: diferencia entre subtotal (sin descuento) y totalPrice (con descuento)
       if (order.lines) {
         order.lines.forEach((line) => {
-          acc.totalDescuentos += (line.discount || 0) * (line.quantity || 1);
+          const subtotalSinDescuento = (line.unitPrice || 0) * (line.quantity || 1);
+          const totalConDescuento = line.totalPrice || 0;
+          acc.totalDescuentos += subtotalSinDescuento - totalConDescuento;
         });
       }
 
