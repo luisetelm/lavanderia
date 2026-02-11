@@ -150,6 +150,7 @@ export default async function (fastify, opts) {
                         quantity: true,
                         unitPrice: true,
                         totalPrice: true,
+                        discount: true,
                         product: {select: {id: true, name: true}},
                     }
                 }

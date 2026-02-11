@@ -30,6 +30,30 @@ export default function UserEdit({ token }) {
 
   const orders = user?.orders || [];
 
+  // Calcular estadísticas financieras
+  const stats = orders.reduce(
+    (acc, order) => {
+      const orderTotal = order.total || 0;
+      acc.totalIngresos += orderTotal;
+
+      // Calcular descuentos sumando los descuentos de cada línea
+      if (order.lines) {
+        order.lines.forEach((line) => {
+          acc.totalDescuentos += (line.discount || 0) * (line.quantity || 1);
+        });
+      }
+
+      if (order.paid) {
+        acc.totalPagado += orderTotal;
+      } else {
+        acc.pendientePago += orderTotal;
+      }
+
+      return acc;
+    },
+    { totalIngresos: 0, totalDescuentos: 0, totalPagado: 0, pendientePago: 0 }
+  );
+
   return (
     <div>
       <div className="section-header uk-margin">
@@ -68,6 +92,36 @@ export default function UserEdit({ token }) {
             </div>
 
             <div className="uk-width-1-2@l">
+              <div className="uk-card uk-card-default uk-card-body uk-margin-bottom">
+                <h4 className="uk-margin-remove-top">Resumen financiero</h4>
+                <div className="uk-grid-small uk-child-width-1-2@s uk-text-center" uk-grid="true">
+                  <div>
+                    <div className="uk-card uk-card-body uk-card-small uk-background-muted">
+                      <div className="uk-text-small uk-text-muted">Total ingresos</div>
+                      <div className="uk-text-lead uk-text-bold">{stats.totalIngresos.toFixed(2)} €</div>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="uk-card uk-card-body uk-card-small uk-background-muted">
+                      <div className="uk-text-small uk-text-muted">Total descuentos</div>
+                      <div className="uk-text-lead uk-text-bold uk-text-warning">{stats.totalDescuentos.toFixed(2)} €</div>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="uk-card uk-card-body uk-card-small uk-background-muted">
+                      <div className="uk-text-small uk-text-muted">Total pagado</div>
+                      <div className="uk-text-lead uk-text-bold uk-text-success">{stats.totalPagado.toFixed(2)} €</div>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="uk-card uk-card-body uk-card-small uk-background-muted">
+                      <div className="uk-text-small uk-text-muted">Pendiente de pago</div>
+                      <div className="uk-text-lead uk-text-bold uk-text-danger">{stats.pendientePago.toFixed(2)} €</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <div className="uk-card uk-card-default uk-card-body">
                 <div className="uk-flex uk-flex-between uk-flex-middle uk-margin-small-bottom">
                   <h4 className="uk-margin-remove">Pedidos del usuario</h4>
