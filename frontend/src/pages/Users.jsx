@@ -4,6 +4,7 @@ import {fetchUsers, updateUser} from '../api.js';
 import Pagination from '../components/Pagination.jsx';
 import { useNavigate } from 'react-router-dom';
 import UserForm from '../components/UserForm.jsx';
+import PageToolbar from '../components/PageToolbar.jsx';
 
 
 function Users({token}) {
@@ -57,14 +58,23 @@ function Users({token}) {
 
     return (
         <div>
-            <div className={'section-header uk-margin'}>
-                <h2>Usuarios</h2>
-            </div>
+            <PageToolbar
+                title="Usuarios"
+                actions={
+                    <button
+                        className="uk-button uk-button-primary"
+                        uk-toggle="target: #offcanvas-user-form"
+                        onClick={() => setShowNew(true)}
+                    >
+                        <span uk-icon="plus"></span> Nuevo usuario
+                    </button>
+                }
+            />
 
             <div className="section-content uk-grid-divider uk-grid-medium" uk-grid="true">
                 <div className={`uk-width-1-1`}>
                     <div className="uk-card uk-card-default uk-card-body">
-                        <div className="uk-flex uk-flex-between uk-flex-middle uk-margin-bottom">
+                        <div className="uk-margin-bottom">
                             <div className="uk-search uk-search-default uk-width-medium">
                                 <span uk-search-icon="true"></span>
                                 <input
@@ -74,13 +84,6 @@ function Users({token}) {
                                     onChange={e => setSearchTerm(e.target.value)}
                                 />
                             </div>
-                            <button
-                                className="uk-button uk-button-primary"
-                                uk-toggle="target: #offcanvas-user-form"
-                                onClick={() => setShowNew(true)}
-                            >
-                                <span uk-icon="plus"></span> Nuevo usuario
-                            </button>
                         </div>
 
                         {error && (<div className="uk-alert-danger" uk-alert="true">
@@ -110,7 +113,18 @@ function Users({token}) {
                                         <tbody>
                                         {users.map(u => (
                                             <tr key={u.id}>
-                                                <td>{u.firstName} {u.lastName}</td>
+                                                <td>
+                                                    {u.firstName} {u.lastName}
+                                                    {u.autoMonthlyInvoice && (
+                                                        <span
+                                                            className="uk-label uk-label-primary"
+                                                            style={{ fontSize: '0.65em', marginLeft: 6, verticalAlign: 'middle' }}
+                                                            title="Facturación automática mensual activa"
+                                                        >
+                                                            Auto-fact.
+                                                        </span>
+                                                    )}
+                                                </td>
                                                 <td>{u.email}</td>
                                                 <td>
                                                     <span className={`uk-label ${{

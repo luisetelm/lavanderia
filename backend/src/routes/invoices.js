@@ -793,6 +793,171 @@ export default async function (fastify) {
         }
     });
 
+    // Cobrar una factura individual
+    fastify.post('/:id/collect', async (req, reply) => {
+        try {
+            const invoiceId = BigInt(req.params.id);
+            const {method, note} = req.body;
+
+            if (!['cash', 'card_pos', 'transfer'].includes(method)) {
+                return reply.code(400).send({error: 'Método de pago inválido. Usa: cash, card_pos, transfer'});
+            }
+
+            const invoice = await prisma.invoices.findUnique({
+                where: {id: invoiceId},
+                include: {
+                    invoiceTickets: {include: {order: true}}
+                }
+            });
+
+            if (!invoice) return reply.code(404).send({error: 'Factura no encontrada'});
+            if (invoice.paid === true || invoice.paymentStatus === 'paid') {
+                return reply.code(400).send({error: 'La factura ya está cobrada'});
+            }
+
+            await prisma.$transaction(async (tx) => {
+                // 1) Marcar factura como pagada
+                await tx.invoices.update({
+                    where: {id: invoiceId},
+                    data: {paid: true, paymentStatus: 'paid'}
+                });
+
+                // 2) Crear Payment
+                await tx.payment.create({
+                    data: {
+                        amount: invoice.totalGross,
+                        method,
+                        status: 'completed',
+                        invoiceId: invoiceId,
+                        clientId: invoice.clientId,
+                        recordedBy: req.user?.id || null,
+                        note: note || `Cobro factura ${invoice.number}`,
+                    }
+                });
+
+                // 3) Marcar pedidos vinculados como pagados
+                const orderMethod = method === 'card_pos' ? 'card' : method;
+                for (const ticket of (invoice.invoiceTickets || [])) {
+                    if (ticket.order && !ticket.order.paid) {
+                        await tx.order.update({
+                            where: {id: ticket.ticketId},
+                            data: {paid: true, paymentMethod: orderMethod}
+                        });
+
+                        // 4) Si es efectivo, crear movimiento de caja
+                        if (method === 'cash') {
+                            await tx.cashMovement.create({
+                                data: {
+                                    type: 'sale_cash_in',
+                                    amount: ticket.order.total,
+                                    note: `Cobro factura ${invoice.number} - Pedido #${ticket.order.orderNum}`,
+                                    orderid: ticket.ticketId,
+                                    userid: req.user?.id,
+                                }
+                            });
+                        }
+                    }
+                }
+            });
+
+            // Devolver factura actualizada
+            const updated = await prisma.invoices.findUnique({
+                where: {id: invoiceId},
+                include: {
+                    User: true,
+                    invoiceTickets: {include: {order: true}}
+                }
+            });
+            return reply.send(convertBigIntToString(updated));
+        } catch (e) {
+            console.error('Error cobrando factura:', e);
+            const code = e.statusCode || 500;
+            return reply.code(code).send({error: e.message || 'Error cobrando la factura'});
+        }
+    });
+
+    // Cobrar múltiples facturas en batch
+    fastify.post('/collect-batch', async (req, reply) => {
+        try {
+            const {invoiceIds, method} = req.body;
+
+            if (!invoiceIds || !Array.isArray(invoiceIds) || invoiceIds.length === 0) {
+                return reply.code(400).send({error: 'Debes seleccionar al menos una factura'});
+            }
+            if (!['cash', 'card_pos', 'transfer'].includes(method)) {
+                return reply.code(400).send({error: 'Método de pago inválido'});
+            }
+
+            const results = [];
+
+            await prisma.$transaction(async (tx) => {
+                for (const rawId of invoiceIds) {
+                    const invoiceId = BigInt(rawId);
+                    const invoice = await tx.invoices.findUnique({
+                        where: {id: invoiceId},
+                        include: {
+                            invoiceTickets: {include: {order: true}}
+                        }
+                    });
+
+                    if (!invoice || invoice.paid === true || invoice.paymentStatus === 'paid') {
+                        continue; // Saltar facturas no encontradas o ya cobradas
+                    }
+
+                    // Marcar factura como pagada
+                    await tx.invoices.update({
+                        where: {id: invoiceId},
+                        data: {paid: true, paymentStatus: 'paid'}
+                    });
+
+                    // Crear Payment
+                    await tx.payment.create({
+                        data: {
+                            amount: invoice.totalGross,
+                            method,
+                            status: 'completed',
+                            invoiceId: invoiceId,
+                            clientId: invoice.clientId,
+                            recordedBy: req.user?.id || null,
+                            note: `Cobro factura ${invoice.number}`,
+                        }
+                    });
+
+                    // Marcar pedidos vinculados como pagados
+                    const orderMethod = method === 'card_pos' ? 'card' : method;
+                    for (const ticket of (invoice.invoiceTickets || [])) {
+                        if (ticket.order && !ticket.order.paid) {
+                            await tx.order.update({
+                                where: {id: ticket.ticketId},
+                                data: {paid: true, paymentMethod: orderMethod}
+                            });
+
+                            if (method === 'cash') {
+                                await tx.cashMovement.create({
+                                    data: {
+                                        type: 'sale_cash_in',
+                                        amount: ticket.order.total,
+                                        note: `Cobro factura ${invoice.number} - Pedido #${ticket.order.orderNum}`,
+                                        orderid: ticket.ticketId,
+                                        userid: req.user?.id,
+                                    }
+                                });
+                            }
+                        }
+                    }
+
+                    results.push({invoiceId: rawId, status: 'collected'});
+                }
+            });
+
+            return reply.send({collected: results.length, results});
+        } catch (e) {
+            console.error('Error cobrando facturas en batch:', e);
+            const code = e.statusCode || 500;
+            return reply.code(code).send({error: e.message || 'Error cobrando facturas'});
+        }
+    });
+
     // Descargar PDF (protegido con JWT a tu gusto)
     fastify.get('/pdf/:filename', async (request, reply) => {
         const {filename} = request.params;

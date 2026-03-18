@@ -213,6 +213,118 @@ export function retryNotification(token, id, phone) {
     });
 }
 
+export function collectInvoice(token, invoiceId, { method, note } = {}) {
+    return request(`/invoices/${invoiceId}/collect`, token, {
+        method: 'POST',
+        body: JSON.stringify({ method, note }),
+    });
+}
+
+export function collectInvoicesBatch(token, invoiceIds, method) {
+    return request('/invoices/collect-batch', token, {
+        method: 'POST',
+        body: JSON.stringify({ invoiceIds, method }),
+    });
+}
+
+// --- Portal de cliente ---
+export function portalRequestAccess(phone) {
+    return request('/portal/request-access', null, {
+        method: 'POST',
+        body: JSON.stringify({ phone }),
+    });
+}
+
+export function portalVerifyToken(magicToken) {
+    return request(`/portal/verify/${magicToken}`, null);
+}
+
+export function portalFetchMe(token) {
+    return request('/portal/me', token);
+}
+
+export function portalFetchOrders(token) {
+    return request('/portal/orders', token);
+}
+
+export function portalFetchOrder(token, id) {
+    return request(`/portal/orders/${id}`, token);
+}
+
+export function portalFetchInvoices(token) {
+    return request('/portal/invoices', token);
+}
+
+export function portalPay(token, { type, id }) {
+    return request('/portal/pay', token, {
+        method: 'POST',
+        body: JSON.stringify({ type, id }),
+    });
+}
+
+// --- WhatsApp ---
+export function sendWhatsAppMessage(token, { phone, content, templateName, templateComponents, orderId, clientId }) {
+    return request('/whatsapp/send', token, {
+        method: 'POST',
+        body: JSON.stringify({ phone, content, templateName, templateComponents, orderId, clientId }),
+    });
+}
+
+export function fetchWhatsAppTemplates(token) {
+    return request('/whatsapp/templates', token);
+}
+
+export function fetchWhatsAppMessages(token, { clientId, page = 0, size = 50 } = {}) {
+    const params = new URLSearchParams({ page, size });
+    if (clientId) params.set('clientId', clientId);
+    return request(`/whatsapp/messages?${params}`, token);
+}
+
+// --- Mensajería unificada ---
+export function fetchConversations(token) {
+    return request('/messages/conversations', token);
+}
+
+export function fetchMessages(token, { clientId, page = 0, size = 50 } = {}) {
+    const params = new URLSearchParams({ page, size });
+    if (clientId) params.set('clientId', clientId);
+    return request(`/messages?${params}`, token);
+}
+
+export function sendMessage(token, { clientId, channel, content, orderId }) {
+    return request('/messages/send', token, {
+        method: 'POST',
+        body: JSON.stringify({ clientId, channel, content, orderId }),
+    });
+}
+
+// --- Google Reviews ---
+export function fetchGoogleStatus(token) {
+    return request('/google/status', token);
+}
+
+export function fetchGoogleReviews(token) {
+    return request('/google/reviews', token);
+}
+
+export function replyGoogleReview(token, reviewId, comment) {
+    return request(`/google/reviews/${reviewId}/reply`, token, {
+        method: 'POST',
+        body: JSON.stringify({ comment }),
+    });
+}
+
+export function createStripeCheckout(token, { type, id }) {
+    return request('/stripe/checkout', token, {
+        method: 'POST',
+        body: JSON.stringify({ type, id }),
+    });
+}
+
+export function getPaymentLink(token, type, id) {
+    return request(`/stripe/payment-link/${type}/${id}`, token);
+}
+
 export function createInvoice(token, { orderIds, type = 'normal', invoiceData = {} }) {
     return request('/invoices', token, {
         method: 'POST',

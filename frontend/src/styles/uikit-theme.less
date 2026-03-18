@@ -1,108 +1,321 @@
-/* 2) Importa UIkit desde las fuentes Less */
+/* UIkit base */
 @import "uikit/src/less/uikit.less";
 @import "uikit/src/less/uikit.theme.less";
 
+/* Brand colors */
 @color-primary: #048ABF;
 @color-secondary: #5AB5BF;
+@color-accent: #06B6D4;
+@color-sidebar: #0f172a;
+@color-sidebar-hover: #1e293b;
+@color-sidebar-active: #048ABF;
+@color-surface: #ffffff;
+@color-bg: #f1f5f9;
+@color-border: #e2e8f0;
+@color-text: #1e293b;
+@color-text-muted: #64748b;
+@color-success: #10b981;
+@color-warning: #f59e0b;
+@color-danger: #ef4444;
 
-/* Colores globales de texto */
-@global-color: #333333;
-@base-body-color: #333333;
-
-/* 1) Variables ANTES de importar UIkit */
-/* Marca (fondo primario) */
+/* UIkit overrides */
+@global-color: @color-text;
+@base-body-color: @color-text;
 @global-primary-background: @color-primary;
-/* Fondo secundario (ej. barras, nav) */
-@global-secondary-background: #F0F0F2;
-
-/* Color de texto sobre fondos primarios (debe tener contraste) */
+@global-secondary-background: @color-bg;
 @global-primary-color: #ffffff;
-
-/* Links */
 @global-link-color: @color-primary;
-@global-link-hover-color: #4338ca;
+@global-link-hover-color: #0369a1;
+@global-font-family: "Inter", "Noto Sans", system-ui, -apple-system, sans-serif;
+@base-body-font-family: @global-font-family;
+@global-border-radius: 8px;
+@global-control-height: 38px;
 
-/* Tipografía (UI general y body) */
-@global-font-family: "Noto Sans", sans-serif;
-@base-body-font-family: "Noto Sans", sans-serif;
-
-/* Bordes y controles */
-@global-border-radius: 4px;
-@global-control-height: 32px;
-
-/* Botones */
 @button-default-background: #ffffff;
-@button-default-border: #e5e7eb;
-
-/* Usa el fondo de marca para el primario y texto blanco para contraste */
-@button-primary-background: @global-primary-background;
+@button-default-border: @color-border;
+@button-primary-background: @color-primary;
 @button-primary-color: #ffffff;
 
-
-/* Estilos base extra (opcional) */
+/* Base */
 html {
   font-family: @base-body-font-family;
   font-weight: 400;
-  font-style: normal;
   color: @base-body-color;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 body {
-  background: #fafafa;
+  background: @color-bg;
   margin: 0;
 }
 
-/* Encabezados: si quieres una fuente distinta para títulos, cámbiala aquí */
 h1, h2, h3, h4, h5, h6 {
   font-family: @global-font-family;
   font-weight: 700;
   margin: 0;
+  color: @color-text;
 }
 
-/* Ejemplos UI extra */
-nav {
-  background-color: @global-secondary-background;
-  color: @global-color;
-  width: 220px;
+/* ================================================
+   App Layout
+   ================================================ */
+.app-layout {
+  display: flex;
+  min-height: 100vh;
+}
 
-  > div {
-    padding: 10px 0;
+.app-sidebar {
+  width: 240px;
+  min-height: 100vh;
+  background: @color-sidebar;
+  color: #cbd5e1;
+  flex-shrink: 0;
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 100;
+}
+
+.sidebar-inner {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 0;
+}
+
+.sidebar-logo {
+  padding: 20px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+
+  img {
+    height: 44px;
+    width: auto;
+    object-fit: contain;
+    filter: brightness(0) invert(1);
+    opacity: 0.9;
+  }
+}
+
+.sidebar-nav {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0 8px;
+  flex: 1;
+
+  li {
+    margin-bottom: 2px;
   }
 
-  .logo {
-    padding: 0 10px;
-    height: 100px;
+  a {
     display: flex;
-    flex-direction: column;
     align-items: center;
-    justify-content: center;
-  }
+    gap: 10px;
+    padding: 10px 16px;
+    color: #94a3b8;
+    text-decoration: none;
+    font-size: 0.875rem;
+    font-weight: 500;
+    border-radius: 8px;
+    transition: all 0.15s ease;
 
-  .logout {
-    padding: 0 10px;
-    margin-top: 20px;
-  }
+    &:hover {
+      color: #e2e8f0;
+      background: @color-sidebar-hover;
+    }
 
-  .uk-nav > li > a {
-    color: @global-color;
-    padding: 10px 15px;
-    font-size: 1.2rem;
+    &.active {
+      color: #ffffff;
+      background: @color-sidebar-active;
+    }
   }
-
-  .uk-nav > li > a.active {
-    background-color: @color-primary;
-    color: @global-primary-color;
-  }
-
-  > div.logout {
-    padding: 15px 10px;
-  }
-
 }
 
+.sidebar-footer {
+  padding: 12px 16px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sidebar-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sidebar-user-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: @color-primary;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.sidebar-user-name {
+  font-size: 0.8rem;
+  color: #cbd5e1;
+  font-weight: 500;
+}
+
+.sidebar-logout-btn {
+  background: none;
+  border: none;
+  color: #64748b;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 6px;
+  transition: all 0.15s;
+
+  &:hover {
+    color: #ef4444;
+    background: rgba(239, 68, 68, 0.1);
+  }
+}
+
+.app-main {
+  flex: 1;
+  margin-left: 240px;
+  padding: 24px 32px;
+  min-height: 100vh;
+  background: @color-bg;
+}
+
+/* Hamburger button - hidden on desktop */
+.sidebar-hamburger {
+  display: none;
+  background: none;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  transition: color 0.15s;
+
+  &:hover { color: #e2e8f0; }
+}
+
+/* Responsive: mobile */
+@media (max-width: 1024px) {
+  .app-layout {
+    flex-direction: column;
+  }
+
+  .app-sidebar {
+    width: 100%;
+    min-height: auto;
+    position: sticky;
+    top: 0;
+    left: auto;
+    z-index: 200;
+  }
+
+  .app-main {
+    margin-left: 0;
+    padding: 16px;
+  }
+
+  .sidebar-inner {
+    flex-direction: column;
+    padding: 0;
+    height: auto;
+  }
+
+  .sidebar-logo {
+    padding: 10px 16px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    img { height: 32px; }
+  }
+
+  .sidebar-hamburger {
+    display: block;
+  }
+
+  /* Nav y footer ocultos por defecto en móvil */
+  .sidebar-nav,
+  .sidebar-footer {
+    display: none;
+  }
+
+  /* Cuando está abierto */
+  .sidebar-open {
+    .sidebar-nav {
+      display: block;
+      margin: 0;
+      padding: 8px;
+    }
+
+    .sidebar-footer {
+      display: flex;
+      padding: 12px 16px;
+    }
+  }
+}
+
+/* ================================================
+   Cards & UI Refinements
+   ================================================ */
+.uk-card {
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.06);
+  border: 1px solid @color-border;
+}
+
+.uk-card-default {
+  background: @color-surface;
+}
+
+.uk-card-body {
+  padding: 20px 24px;
+}
+
+/* Tables */
+.uk-table th {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: @color-text-muted;
+  font-weight: 600;
+}
+
+.uk-table td {
+  font-size: 0.875rem;
+  vertical-align: middle;
+}
+
+.uk-table-hover tbody tr:hover {
+  background: #f8fafc;
+}
+
+/* Buttons */
 .uk-button {
-  line-height: 30px;
+  line-height: 36px;
   border-radius: @global-border-radius;
+  font-weight: 500;
+  font-size: 0.875rem;
+  letter-spacing: 0;
+  transition: all 0.15s ease;
+}
+
+.uk-button-small {
+  line-height: 28px;
+  font-size: 0.8rem;
+  padding: 0 14px;
 }
 
 .uk-button-group {
@@ -116,124 +329,254 @@ nav {
 
 .uk-button-default {
   background-color: @button-default-background;
-  color: @global-color;
-  border: 1px solid @button-default-border;
+  color: @color-text;
+  border: 1px solid @color-border;
+
+  &:hover {
+    background: #f8fafc;
+    border-color: #cbd5e1;
+  }
 }
 
 .uk-button-primary {
   background-color: @button-primary-background;
-  color: @button-primary-color; /* blanco */
+  color: @button-primary-color;
   border: none;
-}
 
-.section-header {
-  padding: 0 @padding-padding;
-  min-height: 100px;
-  line-height: 100px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-
-  > div {
-    display: flex;
-    align-items: center;
-    gap: 20px;
-  }
-
-  @media (width <= 1024px) {
-    /* Estilos para pantallas medianas */
-    flex-direction: column;
-    min-height: 60px;
-
-    h2 {
-      font-size: 1.5rem;
-      text-align: center;
-    }
-
-    > div {
-
-      justify-content: center;
-      width: 100%;
-      flex-direction: column;
-      align-items: center;
-
-      .uk-button-group {
-        display: flex;
-        flex-direction: column;
-      }
-    }
-  }
-
-}
-
-.uk-offcanvas-bar {
-  background-color: @color-primary !important;
-  width: 400px;
-
-  .uk-checkbox:checked {
-    background-color: @base-body-color !important;
+  &:hover {
+    background-color: #0369a1;
   }
 }
 
-.uk-background-selected {
-  border-left: 5px solid @global-primary-background;
-  background-color: @global-secondary-background;
+.uk-button-danger {
+  background-color: @color-danger;
+  color: #fff;
+  border: none;
+
+  &:hover {
+    background-color: #dc2626;
+  }
 }
 
-.section-content {
-  padding: 0 @padding-padding;
+/* Badges / Labels */
+.uk-badge, .uk-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  border-radius: 6px;
+  padding: 2px 8px;
+}
+
+.uk-badge-success, .uk-label-success { background: @color-success; }
+.uk-badge-warning, .uk-label-warning { background: @color-warning; }
+.uk-badge-danger, .uk-label-danger { background: @color-danger; }
+
+/* Inputs */
+.uk-input, .uk-select, .uk-textarea {
+  border-radius: @global-border-radius;
+  border: 1px solid @color-border;
+  font-size: 0.875rem;
+  transition: border-color 0.15s, box-shadow 0.15s;
+
+  &:focus {
+    border-color: @color-primary;
+    box-shadow: 0 0 0 3px rgba(4, 138, 191, 0.1);
+  }
 }
 
 .uk-search-input {
   background: #fff !important;
-  color: #333 !important;
-  font-size: 1rem !important;
+  color: @color-text !important;
+  font-size: 0.875rem !important;
   min-width: 200px;
   height: 38px;
   padding: 6px 12px;
   box-shadow: none !important;
-  appearance: none;
   border-radius: @global-border-radius !important;
-  line-height: 18px;
+  border: 1px solid @color-border;
 
   &::placeholder {
-    color: #999 !important;
-    opacity: 1 !important; /* Asegura que el placeholder sea visible */
+    color: #94a3b8 !important;
+  }
+
+  &:focus {
+    border-color: @color-primary;
+    box-shadow: 0 0 0 3px rgba(4, 138, 191, 0.1) !important;
   }
 }
 
 .uk-select {
   background: #fff !important;
-  color: #333 !important;
-  font-size: 1rem !important;
-  min-width: 200px;
+  color: @color-text !important;
+  font-size: 0.875rem !important;
   height: 38px;
   padding: 6px 12px;
   box-shadow: none !important;
-  appearance: none;
   border-radius: @global-border-radius !important;
-  line-height: 18px;
+}
 
+.uk-form-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: @color-text-muted;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
 
-  option {
-    background: #fff !important;
-    color: #222 !important;
-    border: 1px solid #999 !important;
-    opacity: 1 !important;
+/* Section header */
+.section-header {
+  padding: 0;
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+
+  h2 {
+    font-size: 1.5rem;
+    font-weight: 700;
+  }
+
+  > div {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  @media (max-width: 1024px) {
+    flex-direction: column;
+    min-height: auto;
+    gap: 12px;
+
+    h2 {
+      font-size: 1.25rem;
+    }
+
+    > div {
+      justify-content: center;
+      width: 100%;
+    }
   }
 }
 
-
-.uk-form-label {
-  font-size: 0.6rem;
-  height: 16px;
+/* Offcanvas */
+.uk-offcanvas-bar {
+  background-color: @color-sidebar !important;
+  width: 420px;
+  padding: 24px;
 }
 
+/* Notifications */
 .uk-notification-message {
-  background-color: @color-secondary;
-  color: @global-primary-color;
-  font-size: 0.8rem;
+  background-color: @color-surface;
+  color: @color-text;
+  font-size: 0.85rem;
+  border-radius: 10px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+  border-left: 4px solid @color-primary;
 }
 
+/* Status row styles */
+.estado-facturado {
+  // no special style needed
+}
 
+.estado-pendiente {
+  // no special style needed
+}
 
+/* Misc */
+.uk-background-selected {
+  border-left: 4px solid @color-primary;
+  background: #f0f9ff;
+}
+
+/* ================================================
+   Page Toolbar
+   ================================================ */
+.page-toolbar {
+  margin-bottom: 20px;
+}
+
+.page-toolbar-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 48px;
+  flex-wrap: wrap;
+}
+
+.page-toolbar-title {
+  font-size: 1.4rem;
+  font-weight: 700;
+  margin: 0;
+  white-space: nowrap;
+}
+
+.page-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.page-toolbar-filters {
+  margin-top: 12px;
+  background: @color-surface;
+  border: 1px solid @color-border;
+  border-radius: 10px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.page-toolbar-filter-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.page-toolbar-filter-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: @color-text-muted;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  min-width: 70px;
+}
+
+.page-toolbar-filter-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.page-toolbar-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 12px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  border-radius: 20px;
+  border: 1px solid @color-border;
+  background: @color-surface;
+  color: @color-text;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+
+  &:hover {
+    border-color: @color-primary;
+    color: @color-primary;
+  }
+
+  &.active {
+    background: @color-primary;
+    border-color: @color-primary;
+    color: #fff;
+  }
+}

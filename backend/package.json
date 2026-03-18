@@ -17,9 +17,11 @@
     "fastify": "^5.0.0",
     "jsonwebtoken": "^9.0.0",
     "labsmobile-sms": "^1.0.1",
+    "node-cron": "^4.2.1",
     "nodemailer": "^7.0.6",
     "papaparse": "^5.5.3",
     "puppeteer": "^24.22.3",
+    "stripe": "^20.4.1",
     "twilio": "^4.0.0"
   },
   "devDependencies": {

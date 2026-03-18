@@ -10,9 +10,16 @@ import productsImportRoutes from './routes/products_import.js';
 import cashRoutes from './routes/cash.js';
 import notificationsRoutes from './routes/notifications.js';
 import userRoutes from './routes/users.js';
-import invoicesRoutes from './routes/invoices.js'; // <--- Añade esta línea
+import invoicesRoutes from './routes/invoices.js';
+import stripeRoutes, { stripeWebhookRoutes } from './routes/stripe.js';
+import portalRoutes from './routes/portal.js';
+import whatsappRoutes, { whatsappWebhookRoutes } from './routes/whatsapp.js';
+import messagesRoutes from './routes/messages.js';
+import googleRoutes from './routes/google.js';
 import fastifyStatic from '@fastify/static';
 import path from 'path';
+import cron from 'node-cron';
+import { generateMonthlyInvoices } from './services/monthlyInvoicing.js';
 
 
 dotenv.config();
@@ -39,7 +46,7 @@ app.addHook('onRequest', async (request, reply) => {
 
 // JWT middleware
 app.addHook('preHandler', async (request, reply) => {
-    const publicPrefixes = ['/api/auth/login', '/api/auth/register', '/invoices_pdfs/'];
+    const publicPrefixes = ['/api/auth/login', '/api/auth/register', '/invoices_pdfs/', '/api/stripe/webhook', '/api/portal/', '/api/whatsapp/webhook', '/api/google/callback'];
     if (publicPrefixes.some(p => request.url.startsWith(p))) return;
     const auth = request.headers.authorization;
     if (!auth || !auth.startsWith('Bearer ')) {
@@ -64,6 +71,13 @@ app.register(productsImportRoutes, {prefix: '/api/products'}); // quedaría POST
 app.register(cashRoutes, {prefix: '/api/cash'}); // quedaría POST /api/products/import
 app.register(notificationsRoutes, {prefix: '/api/notifications'});
 app.register(invoicesRoutes, {prefix: '/api/invoices'});
+app.register(stripeRoutes, {prefix: '/api/stripe'});
+app.register(stripeWebhookRoutes, {prefix: '/api/stripe'});
+app.register(portalRoutes, {prefix: '/api/portal'});
+app.register(whatsappRoutes, {prefix: '/api/whatsapp'});
+app.register(whatsappWebhookRoutes, {prefix: '/api/whatsapp'});
+app.register(messagesRoutes, {prefix: '/api/messages'});
+app.register(googleRoutes, {prefix: '/api/google'});
 
 // Servir la carpeta de PDFs de facturas de forma pública
 app.register(fastifyStatic, {
@@ -73,6 +87,31 @@ app.register(fastifyStatic, {
 
 // Healthcheck
 app.get('/', async () => ({status: 'ok'}));
+
+// Endpoint manual para generar facturas mensuales (solo admin)
+app.post('/api/invoices/generate-monthly', async (req, reply) => {
+    if (req.user?.role !== 'admin') {
+        return reply.status(403).send({ error: 'Solo administradores pueden ejecutar esta acción' });
+    }
+    try {
+        const result = await generateMonthlyInvoices(prisma);
+        return reply.send(result);
+    } catch (err) {
+        console.error('Error en facturación mensual manual:', err);
+        return reply.status(500).send({ error: err.message || 'Error generando facturas mensuales' });
+    }
+});
+
+// Cron: facturación automática mensual - día 5 de cada mes a las 8:00 AM
+cron.schedule('0 8 5 * *', async () => {
+    console.log('[Cron] Ejecutando facturación mensual automática...');
+    try {
+        const result = await generateMonthlyInvoices(prisma);
+        console.log('[Cron] Facturación mensual completada:', result);
+    } catch (err) {
+        console.error('[Cron] Error en facturación mensual:', err);
+    }
+});
 
 const port = parseInt(process.env.PORT || '4000', 10);
 app.listen({port}, (err, address) => {

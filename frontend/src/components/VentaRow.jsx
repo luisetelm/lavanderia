@@ -1,9 +1,8 @@
 // javascript
 // Archivo: `frontend/src/components/VentaRow.jsx`
 import React, { useState, useEffect } from 'react';
-import { createInvoice, downloadInvoicePDF, fetchOrder } from '../api.js';
-
-const eur = new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' });
+import { createInvoice, downloadInvoicePDF, fetchOrder, collectInvoice, getPaymentLink } from '../api.js';
+import { formatEUR } from '../utils/format.js';
 
 export default function VentaRow({
                                      venta,
@@ -18,6 +17,8 @@ export default function VentaRow({
     const [rowLoading, setRowLoading] = useState(false);
     const [orderDetail, setOrderDetail] = useState(null);
     const [orderLoading, setOrderLoading] = useState(false);
+    const [showCollectModal, setShowCollectModal] = useState(false);
+    const [collectMethod, setCollectMethod] = useState('transfer');
 
     useEffect(() => {
         let mounted = true;
@@ -61,8 +62,8 @@ export default function VentaRow({
         || '-';
 
     const total = typeof venta.total === 'number'
-        ? eur.format(venta.total)
-        : venta.total ? eur.format(Number(venta.total)) : '-';
+        ? formatEUR(venta.total)
+        : venta.total ? formatEUR(Number(venta.total)) : '-';
 
     // Nuevo: total numérico usado para validar si se puede facturar
     const numericTotal = typeof venta.total === 'number'
@@ -85,6 +86,41 @@ export default function VentaRow({
         ?? _inv?.invoiceId
         ?? _inv?.id
         ?? '';
+
+    // Detectar si la factura está cobrada
+    const invoiceObj = _inv;
+    const isInvoicePaid = invoiceObj?.paid === true || invoiceObj?.paymentStatus === 'paid';
+
+    const handleGetPaymentLink = async () => {
+        if (!invoiceObj?.id) return;
+        setRowLoading(true);
+        try {
+            const { url } = await getPaymentLink(token, 'invoice', invoiceObj.id);
+            await navigator.clipboard.writeText(url);
+            alert('Enlace de pago copiado al portapapeles:\n' + url);
+        } catch (err) {
+            console.error('Error generando enlace de pago:', err);
+            alert('Error al generar enlace: ' + (err.error || err.message || err));
+        } finally {
+            setRowLoading(false);
+        }
+    };
+
+    const handleCollectInvoice = async () => {
+        if (!invoiceObj?.id) return;
+        setRowLoading(true);
+        try {
+            await collectInvoice(token, invoiceObj.id, { method: collectMethod });
+            setShowCollectModal(false);
+            await onRefresh(venta.id);
+            await refetchOrderDetail();
+        } catch (err) {
+            console.error('Error cobrando factura:', err);
+            alert('Error al cobrar la factura: ' + (err.error || err.message || err));
+        } finally {
+            setRowLoading(false);
+        }
+    };
 
     const paymentMethodLabel = venta?.paymentMethod
         ? (venta.paymentMethod === 'card' ? 'Tarjeta'
@@ -226,62 +262,157 @@ export default function VentaRow({
         const invoiceIdToDownload = firstTicket?.invoiceId || inv?.id || inv?.invoiceId;
 
         return (
-            <button
-                className="uk-button uk-button-default uk-button-small"
-                onClick={(e) => {
-                    e?.preventDefault();
-                    if (invoiceIdToDownload) downloadInvoicePDF(token, invoiceIdToDownload);
-                }}
-                title="Ver factura"
-                type="button"
-            >
-                Descargar
-            </button>
+            <div className="uk-button-group">
+                <button
+                    className="uk-button uk-button-default uk-button-small"
+                    onClick={(e) => {
+                        e?.preventDefault();
+                        if (invoiceIdToDownload) downloadInvoicePDF(token, invoiceIdToDownload);
+                    }}
+                    title="Ver factura"
+                    type="button"
+                >
+                    Descargar
+                </button>
+                {!isInvoicePaid && (
+                    <>
+                        <button
+                            className="uk-button uk-button-primary uk-button-small"
+                            onClick={(e) => {
+                                e?.preventDefault();
+                                setShowCollectModal(true);
+                            }}
+                            disabled={rowLoading || globalLoading}
+                            title="Cobrar factura"
+                            type="button"
+                        >
+                            {rowLoading ? 'Procesando...' : 'Cobrar'}
+                        </button>
+                        <button
+                            className="uk-button uk-button-default uk-button-small"
+                            onClick={(e) => {
+                                e?.preventDefault();
+                                handleGetPaymentLink();
+                            }}
+                            disabled={rowLoading || globalLoading}
+                            title="Generar enlace de pago Stripe"
+                            type="button"
+                        >
+                            Enlace pago
+                        </button>
+                    </>
+                )}
+            </div>
         );
     };
 
     return (
-        <tr className={yaFacturado ? 'estado-facturado' : 'estado-pendiente'}>
-            <td>
-                <input
-                    type="checkbox"
-                    checked={isSelected}
-                    disabled={!canSelect}
-                    onChange={() => onSelect(venta)}
-                />
-            </td>
-            <td>{venta.orderNum}</td>
-            <td>{fecha}</td>
-            <td>{cliente}</td>
-            <td>{total}</td>
-            <td>
-                <div>
-                    <span className={`uk-badge ${yaFacturado ? 'uk-badge-success' : 'uk-badge-warning'}`}>
-                        {yaFacturado ? 'Facturado' : 'Pendiente'}
-                    </span>
-                    <div style={{ fontSize: '0.8em', marginTop: 4 }}>
-                        {yaFacturado && invoiceNumber ? (
-                            <div>Factura: <strong>{invoiceNumber}</strong></div>
-                        ) : (
-                            <div>&nbsp;</div>
+        <>
+            <tr className={yaFacturado ? 'estado-facturado' : 'estado-pendiente'}>
+                <td>
+                    <input
+                        type="checkbox"
+                        checked={isSelected}
+                        disabled={!canSelect}
+                        onChange={() => onSelect(venta)}
+                    />
+                </td>
+                <td>{venta.orderNum}</td>
+                <td>{fecha}</td>
+                <td>{cliente}</td>
+                <td>{total}</td>
+                <td>
+                    <div>
+                        <span className={`uk-badge ${yaFacturado ? 'uk-badge-success' : 'uk-badge-warning'}`}>
+                            {yaFacturado ? 'Facturado' : 'Pendiente'}
+                        </span>
+                        {yaFacturado && (
+                            <div style={{ marginTop: 4 }}>
+                                <span
+                                    className={`uk-badge ${isInvoicePaid ? 'uk-badge-success' : 'uk-badge-warning'}`}
+                                    style={{ fontSize: '0.7em' }}
+                                >
+                                    {isInvoicePaid ? 'Cobrada' : 'Pendiente cobro'}
+                                </span>
+                            </div>
                         )}
-                        <div>Método: <strong>{paymentMethodLabel}</strong></div>
+                        <div style={{ fontSize: '0.8em', marginTop: 4 }}>
+                            {yaFacturado && invoiceNumber ? (
+                                <div>Factura: <strong>{invoiceNumber}</strong></div>
+                            ) : (
+                                <div>&nbsp;</div>
+                            )}
+                            <div>Método: <strong>{paymentMethodLabel}</strong></div>
+                        </div>
                     </div>
-                </div>
-            </td>
-            <td>
-                {orderLoading ? 'Cargando...' : renderInvoiceButtons()}
-            </td>
-            <td>
-                <button
-                    className="uk-button uk-button-primary uk-button-small"
-                    onClick={() => onVerPedido(orderDetail || venta)}
-                    title="Ver tareas de este pedido"
-                    type="button"
-                >
-                    Ver pedido
-                </button>
-            </td>
-        </tr>
+                </td>
+                <td>
+                    {orderLoading ? 'Cargando...' : renderInvoiceButtons()}
+                </td>
+                <td>
+                    <button
+                        className="uk-button uk-button-primary uk-button-small"
+                        onClick={() => onVerPedido(orderDetail || venta)}
+                        title="Ver tareas de este pedido"
+                        type="button"
+                    >
+                        Ver pedido
+                    </button>
+                </td>
+            </tr>
+
+            {/* Modal de cobro de factura */}
+            {showCollectModal && (
+                <tr>
+                    <td colSpan="8" style={{ padding: 0 }}>
+                        <div style={{
+                            background: '#f8f8f8',
+                            border: '1px solid #e5e5e5',
+                            borderRadius: 4,
+                            padding: '12px 16px',
+                            margin: '0 8px 8px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 12
+                        }}>
+                            <strong style={{ whiteSpace: 'nowrap' }}>Cobrar factura {invoiceNumber}:</strong>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <input type="radio" name={`collect-${venta.id}`} value="transfer"
+                                    checked={collectMethod === 'transfer'}
+                                    onChange={() => setCollectMethod('transfer')} />
+                                Transferencia
+                            </label>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <input type="radio" name={`collect-${venta.id}`} value="cash"
+                                    checked={collectMethod === 'cash'}
+                                    onChange={() => setCollectMethod('cash')} />
+                                Efectivo
+                            </label>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <input type="radio" name={`collect-${venta.id}`} value="card_pos"
+                                    checked={collectMethod === 'card_pos'}
+                                    onChange={() => setCollectMethod('card_pos')} />
+                                Tarjeta
+                            </label>
+                            <button
+                                className="uk-button uk-button-primary uk-button-small"
+                                onClick={handleCollectInvoice}
+                                disabled={rowLoading}
+                                type="button"
+                            >
+                                {rowLoading ? 'Procesando...' : 'Confirmar cobro'}
+                            </button>
+                            <button
+                                className="uk-button uk-button-default uk-button-small"
+                                onClick={() => setShowCollectModal(false)}
+                                type="button"
+                            >
+                                Cancelar
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+            )}
+        </>
     );
 }

@@ -30,10 +30,10 @@ export default function ProductList({products, searchProduct, setSearchProduct, 
             <h4>Productos</h4>
 
             <div className="uk-margin-small">
-                <div className="uk-button-group">
+                <div style={{display: 'flex', flexWrap: 'wrap', gap: 4}}>
                     <button
                         type="button"
-                        className={`uk-button ${serviceFilter === null ? 'uk-button-primary' : 'uk-button-default'}`}
+                        className={`uk-button uk-button-small ${serviceFilter === null ? 'uk-button-primary' : 'uk-button-default'}`}
                         aria-pressed={serviceFilter === null}
                         onClick={() => setServiceFilter(null)}
                     >
@@ -41,7 +41,7 @@ export default function ProductList({products, searchProduct, setSearchProduct, 
                     </button>
                     <button
                         type="button"
-                        className={`uk-button ${serviceFilter === 'dryWash' ? 'uk-button-primary' : 'uk-button-default'}`}
+                        className={`uk-button uk-button-small ${serviceFilter === 'dryWash' ? 'uk-button-primary' : 'uk-button-default'}`}
                         aria-pressed={serviceFilter === 'dryWash'}
                         onClick={() => handleFilterClick('dryWash')}
                     >
@@ -49,7 +49,7 @@ export default function ProductList({products, searchProduct, setSearchProduct, 
                     </button>
                     <button
                         type="button"
-                        className={`uk-button ${serviceFilter === 'wetWash' ? 'uk-button-primary' : 'uk-button-default'}`}
+                        className={`uk-button uk-button-small ${serviceFilter === 'wetWash' ? 'uk-button-primary' : 'uk-button-default'}`}
                         aria-pressed={serviceFilter === 'wetWash'}
                         onClick={() => handleFilterClick('wetWash')}
                     >
@@ -57,7 +57,7 @@ export default function ProductList({products, searchProduct, setSearchProduct, 
                     </button>
                     <button
                         type="button"
-                        className={`uk-button ${serviceFilter === 'ironing' ? 'uk-button-primary' : 'uk-button-default'}`}
+                        className={`uk-button uk-button-small ${serviceFilter === 'ironing' ? 'uk-button-primary' : 'uk-button-default'}`}
                         aria-pressed={serviceFilter === 'ironing'}
                         onClick={() => handleFilterClick('ironing')}
                     >
@@ -65,7 +65,7 @@ export default function ProductList({products, searchProduct, setSearchProduct, 
                     </button>
                     <button
                         type="button"
-                        className={`uk-button ${serviceFilter === 'externalService' ? 'uk-button-primary' : 'uk-button-default'}`}
+                        className={`uk-button uk-button-small ${serviceFilter === 'externalService' ? 'uk-button-primary' : 'uk-button-default'}`}
                         aria-pressed={serviceFilter === 'externalService'}
                         onClick={() => handleFilterClick('externalService')}
                     >

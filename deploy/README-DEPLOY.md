@@ -1,0 +1,348 @@
+# Deploy: Lightsail (todo en uno)
+
+Guía paso a paso para desplegar Tinte y Burbuja en AWS Lightsail con PostgreSQL, Nginx, Node.js y PM2 en una sola instancia.
+
+## Coste estimado: ~$12.50/mes
+- Lightsail $10/mes (2 GB RAM, 1 vCPU, 60 GB SSD)
+- Snapshots automáticos $2.50/mes (backup diario completo)
+
+---
+
+## Paso 1: Crear instancia Lightsail
+
+1. **AWS Console > Lightsail > Create instance**
+2. Configuración:
+   - Region: `eu-west-1` (Irlanda) o la más cercana
+   - Platform: **Linux/Unix**
+   - Blueprint: **Ubuntu 22.04 LTS**
+   - Plan: **$10/mes** (2 GB RAM) — mínimo para Puppeteer
+   - Name: `lavanderia-app`
+3. Crear
+
+### IP estática
+
+1. Lightsail > Networking > **Create static IP**
+2. Asociar a `lavanderia-app`
+3. En tu proveedor DNS: `app.tinteyburbuja.es` → esta IP
+
+### Puertos del firewall
+
+En Lightsail > Networking > Firewall, verificar que están abiertos:
+- SSH (22)
+- HTTP (80)
+- HTTPS (443)
+
+### Activar snapshots automáticos
+
+1. Lightsail > instancia > Snapshots
+2. **Enable automatic snapshots**
+3. Elegir hora (ej. 04:00 UTC, cuando hay menos actividad)
+4. Coste: $2.50/mes, retiene 7 snapshots
+
+---
+
+## Paso 2: Instalar dependencias
+
+Conectar por SSH (botón "Connect using SSH" en Lightsail).
+
+```bash
+# Actualizar sistema
+sudo apt update && sudo apt upgrade -y
+
+# Node.js 20
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt install -y nodejs
+
+# PostgreSQL 16
+sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+sudo apt update
+sudo apt install -y postgresql-16
+
+# Nginx
+sudo apt install -y nginx
+
+# Certbot (SSL gratis)
+sudo apt install -y certbot python3-certbot-nginx
+
+# Dependencias de Puppeteer (generación de PDFs de facturas)
+# Ubuntu 22.04:
+sudo apt install -y \
+  ca-certificates fonts-liberation libasound2 libatk-bridge2.0-0 \
+  libatk1.0-0 libcups2 libdbus-1-3 libdrm2 libgbm1 libgtk-3-0 \
+  libnspr4 libnss3 libx11-xcb1 libxcomposite1 libxdamage1 \
+  libxrandr2 xdg-utils wget libxss1
+
+# Ubuntu 24.04 (si los anteriores fallan, usar estos con sufijo t64):
+# sudo apt install -y \
+#   ca-certificates fonts-liberation libasound2t64 libatk-bridge2.0-0t64 \
+#   libatk1.0-0t64 libcups2t64 libdbus-1-3 libdrm2 libgbm1 libgtk-3-0t64 \
+#   libnspr4 libnss3 libx11-xcb1 libxcomposite1 libxdamage1 \
+#   libxrandr2 xdg-utils wget libxss1
+
+# PM2 (mantiene Node corriendo)
+sudo npm install -g pm2
+
+# Git
+sudo apt install -y git
+```
+
+---
+
+## Paso 3: Configurar PostgreSQL
+
+```bash
+# Crear usuario y base de datos
+sudo -u postgres psql << 'SQL'
+CREATE USER lavanderia WITH PASSWORD 'TU_PASSWORD_SEGURA';
+CREATE DATABASE lavanderia OWNER lavanderia;
+GRANT ALL PRIVILEGES ON DATABASE lavanderia TO lavanderia;
+SQL
+```
+
+Verificar conexión:
+```bash
+psql -U lavanderia -d lavanderia -h localhost -c "SELECT 1;"
+```
+
+### Configurar backups adicionales (opcional, complementa snapshots)
+
+Crear script de backup de la BBDD por si quieres restauraciones granulares:
+```bash
+sudo mkdir -p /var/backups/postgresql
+sudo chown postgres:postgres /var/backups/postgresql
+
+# Cron diario a las 3:00
+sudo -u postgres crontab -e
+```
+
+Añadir esta línea:
+```
+0 3 * * * pg_dump -U lavanderia lavanderia -F c -f /var/backups/postgresql/lavanderia_$(date +\%Y\%m\%d).dump && find /var/backups/postgresql -mtime +14 -delete
+```
+
+Esto guarda 14 días de dumps. Los snapshots de Lightsail son el backup principal (disco completo), esto es un extra.
+
+---
+
+## Paso 4: Desplegar la aplicación
+
+```bash
+# Crear directorio
+sudo mkdir -p /var/www/lavanderia
+sudo chown $USER:$USER /var/www/lavanderia
+
+# Clonar repositorio
+cd /var/www/lavanderia
+git clone <TU_REPO_URL> .
+```
+
+### Backend
+
+```bash
+cd /var/www/lavanderia/backend
+npm install --production
+```
+
+Crear `.env`:
+```bash
+cat > .env << 'EOF'
+DATABASE_URL=postgresql://lavanderia:TU_PASSWORD_SEGURA@localhost:5432/lavanderia
+
+JWT_SECRET=genera-un-string-aleatorio-de-64-caracteres
+
+PORT=4000
+APP_URL=https://app.tinteyburbuja.es
+
+# Email
+FROM_EMAIL=hola@tinteyburbuja.com
+FROM_NAME=Tinte y Burbuja
+SMTP_HOST=tu-servidor-smtp
+SMTP_PORT=587
+SMTP_USER=tu-usuario-smtp
+SMTP_PASS=tu-password-smtp
+
+# Stripe
+STRIPE_SECRET_KEY=sk_live_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+
+# WhatsApp (cuando lo configures)
+#WHATSAPP_TOKEN=
+#WHATSAPP_PHONE_NUMBER_ID=
+#WHATSAPP_VERIFY_TOKEN=
+#WHATSAPP_BUSINESS_ACCOUNT_ID=
+
+# Google Reviews (cuando lo configures)
+#GOOGLE_CLIENT_ID=
+#GOOGLE_CLIENT_SECRET=
+#GOOGLE_REDIRECT_URI=https://app.tinteyburbuja.es/api/google/callback
+#GOOGLE_ACCOUNT_ID=
+#GOOGLE_LOCATION_ID=
+EOF
+```
+
+Generar cliente Prisma:
+```bash
+npx prisma generate
+```
+
+### Frontend
+
+```bash
+cd /var/www/lavanderia/frontend
+npm install
+npm run build
+```
+
+### Iniciar backend con PM2
+
+```bash
+cd /var/www/lavanderia/backend
+pm2 start src/server.js --name lavanderia
+pm2 save
+pm2 startup
+# ↑ Ejecutar el comando que muestra (sudo env PATH=... pm2 startup ...)
+```
+
+Verificar:
+```bash
+pm2 status
+curl http://localhost:4000
+# → {"status":"ok"}
+```
+
+---
+
+## Paso 5: Configurar Nginx
+
+```bash
+sudo cp /var/www/lavanderia/deploy/nginx-lavanderia.conf /etc/nginx/sites-available/lavanderia
+sudo ln -sf /etc/nginx/sites-available/lavanderia /etc/nginx/sites-enabled/
+sudo rm -f /etc/nginx/sites-enabled/default
+sudo nginx -t
+sudo systemctl restart nginx
+```
+
+Verificar: `http://app.tinteyburbuja.es` debería cargar (sin SSL aún).
+
+---
+
+## Paso 6: SSL con Let's Encrypt
+
+```bash
+sudo certbot --nginx -d app.tinteyburbuja.es
+```
+
+Seguir instrucciones (email, aceptar TOS, redirigir HTTP→HTTPS).
+
+Verificar renovación automática:
+```bash
+sudo certbot renew --dry-run
+```
+
+---
+
+## Paso 7: Migrar datos desde tu servidor actual
+
+### En tu Ubuntu actual:
+
+```bash
+pg_dump -h localhost -U tu_usuario -d lavanderia -F c -f lavanderia_backup.dump
+```
+
+Copiar al Lightsail:
+```bash
+scp -i tu-key.pem lavanderia_backup.dump ubuntu@<IP_LIGHTSAIL>:/tmp/
+```
+
+### En el Lightsail:
+
+```bash
+pg_restore -U lavanderia -d lavanderia -h localhost -v /tmp/lavanderia_backup.dump
+rm /tmp/lavanderia_backup.dump
+```
+
+---
+
+## Paso 8: Configurar webhooks
+
+Con HTTPS activo, configurar:
+
+### Stripe
+Dashboard > Developers > Webhooks > Add endpoint:
+- URL: `https://app.tinteyburbuja.es/api/stripe/webhook`
+- Eventos: `checkout.session.completed`, `payment_intent.payment_failed`
+- Copiar webhook secret → `.env` → `STRIPE_WEBHOOK_SECRET`
+- Reiniciar: `pm2 restart lavanderia`
+
+### WhatsApp (cuando lo actives)
+Meta Business > WhatsApp > Configuration:
+- Callback URL: `https://app.tinteyburbuja.es/api/whatsapp/webhook`
+- Verify token: el de `.env` → `WHATSAPP_VERIFY_TOKEN`
+
+---
+
+## Deploys futuros
+
+Un solo comando:
+```bash
+/var/www/lavanderia/deploy.sh
+```
+
+---
+
+## Comandos útiles
+
+```bash
+# Estado del backend
+pm2 status
+
+# Logs en tiempo real
+pm2 logs lavanderia
+
+# Reiniciar backend
+pm2 restart lavanderia
+
+# Monitor de recursos
+pm2 monit
+
+# Logs de Nginx
+sudo tail -f /var/log/nginx/error.log
+sudo tail -f /var/log/nginx/access.log
+
+# Conectar a la BBDD
+psql -U lavanderia -d lavanderia -h localhost
+
+# Backup manual
+pg_dump -U lavanderia -d lavanderia -F c -f backup_manual.dump
+
+# Restaurar backup
+pg_restore -U lavanderia -d lavanderia -h localhost -c backup_manual.dump
+
+# Ver tamaño de la BBDD
+psql -U lavanderia -d lavanderia -c "SELECT pg_size_pretty(pg_database_size('lavanderia'));"
+
+# Espacio en disco
+df -h
+```
+
+---
+
+## Verificación post-deploy
+
+1. `https://app.tinteyburbuja.es` → Login
+2. `https://app.tinteyburbuja.es/portal/login` → Portal cliente
+3. Login → POS funcional, crear pedido, pagar
+4. Ventas → Filtros, facturar, cobrar
+5. `pm2 logs lavanderia` → Sin errores
+
+---
+
+## Restaurar desde snapshot (disaster recovery)
+
+Si algo sale mal:
+1. Lightsail > instancia > Snapshots
+2. Seleccionar snapshot → **Create new instance from snapshot**
+3. La nueva instancia tiene todo: app + BBDD + configuración
+4. Reasignar la IP estática a la nueva instancia
+5. Todo funciona sin tocar nada más

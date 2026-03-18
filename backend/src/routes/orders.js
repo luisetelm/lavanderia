@@ -318,7 +318,10 @@ export default async function (fastify, opts) {
         const {method, receivedAmount} = req.body; // method: 'cash' | 'card'
 
         try {
-            const order = await prisma.order.findUnique({where: {id: orderId}});
+            const order = await prisma.order.findUnique({
+                where: {id: orderId},
+                include: {invoiceTickets: {include: {invoices: true}}}
+            });
             if (!order) return reply.status(404).send({error: 'Pedido no encontrado'});
 
             if (order.paid) {
@@ -328,10 +331,6 @@ export default async function (fastify, opts) {
             if (method !== 'cash' && method !== 'card') {
                 return reply.status(400).send({error: 'Método de pago inválido'});
             }
-
-            const updateData = {
-                paymentMethod: method, paid: true,
-            };
 
             let change = 0;
             if (method === 'cash') {
@@ -349,24 +348,47 @@ export default async function (fastify, opts) {
                 await crearFactura(prisma, {orderIds: [orderId], type: 's'});
             }
 
-            const updated = await prisma.order.update({
-                where: {id: orderId}, data: updateData, include: {
-                    lines: {include: {product: true}}, client: {
-                        select: {id: true, firstName: true, lastName: true, email: true, phone: true},
-                    }, invoiceTickets: {
-                        include: {
-                            order: {
-                                include: {
-                                    lines: {
-                                        include: {product: true}
-                                    }
-                                }
+            // Actualizar pedido + crear Payment en transacción
+            const updated = await prisma.$transaction(async (tx) => {
+                const updatedOrder = await tx.order.update({
+                    where: {id: orderId},
+                    data: {paymentMethod: method, paid: true},
+                    include: {
+                        lines: {include: {product: true}},
+                        client: {
+                            select: {id: true, firstName: true, lastName: true, email: true, phone: true},
+                        },
+                        invoiceTickets: {
+                            include: {
+                                invoices: true
                             }
-                        }
+                        },
                     },
-                },
-            });
+                });
 
+                // Crear Payment unificado
+                await tx.payment.create({
+                    data: {
+                        amount: order.total,
+                        method: method === 'card' ? 'card_pos' : 'cash',
+                        status: 'completed',
+                        orderId: orderId,
+                        clientId: order.clientId,
+                        recordedBy: req.user?.id || null,
+                        note: `Pago pedido #${updatedOrder.orderNum}`,
+                    }
+                });
+
+                // Si el pedido ya tenía factura normal vinculada, marcarla como pagada
+                if (order.invoiceTickets?.invoices) {
+                    await tx.invoices.update({
+                        where: {id: order.invoiceTickets.invoices.id},
+                        data: {paid: true, paymentStatus: 'paid'}
+                    });
+                }
+
+                return updatedOrder;
+            });
 
             return reply.send({order: updated, change: method === 'cash' ? change : 0});
         } catch (err) {

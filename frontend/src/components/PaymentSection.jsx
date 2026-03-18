@@ -10,10 +10,12 @@ import {
     updateOrder as apiUpdateOrder,
     retryNotification,
     downloadInvoicePDF,
-    updateOrderLine
+    updateOrderLine,
+    createStripeCheckout
 } from '../api.js';
-import UIkit from 'uikit'; // añadir al inicio del fichero si no existe
+import UIkit from 'uikit';
 import {printSaleTicket, printWashLabels} from '../utils/printUtils.js';
+import {formatEUR} from '../utils/format.js';
 
 // En tu componente, donde tengas el token y el ID de la factura
 
@@ -37,10 +39,6 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
 
     // Notas internas controladas
     const [internalNotes, setInternalNotes] = useState('');
-
-    const formatEUR = (num) => (typeof num === 'number' ? num : Number(num || 0)).toLocaleString('es-ES', {
-        style: 'currency', currency: 'EUR', minimumFractionDigits: 2, maximumFractionDigits: 2,
-    });
 
     const showConfirmModal = (action) => {
         setModalAction(action);
@@ -225,6 +223,26 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
             console.error('Error imprimiendo etiquetas:', e);
         } finally {
             setIsPrinting(false);
+        }
+    };
+
+    const handleStripePaymentLink = async () => {
+        if (!order) return;
+        setIsProcessing(true);
+        try {
+            const { url } = await createStripeCheckout(token, { type: 'order', id: order.id });
+            await navigator.clipboard.writeText(url);
+            UIkit.notification({
+                message: 'Enlace de pago copiado al portapapeles',
+                status: 'success',
+                pos: 'top-right',
+                timeout: 3000
+            });
+        } catch (e) {
+            console.error('Error generando enlace Stripe:', e);
+            setLocalError(e.error || 'Error generando enlace de pago');
+        } finally {
+            setIsProcessing(false);
         }
     };
 
@@ -584,9 +602,8 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
                                 {modalAction === 'ready' ? '¿Marcar como listo?' : '¿Marcar como recogido?'}
                             </h2>
                             <p>
-                                Indica también si quieres enviar un SMS al cliente. Al marcar como recogido, el
-                                SMS es
-                                una petición para dejar una reseña.
+                                Indica también si quieres notificar al cliente. Al marcar como recogido, el
+                                mensaje es una petición para dejar una reseña.
                             </p>
                             <div className="uk-margin uk-flex uk-flex-between" uk-flex="true">
                                 <button className="uk-button uk-button-default uk-margin-small-right"
@@ -596,11 +613,16 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
                                 <div className={'uk-button-group'}>
                                     <button className="uk-button uk-button-danger"
                                             onClick={() => executeAction(false)}>
-                                        Sí, no enviar SMS
+                                        Sin notificar
                                     </button>
                                     <button className="uk-button uk-button-primary"
                                             onClick={() => executeAction(true)}>
-                                        Sí, y enviar SMS
+                                        Enviar SMS
+                                    </button>
+                                    <button className="uk-button uk-button-default"
+                                            style={{background: '#25D366', color: '#fff'}}
+                                            onClick={() => executeAction('whatsapp')}>
+                                        WhatsApp
                                     </button>
                                 </div>
                             </div>
@@ -628,6 +650,16 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
 
         {!order.paid && order.status !== 'cancelled' && (<div className={'uk-grid uk-grid-divider'}>
             <h4 className={'uk-width-1-1 uk-margin'}>Pendiente de pago</h4>
+            <div className={'uk-width-1-1 uk-margin-small-bottom'}>
+                <button
+                    onClick={handleStripePaymentLink}
+                    disabled={isProcessing}
+                    className={'uk-button uk-button-default'}
+                    style={{ fontSize: '0.85em' }}
+                >
+                    {isProcessing ? 'Generando...' : 'Copiar enlace de pago (Stripe)'}
+                </button>
+            </div>
 
             <div className={'uk-width-1-2@l uk-grid'}>
                 <p className={'uk-text-bold uk-width-1-1'}>Pago con tarjeta</p>

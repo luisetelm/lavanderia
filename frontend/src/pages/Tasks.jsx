@@ -2,6 +2,7 @@ import React, {useEffect, useState, useRef} from 'react';
 import {fetchOrders, payWithCard, payWithCash} from '../api.js';
 import PaymentSection from '../components/PaymentSection.jsx';
 import {useLocation} from 'react-router-dom';
+import PageToolbar from '../components/PageToolbar.jsx';
 
 
 export default function Tasks({token, user}) {
@@ -65,23 +66,52 @@ export default function Tasks({token, user}) {
     }, [query, token, filterStatus, filterWorker, sortBy, sortOrder]);
 
     return (<div>
-        <div className="section-header">
-            <h2 className="uk-margin-remove">Tareas</h2>
-
-            <FilterBar
-                value={filterStatus}
-                onChange={setFilterStatus}
-                query={query}
-                setQuery={setQuery}
-                sortBy={sortBy}
-                setSortBy={setSortBy}
-                sortOrder={sortOrder}
-                setSortOrder={setSortOrder}
-                filterWorker={filterWorker}
-                setFilterWorker={setFilterWorker}
-                user={user}
-            />
-        </div>
+        <PageToolbar
+            title="Tareas"
+            filters={[
+                {
+                    label: 'Estado',
+                    active: filterStatus !== 'all',
+                    options: [
+                        { label: 'Todas', active: filterStatus === 'all', onClick: () => setFilterStatus('all') },
+                        { label: 'Pendientes', active: filterStatus === 'pending', onClick: () => setFilterStatus('pending') },
+                        { label: 'Listas', active: filterStatus === 'ready', onClick: () => setFilterStatus('ready') },
+                        { label: 'Recogidas', active: filterStatus === 'collected', onClick: () => setFilterStatus('collected') },
+                    ]
+                },
+                {
+                    label: 'Trabajador',
+                    active: filterWorker !== '',
+                    options: [
+                        { label: 'Mis tareas', active: filterWorker === user.id, onClick: () => setFilterWorker(filterWorker === user.id ? '' : user.id) },
+                        { label: 'Todas las tareas', active: filterWorker === '', onClick: () => setFilterWorker('') },
+                    ]
+                },
+                {
+                    label: 'Ordenar',
+                    active: sortBy !== 'createdAt' || sortOrder !== 'desc',
+                    options: [
+                        { label: 'Creación (reciente)', active: sortBy === 'createdAt' && sortOrder === 'desc', onClick: () => { setSortBy('createdAt'); setSortOrder('desc'); } },
+                        { label: 'Creación (antigua)', active: sortBy === 'createdAt' && sortOrder === 'asc', onClick: () => { setSortBy('createdAt'); setSortOrder('asc'); } },
+                        { label: 'Entrega (reciente)', active: sortBy === 'fechaLimite' && sortOrder === 'desc', onClick: () => { setSortBy('fechaLimite'); setSortOrder('desc'); } },
+                        { label: 'Entrega (antigua)', active: sortBy === 'fechaLimite' && sortOrder === 'asc', onClick: () => { setSortBy('fechaLimite'); setSortOrder('asc'); } },
+                        { label: 'Actualización (reciente)', active: sortBy === 'updatedAt' && sortOrder === 'desc', onClick: () => { setSortBy('updatedAt'); setSortOrder('desc'); } },
+                        { label: 'Actualización (antigua)', active: sortBy === 'updatedAt' && sortOrder === 'asc', onClick: () => { setSortBy('updatedAt'); setSortOrder('asc'); } },
+                    ]
+                },
+            ]}
+            actions={
+                <form className="uk-search uk-search-default">
+                    <input
+                        type="search"
+                        className="uk-search-input"
+                        placeholder="Buscar por pedido o cliente..."
+                        value={query}
+                        onChange={(e) => setQuery(e.target.value)}
+                    />
+                </form>
+            }
+        />
 
         {error && (<div className="uk-alert-danger" uk-alert="true">
             <p>{error}</p>
@@ -141,75 +171,3 @@ export default function Tasks({token, user}) {
     </div>);
 }
 
-function FilterBar({
-                       value,
-                       onChange,
-                       query,
-                       setQuery,
-                       sortBy,
-                       setSortBy,
-                       sortOrder,
-                       setSortOrder,
-                       filterWorker,
-                       setFilterWorker,
-                       user
-                   }) {
-    const Btn = ({val, children}) => (
-        <button
-            type="button"
-            className={`uk-button ${value === val ? 'uk-button-primary' : 'uk-button-default'}`}
-            aria-pressed={value === val}
-            onClick={() => onChange(val)}
-        >
-            {children}
-        </button>
-    );
-    return (<div>
-        <div>
-            <form className="uk-search uk-search-default">
-                <input
-                    type="search"
-                    className="uk-search-input uk-width-1-1"
-                    placeholder="Buscar por pedido o cliente..."
-                    value={query} // <-- Añade esto
-                    onChange={(e) => setQuery(e.target.value)}
-                />
-            </form>
-        </div>
-        <div>
-            <select
-                className="uk-select"
-                value={filterWorker}
-                onChange={(e) => setFilterWorker(e.target.value)}
-            >
-                <option value={user.id}>Mis tareas</option>
-                <option value="">Todas las tareas</option>
-            </select>
-        </div>
-        <div>
-            <select
-                className="uk-select"
-                value={`${sortBy}-${sortOrder}`}
-                onChange={(e) => {
-                    const [field, order] = e.target.value.split('-');
-                    setSortBy(field);
-                    setSortOrder(order);
-                }}
-            >
-                <option value="createdAt-desc">Fecha creación (más reciente)</option>
-                <option value="createdAt-asc">Fecha creación (más antigua)</option>
-                <option value="fechaLimite-desc">Fecha entrega (más reciente)</option>
-                <option value="fechaLimite-asc">Fecha entrega (más antigua)</option>
-                <option value="updatedAt-desc">Fecha actualización (más reciente)</option>
-                <option value="updatedAt-asc">Fecha actualización (más antigua)</option>
-            </select></div>
-        <div>
-            <div className="uk-button-group">
-                <Btn val="all">Todas</Btn>
-                <Btn val="pending">Pendientes</Btn>
-                <Btn val="ready">Listas</Btn>
-                <Btn val="collected">Recogidas</Btn>
-            </div>
-        </div>
-    </div>);
-}

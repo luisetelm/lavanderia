@@ -11,6 +11,7 @@ export default function UserForm({ initial = {}, onSave, token, onCancel }) {
     password: '',
     isActive: initial.isActive !== undefined ? Boolean(initial.isActive) : true,
     isbigclient: initial.isbigclient !== undefined ? Boolean(initial.isbigclient) : false,
+    autoMonthlyInvoice: initial.autoMonthlyInvoice !== undefined ? Boolean(initial.autoMonthlyInvoice) : false,
     denominacionsocial: initial.denominacionsocial || '',
     nif: initial.nif || '',
     tipopersona: initial.tipopersona || '',
@@ -180,6 +181,20 @@ export default function UserForm({ initial = {}, onSave, token, onCancel }) {
                 Tarifa Gran Cliente
               </label>
             </div>
+            {(form.role === 'customer' || form.isbigclient) && (
+              <div className="uk-margin">
+                <label>
+                  <input
+                    className="uk-checkbox"
+                    type="checkbox"
+                    checked={form.autoMonthlyInvoice}
+                    onChange={(e) => setForm((f) => ({ ...f, autoMonthlyInvoice: e.target.checked }))}
+                  />{' '}
+                  Facturación automática mensual
+                </label>
+                <div className="uk-text-meta">Se genera factura normal el día 5 de cada mes con los pedidos del mes anterior</div>
+              </div>
+            )}
           </div>
 
           <div className="uk-width-1-2@s">

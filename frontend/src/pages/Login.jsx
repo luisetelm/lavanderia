@@ -6,16 +6,21 @@ export default function Login({ onLogin }) {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
+    const [loading, setLoading] = useState(false);
     const navigate = useNavigate();
 
     const submit = async (e) => {
         e.preventDefault();
+        setLoading(true);
+        setError('');
         try {
             const resp = await login(email, password);
             onLogin(resp);
-            navigate('/pos'); // Redirige a la página de inicio (POS)
+            navigate('/pos');
         } catch (err) {
             setError(err.error || 'Error en login');
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -25,110 +30,84 @@ export default function Login({ onLogin }) {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            backgroundColor: '#f9f9f9',
-            fontFamily: 'system-ui, sans-serif'
+            background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
+            padding: 16,
         }}>
             <div style={{
-                backgroundColor: 'white',
-                padding: '2rem',
-                borderRadius: '8px',
-                boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+                background: '#fff',
+                padding: '40px 32px',
+                borderRadius: 16,
+                boxShadow: '0 20px 60px rgba(0,0,0,0.15)',
                 width: '100%',
-                maxWidth: '400px',
+                maxWidth: 400,
             }}>
-                <h2 style={{
-                    marginTop: 0,
-                    marginBottom: '1.5rem',
-                    color: '#4f46e5',
-                    textAlign: 'center',
-                    fontSize: '1.75rem'
-                }}>
-                    Tinte y Burbuja - Acceso
-                </h2>
-                
+                <div style={{ textAlign: 'center', marginBottom: 32 }}>
+                    <img src="/logo.png" alt="Tinte y Burbuja" style={{ height: 56, marginBottom: 16 }} />
+                    <h2 style={{ margin: 0, fontSize: '1.25rem', color: '#1e293b', fontWeight: 600 }}>
+                        Acceso empleados
+                    </h2>
+                </div>
+
                 {error && (
                     <div style={{
-                        backgroundColor: '#fee2e2',
+                        background: '#fef2f2',
                         color: '#dc2626',
-                        padding: '0.75rem',
-                        borderRadius: '4px',
-                        marginBottom: '1rem',
-                        fontSize: '0.875rem'
+                        padding: '10px 14px',
+                        borderRadius: 8,
+                        marginBottom: 16,
+                        fontSize: '0.85rem',
+                        border: '1px solid #fecaca',
                     }}>
                         {error}
                     </div>
                 )}
-                
+
                 <form onSubmit={submit}>
-                    <div style={{ marginBottom: '1rem' }}>
+                    <div style={{ marginBottom: 16 }}>
                         <label style={{
-                            display: 'block',
-                            marginBottom: '0.5rem',
-                            color: '#4f46e5',
-                            fontSize: '0.875rem',
-                            fontWeight: '500'
+                            display: 'block', marginBottom: 6, color: '#64748b',
+                            fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase',
+                            letterSpacing: '0.03em',
                         }}>
                             Email
                         </label>
-                        <input 
+                        <input
+                            type="email"
                             value={email}
                             onChange={e => setEmail(e.target.value)}
                             required
-                            style={{
-                                width: '100%',
-                                padding: '0.75rem',
-                                borderRadius: '4px',
-                                border: '1px solid #d1d5db',
-                                fontSize: '1rem',
-                                boxSizing: 'border-box'
-                            }}
+                            autoComplete="email"
+                            className="uk-input"
+                            style={{ width: '100%' }}
                         />
                     </div>
-                    
-                    <div style={{ marginBottom: '1.5rem' }}>
+
+                    <div style={{ marginBottom: 24 }}>
                         <label style={{
-                            display: 'block',
-                            marginBottom: '0.5rem',
-                            color: '#4b5563',
-                            fontSize: '0.875rem',
-                            fontWeight: '500'
+                            display: 'block', marginBottom: 6, color: '#64748b',
+                            fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase',
+                            letterSpacing: '0.03em',
                         }}>
                             Contraseña
                         </label>
-                        <input 
+                        <input
                             type="password"
                             value={password}
                             onChange={e => setPassword(e.target.value)}
                             required
-                            style={{
-                                width: '100%',
-                                padding: '0.75rem',
-                                borderRadius: '4px',
-                                border: '1px solid #d1d5db',
-                                fontSize: '1rem',
-                                boxSizing: 'border-box'
-                            }}
+                            autoComplete="current-password"
+                            className="uk-input"
+                            style={{ width: '100%' }}
                         />
                     </div>
-                    
-                    <button 
+
+                    <button
                         type="submit"
-                        style={{
-                            width: '100%',
-                            padding: '0.75rem',
-                            backgroundColor: '#4f46e5',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '4px',
-                            fontSize: '1rem',
-                            fontWeight: '500',
-                            cursor: 'pointer',
-                            transition: 'background-color 0.2s'
-                        }}
-                        onMouseOver={e => e.target.style.backgroundColor = '#283366'}
-                        onMouseOut={e => e.target.style.backgroundColor = '#1f2956'}
+                        className="uk-button uk-button-primary uk-width-1-1"
+                        disabled={loading}
+                        style={{ padding: '10px', fontSize: '0.95rem' }}
                     >
-                        Entrar
+                        {loading ? 'Entrando...' : 'Entrar'}
                     </button>
                 </form>
             </div>

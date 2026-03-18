@@ -3,11 +3,14 @@ import React, {useCallback, useEffect, useState} from 'react';
 import {
     fetchOrders,
     createInvoice,
-    fetchOrder
+    fetchOrder,
+    collectInvoicesBatch
 } from '../api.js';
+import { formatEUR } from '../utils/format.js';
 import {useNavigate} from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import VentaRow from '../components/VentaRow.jsx';
+import PageToolbar from '../components/PageToolbar.jsx';
 
 function getPrimerDiaMes() {
     const hoy = new Date();
@@ -24,7 +27,7 @@ function getUltimoDiaMes() {
 }
 
 
-const eur = new Intl.NumberFormat('es-ES', {style: 'currency', currency: 'EUR'});
+// formatEUR importado desde utils/format.js
 
 export default function Ventas({token}) {
     const [fechaInicio, setFechaInicio] = useState(() => localStorage.getItem('ventas_fechaInicio') || getPrimerDiaMes());
@@ -43,6 +46,11 @@ export default function Ventas({token}) {
     const [methodFilter, setMethodFilter] = useState(null); // 'cash' | 'card' | null
     // NUEVO: solo importes positivos (> 0 €)
     const [onlyPositive, setOnlyPositive] = useState(() => localStorage.getItem('ventas_onlyPositive') === '1');
+    // Filtro: facturas emitidas pero sin cobrar
+    const [invoiceUnpaidFilter, setInvoiceUnpaidFilter] = useState(false);
+    // Estado para batch collect
+    const [collectMethod, setCollectMethod] = useState('transfer');
+    const [showBatchCollect, setShowBatchCollect] = useState(false);
 
     // Helper: normalizar una orden para que siempre tenga invoiceTickets como array
     const normalizeOrder = (o) => ({
@@ -134,7 +142,7 @@ export default function Ventas({token}) {
                 cliente,
                 clientEmail,
                 total: typeof v.total === 'number' ? v.total : (v.total ? Number(v.total) : ''),
-                totalFormatted: typeof v.total === 'number' ? eur.format(v.total) : (v.total ? eur.format(Number(v.total)) : ''),
+                totalFormatted: typeof v.total === 'number' ? formatEUR(v.total) : (v.total ? formatEUR(Number(v.total)) : ''),
                 paid: typeof v.paid === 'boolean' ? v.paid : !!v.paid,
                 facturado: !!v.facturado || invoiceCount > 0,
                 invoiceCount,
@@ -220,6 +228,12 @@ export default function Ventas({token}) {
             // NUEVO: solo importes > 0
             const totalNum = Number(v.total);
             if (onlyPositive && !(totalNum > 0)) return false;
+            // Filtro: facturas sin cobrar (facturado pero factura no cobrada)
+            if (invoiceUnpaidFilter) {
+                const inv = v.factura;
+                if (!inv) return false; // no facturado, excluir
+                if (inv.paid === true || inv.paymentStatus === 'paid') return false; // ya cobrada
+            }
             return true;
         });
     };
@@ -230,11 +244,43 @@ export default function Ventas({token}) {
     const cantidadPedidos = ventasFiltradas.length;
     const pedidosPendientes = ventasFiltradas.filter(v => v.paid === false).length;
     const pedidosFacturados = ventasFiltradas.filter(v => isInvoiced(v)).length;
+    // KPI: facturas emitidas sin cobrar
+    const facturasSinCobrar = ventas.filter(v => {
+        const inv = v.factura;
+        return inv && inv.paid !== true && inv.paymentStatus !== 'paid';
+    });
+    const totalSinCobrar = facturasSinCobrar.reduce((sum, v) => sum + (Number(v.total) || 0), 0);
 
 
     useEffect(() => {
         fetchVentas();
     }, [fetchVentas]);
+
+    // Cobrar facturas seleccionadas en batch
+    const handleBatchCollect = async () => {
+        // Obtener los IDs de facturas de los pedidos seleccionados que tienen factura sin cobrar
+        const invoiceIds = selectedOrders
+            .map(orderId => ventas.find(v => v.id === orderId))
+            .filter(v => v?.factura && v.factura.paid !== true && v.factura.paymentStatus !== 'paid')
+            .map(v => v.factura.id);
+
+        if (invoiceIds.length === 0) {
+            alert('No hay facturas sin cobrar en la selección');
+            return;
+        }
+        setLoading(true);
+        try {
+            await collectInvoicesBatch(token, invoiceIds, collectMethod);
+            setShowBatchCollect(false);
+            setSelectedOrders([]);
+            setSelectionCriteria(null);
+            await fetchVentas();
+        } catch (e) {
+            alert(e.error || 'Error cobrando facturas');
+        } finally {
+            setLoading(false);
+        }
+    };
 
     // Facturar todos los pedidos seleccionados
     const handleGenerateInvoices = async () => {
@@ -298,6 +344,7 @@ export default function Ventas({token}) {
         setInvoiceTypeFilter(null);
         setMethodFilter(null);
         setOnlyPositive(false);
+        setInvoiceUnpaidFilter(false);
         localStorage.setItem('ventas_onlyPositive', '0');
     };
     // NUEVO: toggle para importes > 0 €
@@ -310,169 +357,154 @@ export default function Ventas({token}) {
     };
 
 
-    // Clases de botón según activo/inactivo
-    const btnCls = (active) => `uk-button ${active ? 'uk-button-primary' : 'uk-button-default'}`;
+    const toolbarFilters = [
+        {
+            label: 'Cobro',
+            active: !!paidFilter,
+            options: [
+                { label: 'Todos', active: !paidFilter, onClick: () => setPaidFilter(null) },
+                { label: 'Pendientes', active: paidFilter === 'unpaid', onClick: () => togglePaid('unpaid') },
+                { label: 'Cobrados', active: paidFilter === 'paid', onClick: () => togglePaid('paid') },
+            ]
+        },
+        {
+            label: 'Factura',
+            active: !!invoiceTypeFilter || invoiceUnpaidFilter,
+            options: [
+                { label: 'Sin facturar', active: invoiceTypeFilter === 'sinfactura', onClick: () => toggleInvoiceType('sinfactura') },
+                { label: 'Simplificada', active: invoiceTypeFilter === 's', onClick: () => toggleInvoiceType('s') },
+                { label: 'Normal', active: invoiceTypeFilter === 'n', onClick: () => toggleInvoiceType('n') },
+                { label: 'Sin cobrar', active: invoiceUnpaidFilter, onClick: () => setInvoiceUnpaidFilter(prev => !prev) },
+            ]
+        },
+        {
+            label: 'Método',
+            active: !!methodFilter,
+            options: [
+                { label: 'Efectivo', active: methodFilter === 'cash', onClick: () => toggleMethod('cash') },
+                { label: 'Tarjeta', active: methodFilter === 'card', onClick: () => toggleMethod('card') },
+            ]
+        },
+        {
+            label: 'Importe',
+            active: onlyPositive,
+            options: [
+                { label: '> 0 €', active: onlyPositive, onClick: toggleOnlyPositive },
+            ]
+        },
+    ];
+
+    const hasActiveFilters = paidFilter || invoiceTypeFilter || methodFilter || onlyPositive || invoiceUnpaidFilter;
 
     return (<div>
-        <div className="section-header">
-            <h2 className="uk-margin-remove">Ventas</h2>
-
-            <div className="uk-flex uk-flex-wrap uk-flex-middle uk-grid-small" uk-grid="true">
-                <div>
-                    <button
-                        className={btnCls(!paidFilter && !invoiceTypeFilter && !methodFilter && !onlyPositive)}
-                        onClick={() => clearFilters()}
-                        type="button"
-                    >
-                        Todos
-                    </button>
+        <PageToolbar
+            title="Ventas"
+            filters={toolbarFilters}
+            actions={
+                <>
+                    {hasActiveFilters && (
+                        <button className="uk-button uk-button-small uk-button-default" onClick={clearFilters} type="button">
+                            Limpiar filtros
+                        </button>
+                    )}
+                </>
+            }
+        />
+        {/* KPIs */}
+        <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8, marginBottom: 16}}>
+            {[
+                {label: 'Total', value: formatEUR(totalVentas)},
+                {label: 'Pedidos', value: cantidadPedidos},
+                {label: 'Pendientes', value: pedidosPendientes},
+                {label: 'Facturados', value: pedidosFacturados},
+                {label: 'Sin cobrar', value: formatEUR(totalSinCobrar), sub: `${facturasSinCobrar.length} facturas`, accent: totalSinCobrar > 0},
+            ].map((kpi, i) => (
+                <div key={i} className="uk-card uk-card-default uk-card-body uk-text-center"
+                     style={{padding: '14px 10px', borderTop: kpi.accent ? '3px solid #ef4444' : undefined}}>
+                    <div style={{fontSize: '0.75rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase'}}>{kpi.label}</div>
+                    <div style={{fontSize: '1.25rem', fontWeight: 700, marginTop: 2}}>{kpi.value}</div>
+                    {kpi.sub && <div style={{fontSize: '0.7rem', color: '#94a3b8'}}>{kpi.sub}</div>}
                 </div>
-                <div>
-                    <div className="uk-button-group">
-                        <button
-                            className={btnCls(paidFilter === 'unpaid')}
-                            onClick={() => togglePaid('unpaid')}
-                            type="button"
-                        >
-                            Pendientes de cobro
-                        </button>
-                        <button
-                            className={btnCls(paidFilter === 'paid')}
-                            onClick={() => togglePaid('paid')}
-                            type="button"
-                        >
-                            Cobrados
-                        </button>
-                    </div>
-                </div>
-                <div>
-                    <div className="uk-button-group">
-                        <button
-                            className={btnCls(invoiceTypeFilter === 'sinfactura')}
-                            onClick={() => toggleInvoiceType('sinfactura')}
-                            type="button"
-                        >
-                            Sin Facturar
-                        </button>
-                        <button
-                            className={btnCls(invoiceTypeFilter === 's')}
-                            onClick={() => toggleInvoiceType('s')}
-                            type="button"
-                        >
-                            F. Simplificadas
-                        </button>
-                        <button
-                            className={btnCls(invoiceTypeFilter === 'n')}
-                            onClick={() => toggleInvoiceType('n')}
-                            type="button"
-                        >
-                            F. Normales
-                        </button>
-                    </div>
-                </div>
-                <div>
-                    <div className="uk-button-group">
-                        <button
-                            className={btnCls(methodFilter === 'cash')}
-                            onClick={() => toggleMethod('cash')}
-                            type="button"
-                        >
-                            Efectivo
-                        </button>
-                        <button
-                            className={btnCls(methodFilter === 'card')}
-                            onClick={() => toggleMethod('card')}
-                            type="button"
-                        >
-                            Tarjeta
-                        </button>
-                    </div>
-                </div>
-                {/* NUEVO: botón solo importes > 0 € */}
-                <div>
-                    <button
-                        className={btnCls(onlyPositive)}
-                        onClick={toggleOnlyPositive}
-                        type="button"
-                    >
-                        Importes &gt; 0 €
-                    </button>
-                </div>
-            </div>
-
+            ))}
         </div>
-        <div className="uk-grid uk-padding uk-child-width-1-4 uk-grid-small uk-margin-bottom">
-            <div>
-                <div className="uk-card uk-card-default uk-card-body uk-text-center">
-                    <div className="uk-text-bold">Total</div>
-                    <div className="uk-text-large">{eur.format(totalVentas)}</div>
-                </div>
-            </div>
-            <div>
-                <div className="uk-card uk-card-default uk-card-body uk-text-center">
-                    <div className="uk-text-bold">Pedidos</div>
-                    <div className="uk-text-large">{cantidadPedidos}</div>
-                </div>
-            </div>
-            <div>
-                <div className="uk-card uk-card-default uk-card-body uk-text-center">
-                    <div className="uk-text-bold">Pendientes</div>
-                    <div className="uk-text-large">{pedidosPendientes}</div>
-                </div>
-            </div>
-            <div>
-                <div className="uk-card uk-card-default uk-card-body uk-text-center">
-                    <div className="uk-text-bold">Facturados</div>
-                    <div className="uk-text-large">{pedidosFacturados}</div>
-                </div>
-            </div>
-        </div>
+
         <div className="uk-card uk-card-default uk-card-body">
-
-            <form className="uk-form-stacked uk-grid-small uk-flex-middle" data-uk-grid="true">
+            {/* Fechas y acciones */}
+            <div style={{display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'flex-end', marginBottom: 12}}>
                 <div>
-                    <label className="uk-form-label">Desde:</label>
-                    <input
-                        className="uk-input"
-                        type="date"
-                        value={fechaInicio}
-                        onChange={handleFechaInicio}
-                    />
+                    <label className="uk-form-label">Desde</label>
+                    <input className="uk-input" type="date" value={fechaInicio} onChange={handleFechaInicio} style={{width: 150}} />
                 </div>
                 <div>
-                    <label className="uk-form-label">Hasta:</label>
-                    <input
-                        className="uk-input"
-                        type="date"
-                        value={fechaFin}
-                        onChange={handleFechaFin}
-                    />
+                    <label className="uk-form-label">Hasta</label>
+                    <input className="uk-input" type="date" value={fechaFin} onChange={handleFechaFin} style={{width: 150}} />
                 </div>
-                <div className="uk-width-expand"></div>
-                <div>
-                    <label className="uk-form-label">&nbsp;</label>
-                    <div className="uk-button-group">
-                        {selectedOrders.length > 0 && (
-                            <button
-                                className="uk-button uk-button-primary"
-                                onClick={handleGenerateInvoices}
-                                disabled={loading}
-                                type="button"
-                            >
+                <div style={{flex: 1}}></div>
+                <div style={{display: 'flex', flexWrap: 'wrap', gap: 4}}>
+                    {selectedOrders.length > 0 && (
+                        <>
+                            <button className="uk-button uk-button-small uk-button-primary" onClick={handleGenerateInvoices} disabled={loading} type="button">
                                 Facturar todos
                             </button>
-                        )}
-                        <button
-                            className="uk-button uk-button-default"
-                            onClick={exportVentasXLSX}
-                            disabled={loading || ventasFiltradas.length === 0}
-                            type="button"
-                        >
-                            Exportar XLSX
-                        </button>
-                    </div>
+                            <button className="uk-button uk-button-small uk-button-default" onClick={() => setShowBatchCollect(prev => !prev)} disabled={loading} type="button">
+                                Cobrar seleccionados
+                            </button>
+                        </>
+                    )}
+                    <button className="uk-button uk-button-small uk-button-default" onClick={exportVentasXLSX} disabled={loading || ventasFiltradas.length === 0} type="button">
+                        Exportar XLSX
+                    </button>
                 </div>
-            </form>
+            </div>
+
+            {showBatchCollect && selectedOrders.length > 0 && (
+                <div style={{
+                    background: '#f8f8f8',
+                    border: '1px solid #e5e5e5',
+                    borderRadius: 4,
+                    padding: '12px 16px',
+                    margin: '12px 0',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 12,
+                    flexWrap: 'wrap'
+                }}>
+                    <strong>Método de cobro:</strong>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <input type="radio" name="batch-collect" value="transfer"
+                            checked={collectMethod === 'transfer'}
+                            onChange={() => setCollectMethod('transfer')} />
+                        Transferencia
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <input type="radio" name="batch-collect" value="cash"
+                            checked={collectMethod === 'cash'}
+                            onChange={() => setCollectMethod('cash')} />
+                        Efectivo
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <input type="radio" name="batch-collect" value="card_pos"
+                            checked={collectMethod === 'card_pos'}
+                            onChange={() => setCollectMethod('card_pos')} />
+                        Tarjeta
+                    </label>
+                    <button
+                        className="uk-button uk-button-primary uk-button-small"
+                        onClick={handleBatchCollect}
+                        disabled={loading}
+                        type="button"
+                    >
+                        {loading ? 'Procesando...' : 'Confirmar cobro'}
+                    </button>
+                    <button
+                        className="uk-button uk-button-default uk-button-small"
+                        onClick={() => setShowBatchCollect(false)}
+                        type="button"
+                    >
+                        Cancelar
+                    </button>
+                </div>
+            )}
 
             {loading ? (<div className="uk-text-center uk-margin">
                 <span className="uk-badge uk-badge-warning">Cargando ventas...</span>
@@ -480,7 +512,8 @@ export default function Ventas({token}) {
                 <span className="uk-badge uk-badge-muted">No hay ventas en el rango seleccionado.</span>
             </div>) : (
                 <>
-                    <table className="uk-table uk-table-divider uk-table-small">
+                    <div className="uk-overflow-auto">
+                    <table className="uk-table uk-table-divider uk-table-small" style={{minWidth: 700}}>
                         <thead>
                         <tr>
                             <th>
@@ -530,6 +563,7 @@ export default function Ventas({token}) {
                         ))}
                         </tbody>
                     </table>
+                    </div>
                 </>
             )}
         </div>

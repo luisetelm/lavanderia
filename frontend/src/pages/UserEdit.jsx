@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import UIkit from 'uikit';
 import { fetchUser } from '../api.js';
 import UserForm from '../components/UserForm.jsx';
+import PageToolbar from '../components/PageToolbar.jsx';
 
 export default function UserEdit({ token }) {
   const { id } = useParams();
@@ -58,14 +59,14 @@ export default function UserEdit({ token }) {
 
   return (
     <div>
-      <div className="section-header uk-margin">
-        <div className="uk-flex uk-flex-between uk-flex-middle">
-          <h2>Editar usuario</h2>
+      <PageToolbar
+        title="Editar usuario"
+        actions={
           <button className="uk-button uk-button-default" onClick={() => navigate('/usuarios')}>
             Volver
           </button>
-        </div>
-      </div>
+        }
+      />
 
       <div className="section-content" uk-grid="true">
         {loading ? (

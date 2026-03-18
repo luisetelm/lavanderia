@@ -1,5 +1,6 @@
 import React, {useEffect, useState, useMemo} from 'react';
 import {fetchProducts, updateProduct, createProduct} from '../api.js';
+import PageToolbar from '../components/PageToolbar.jsx';
 
 function ProductModal({ onSave, initial, token, onClose, isOpen }) {
     const [form, setForm] = useState({
@@ -383,14 +384,14 @@ export default function Inventory({ token }) {
 
     return (
         <div>
-            <div className="section-header">
-                <h2>Inventario</h2>
-                <div>
+            <PageToolbar
+                title="Inventario"
+                actions={
                     <button className="uk-button uk-button-primary" onClick={handleNewProduct}>
                         <span uk-icon="plus"></span> Nuevo producto
                     </button>
-                </div>
-            </div>
+                }
+            />
 
             {error && (
                 <div className="uk-alert-danger" uk-alert="">

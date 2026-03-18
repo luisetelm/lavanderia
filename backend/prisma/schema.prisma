@@ -60,6 +60,8 @@ model Order {
   observacionesInternas String?
   CashMovement          CashMovement[]
   notification          Notification[]
+  payments              Payment[]
+  messages              Message[]       @relation("order_messages")
   client                User?           @relation("client_orders", fields: [clientId], references: [id])
   lines                 OrderLine[]
   invoiceTickets        invoiceTickets?
@@ -100,12 +102,16 @@ model User {
   provincia          String?        @db.VarChar
   tipopersona        String?        @db.VarChar
   isbigclient        Boolean        @default(false)
+  autoMonthlyInvoice Boolean        @default(false)
   discount           Float          @default(0)
   cashClosures       CashClosure[]
   personMovements    CashMovement[] @relation("person_movements")
   cashMovements      CashMovement[] @relation("user_movements")
   orders             Order[]        @relation("client_orders")
   invoices           invoices[]
+  clientPayments     Payment[]      @relation("client_payments")
+  recorderPayments   Payment[]      @relation("recorder_payments")
+  clientMessages     Message[]      @relation("client_messages")
 }
 
 model Notification {
@@ -202,9 +208,53 @@ model invoices {
   type               String?          @db.Char(1)
   invoiceLines       invoiceLines[]
   invoiceTickets     invoiceTickets[]
+  payments           Payment[]
   User               User?            @relation(fields: [clientId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_invoices_client")
   invoices           invoices?        @relation("invoicesToinvoices", fields: [rectifiesInvoiceId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   other_invoices     invoices[]       @relation("invoicesToinvoices")
+}
+
+model AppSettings {
+  id    Int    @id @default(autoincrement())
+  key   String @unique
+  value String
+}
+
+model Message {
+  id           Int       @id @default(autoincrement())
+  externalId   String?   @unique
+  channel      String    // 'sms', 'whatsapp'
+  direction    String    // 'inbound', 'outbound'
+  clientId     Int?
+  phone        String
+  content      String
+  mediaUrl     String?
+  templateName String?
+  status       String    @default("pending") // pending, sent, delivered, read, failed
+  orderId      Int?
+  createdAt    DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime  @default(now()) @db.Timestamptz(6)
+  client       User?     @relation("client_messages", fields: [clientId], references: [id])
+  order        Order?    @relation("order_messages", fields: [orderId], references: [id])
+}
+
+model Payment {
+  id              Int       @id @default(autoincrement())
+  amount          Decimal   @db.Decimal(12, 2)
+  method          String    // 'cash', 'card_pos', 'stripe', 'transfer'
+  status          String    @default("completed") // completed, pending, failed, refunded
+  stripePaymentId String?   @unique
+  stripeSessionId String?   @unique
+  orderId         Int?
+  invoiceId       BigInt?
+  clientId        Int?
+  recordedBy      Int?
+  note            String?
+  createdAt       DateTime  @default(now()) @db.Timestamptz(6)
+  order           Order?    @relation(fields: [orderId], references: [id])
+  invoice         invoices? @relation(fields: [invoiceId], references: [id])
+  client          User?     @relation("client_payments", fields: [clientId], references: [id])
+  recorder        User?     @relation("recorder_payments", fields: [recordedBy], references: [id])
 }
 
 enum CashMovementType {

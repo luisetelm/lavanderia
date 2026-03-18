@@ -45,14 +45,13 @@ export default function CustomerSelector({
         setQuickClientEmail(updater(quickFields).quickClientEmail);
     };
 
-    return (<div className="uk-grid-medium" uk-grid="true">
+    return (<div className="uk-grid-medium" uk-grid="true" style={{padding: '12px 0'}}>
         <div className="uk-width-1-1">
             <h4>Clientes</h4>
-
         </div>
             <div className="uk-width-1-2@s">
                 <label className="uk-form-label">Buscar cliente existente</label>
-                <div className="uk-search uk-search-default uk-width-1-1">
+                <div className="uk-search uk-search-default uk-width-1-1" style={{marginTop: 6}}>
                     <span uk-search-icon="true"></span>
                     <input
                         className="uk-search-input"
@@ -62,7 +61,9 @@ export default function CustomerSelector({
                     />
                 </div>
                 <div
-                    className="uk-card uk-card-default uk-card-small uk-margin-small-top uk-height-small uk-overflow-auto">
+                    className="uk-card uk-card-default uk-card-small uk-margin-small-top uk-overflow-auto"
+                    style={{maxHeight: 220}}
+                >
                     {loading ? (<div className="uk-text-center uk-padding-small">
                             <div uk-spinner="ratio: 1"></div>
                         </div>) : (customers.map((u) => (<div
@@ -74,29 +75,33 @@ export default function CustomerSelector({
                                     setQuickClientPhone('');
                                     setQuickClientEmail('');
                                 }}
-                                className={`uk-padding-small uk-link-reset uk-link-toggle ${selectedUser?.id === u.id ? 'uk-background-selected' : ''}`}
+                                style={{padding: '8px 14px', cursor: 'pointer', borderBottom: '1px solid #f0f0f0'}}
+                                className={`uk-link-reset ${selectedUser?.id === u.id ? 'uk-background-selected' : ''}`}
                             >
-                                <div className="uk-flex uk-flex-between">
-                                    <div>{u.firstName} {u.lastName}
+                                <div className="uk-flex uk-flex-between uk-flex-middle">
+                                    <div>
+                                        <span style={{fontWeight: 500}}>{u.firstName} {u.lastName}</span>
                                         <span className={`uk-label ${{
                                             admin: 'uk-label-danger',
                                             cashier: 'uk-label-warning',
                                             worker: 'uk-label-success',
                                             customer: 'uk-label-default'
-                                        }[u.role]}`}>
-                                                        {{
-                                                            admin: 'Admin',
-                                                            cashier: 'Cajero',
-                                                            worker: 'Trabajador',
-                                                            customer: 'Cliente'
-                                                        }[u.role]}
-                                                    </span>
+                                        }[u.role]}`} style={{marginLeft: 6, fontSize: '0.65rem'}}>
+                                            {{
+                                                admin: 'Admin',
+                                                cashier: 'Cajero',
+                                                worker: 'Trabajador',
+                                                customer: 'Cliente'
+                                            }[u.role]}
+                                        </span>
                                     </div>
                                 </div>
-                        <div className="uk-text-small uk-text-muted"><span uk-icon="icon: phone; ratio: 0.8;"></span>{u.phone}</div>
+                                <div className="uk-text-small uk-text-muted" style={{marginTop: 2}}>
+                                    <span uk-icon="icon: phone; ratio: 0.7" style={{marginRight: 4}}></span>{u.phone}
+                                </div>
                             </div>)))}
                     {!loading && customers.length === 0 && (
-                        <div className="uk-text-center uk-text-muted uk-padding-small">
+                        <div className="uk-text-center uk-text-muted" style={{padding: 16, fontSize: '0.85rem'}}>
                             No se encontraron clientes.
                         </div>)}
                 </div>
@@ -104,52 +109,44 @@ export default function CustomerSelector({
 
             <div className="uk-width-1-2@s">
                 <label className="uk-form-label">O crear cliente rápido</label>
-                <div className="uk-form-stacked">
+                <div className="uk-form-stacked" style={{marginTop: 6}}>
                     <div className="uk-margin-small">
-                        <div className="uk-form-controls">
-                            <input
-                                className="uk-input"
-                                placeholder="Nombre"
-                                value={quickFirstName}
-                                onChange={(e) => {
-                                    setQuickFirstName(e.target.value);
-                                    setSelectedUser(null);
-                                }}
-                            />
-                        </div>
+                        <input
+                            className="uk-input"
+                            placeholder="Nombre"
+                            value={quickFirstName}
+                            onChange={(e) => {
+                                setQuickFirstName(e.target.value);
+                                setSelectedUser(null);
+                            }}
+                        />
                     </div>
                     <div className="uk-margin-small">
-                        <div className="uk-form-controls">
-                            <input
-                                className="uk-input"
-                                placeholder="Apellidos"
-                                value={quickLastName}
-                                onChange={(e) => {
-                                    setQuickLastName(e.target.value);
-                                    setSelectedUser(null);
-                                }}
-                            />
-                        </div>
+                        <input
+                            className="uk-input"
+                            placeholder="Apellidos"
+                            value={quickLastName}
+                            onChange={(e) => {
+                                setQuickLastName(e.target.value);
+                                setSelectedUser(null);
+                            }}
+                        />
                     </div>
                     <div className="uk-margin-small">
-                        <div className="uk-form-controls">
-                            <input
-                                className="uk-input"
-                                placeholder="Teléfono (obligatorio)"
-                                value={quickClientPhone}
-                                onChange={(e) => setQuickClientPhone(e.target.value)}
-                            />
-                        </div>
+                        <input
+                            className="uk-input"
+                            placeholder="Teléfono (obligatorio)"
+                            value={quickClientPhone}
+                            onChange={(e) => setQuickClientPhone(e.target.value)}
+                        />
                     </div>
                     <div className="uk-margin-small">
-                        <div className="uk-form-controls">
-                            <input
-                                className="uk-input"
-                                placeholder="Email (opcional)"
-                                value={quickClientEmail}
-                                onChange={(e) => setQuickClientEmail(e.target.value)}
-                            />
-                        </div>
+                        <input
+                            className="uk-input"
+                            placeholder="Email (opcional)"
+                            value={quickClientEmail}
+                            onChange={(e) => setQuickClientEmail(e.target.value)}
+                        />
                     </div>
                 </div>
             </div>
