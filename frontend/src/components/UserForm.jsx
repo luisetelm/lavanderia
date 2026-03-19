@@ -64,7 +64,7 @@ export default function UserForm({ initial = {}, onSave, token, onCancel }) {
 
       <form onSubmit={submit} className="uk-form-stacked">
         <div className="uk-grid-small" uk-grid="true">
-          <div className="uk-width-1-2@s">
+          <div className="uk-width-1-2@m">
             <div className="uk-margin">
               <label className="uk-form-label">Nombre</label>
               <div className="uk-form-controls">
@@ -78,7 +78,7 @@ export default function UserForm({ initial = {}, onSave, token, onCancel }) {
             </div>
           </div>
 
-          <div className="uk-width-1-2@s">
+          <div className="uk-width-1-2@m">
             <div className="uk-margin">
               <label className="uk-form-label">Apellidos</label>
               <div className="uk-form-controls">
@@ -92,7 +92,7 @@ export default function UserForm({ initial = {}, onSave, token, onCancel }) {
             </div>
           </div>
 
-          <div className="uk-width-1-2@s">
+          <div className="uk-width-1-2@m">
             <div className="uk-margin">
               <label className="uk-form-label">Email</label>
               <div className="uk-form-controls">
@@ -107,7 +107,7 @@ export default function UserForm({ initial = {}, onSave, token, onCancel }) {
             </div>
           </div>
 
-          <div className="uk-width-1-2@s">
+          <div className="uk-width-1-2@m">
             <div className="uk-margin">
               <label className="uk-form-label">Rol</label>
               <div className="uk-form-controls">
@@ -125,7 +125,7 @@ export default function UserForm({ initial = {}, onSave, token, onCancel }) {
             </div>
           </div>
 
-          <div className="uk-width-1-2@s">
+          <div className="uk-width-1-2@m">
             <div className="uk-margin">
               <label className="uk-form-label">Teléfono</label>
               <div className="uk-form-controls">
@@ -138,7 +138,7 @@ export default function UserForm({ initial = {}, onSave, token, onCancel }) {
             </div>
           </div>
 
-          <div className="uk-width-1-2@s">
+          <div className="uk-width-1-2@m">
             <div className="uk-margin">
               <label className="uk-form-label">
                 Contraseña {initial.id ? '(dejar vacío para no cambiar)' : ''}
@@ -197,7 +197,7 @@ export default function UserForm({ initial = {}, onSave, token, onCancel }) {
             )}
           </div>
 
-          <div className="uk-width-1-2@s">
+          <div className="uk-width-1-2@m">
             <div className="uk-margin">
               <label className="uk-form-label">Denominación social</label>
               <div className="uk-form-controls">
@@ -210,7 +210,7 @@ export default function UserForm({ initial = {}, onSave, token, onCancel }) {
             </div>
           </div>
 
-          <div className="uk-width-1-2@s">
+          <div className="uk-width-1-2@m">
             <div className="uk-margin">
               <label className="uk-form-label">NIF</label>
               <div className="uk-form-controls">
@@ -223,7 +223,7 @@ export default function UserForm({ initial = {}, onSave, token, onCancel }) {
             </div>
           </div>
 
-          <div className="uk-width-1-2@s">
+          <div className="uk-width-1-2@m">
             <div className="uk-margin">
               <label className="uk-form-label">Tipo de persona</label>
               <div className="uk-form-controls">
@@ -240,7 +240,7 @@ export default function UserForm({ initial = {}, onSave, token, onCancel }) {
             </div>
           </div>
 
-          <div className="uk-width-1-2@s">
+          <div className="uk-width-1-2@m">
             <div className="uk-margin">
               <label className="uk-form-label">Dirección</label>
               <div className="uk-form-controls">
@@ -253,7 +253,7 @@ export default function UserForm({ initial = {}, onSave, token, onCancel }) {
             </div>
           </div>
 
-          <div className="uk-width-1-2@s">
+          <div className="uk-width-1-2@m">
             <div className="uk-margin">
               <label className="uk-form-label">Localidad</label>
               <div className="uk-form-controls">
@@ -266,7 +266,7 @@ export default function UserForm({ initial = {}, onSave, token, onCancel }) {
             </div>
           </div>
 
-          <div className="uk-width-1-2@s">
+          <div className="uk-width-1-2@m">
             <div className="uk-margin">
               <label className="uk-form-label">Provincia</label>
               <div className="uk-form-controls">
@@ -279,7 +279,7 @@ export default function UserForm({ initial = {}, onSave, token, onCancel }) {
             </div>
           </div>
 
-          <div className="uk-width-1-2@s">
+          <div className="uk-width-1-2@m">
             <div className="uk-margin">
               <label className="uk-form-label">Código Postal</label>
               <div className="uk-form-controls">
@@ -292,7 +292,7 @@ export default function UserForm({ initial = {}, onSave, token, onCancel }) {
             </div>
           </div>
 
-          <div className="uk-width-1-2@s">
+          <div className="uk-width-1-2@m">
             <div className="uk-margin">
               <label className="uk-form-label">País</label>
               <div className="uk-form-controls">
@@ -306,7 +306,7 @@ export default function UserForm({ initial = {}, onSave, token, onCancel }) {
           </div>
 
           {/* Descuento 0-100 */}
-          <div className="uk-width-1-2@s">
+          <div className="uk-width-1-2@m">
             <div className="uk-margin">
               <label className="uk-form-label">Descuento (%)</label>
               <div className="uk-form-controls">

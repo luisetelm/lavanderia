@@ -10,6 +10,7 @@ import AuthRedirect from './components/AuthRedirect';
 import UserEdit from './pages/UserEdit.jsx';
 import Messages from './pages/Messages.jsx';
 import Reviews from './pages/Reviews.jsx';
+import CashAudit from './pages/CashAudit.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
 import PortalLogin from './pages/portal/PortalLogin.jsx';
 import PortalVerify from './pages/portal/PortalVerify.jsx';
@@ -135,6 +136,7 @@ export default function App() {
                         {token && user.role === 'admin' && (<>
                             <li><NavLink to="/ventas"><span uk-icon="icon: credit-card; ratio: 0.9"></span> Ventas</NavLink></li>
                             <li><NavLink to="/resenas"><span uk-icon="icon: star; ratio: 0.9"></span> Reseñas</NavLink></li>
+                                <li><NavLink to="/caja"><span uk-icon="icon: database; ratio: 0.9"></span> Caja</NavLink></li>
                         </>)}
                     </ul>
                     <div className="sidebar-footer">
@@ -160,6 +162,7 @@ export default function App() {
                     <Route path="/mensajes" element={<Messages token={token}/>}/>
                     <Route path="/ventas" element={<Ventas token={token}/>}/>
                     <Route path="/resenas" element={<Reviews token={token}/>}/>
+                    <Route path="/caja" element={<CashAudit token={token}/>}/>
                     <Route path="*" element={<div style={{padding: 40, textAlign: 'center'}}>Ruta no encontrada</div>}/>
                     <Route path="/login" element={<Login onLogin={handleLogin}/>}/>
                 </Routes>

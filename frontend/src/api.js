@@ -199,6 +199,18 @@ export function deleteCashMovement(token, id) {
 }
 
 
+export function fetchCashClosures(token, { from, to } = {}) {
+    const params = new URLSearchParams();
+    if (from) params.set('from', from);
+    if (to) params.set('to', to);
+    const qs = params.toString();
+    return request(`/cash/closures${qs ? `?${qs}` : ''}`, token);
+}
+
+export function fetchClosureMovements(token, closureId) {
+    return request(`/cash/closures/${closureId}/movements`, token);
+}
+
 export function closeCashRegister(token, { countedAmount, notes, user }) {
     return request('/cash/close', token, {
         method: 'POST',

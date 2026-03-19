@@ -71,11 +71,10 @@ function Users({token}) {
                 }
             />
 
-            <div className="section-content uk-grid-divider uk-grid-medium" uk-grid="true">
-                <div className={`uk-width-1-1`}>
+            <div>
                     <div className="uk-card uk-card-default uk-card-body">
                         <div className="uk-margin-bottom">
-                            <div className="uk-search uk-search-default uk-width-medium">
+                            <div className="uk-search uk-search-default" style={{width: '100%', maxWidth: 300}}>
                                 <span uk-search-icon="true"></span>
                                 <input
                                     className="uk-search-input"
@@ -97,8 +96,9 @@ function Users({token}) {
                             </div>
                         ) : (
                             <>
-                                <div className="uk-overflow-auto">
-                                    <table className="uk-table uk-table-divider uk-table-middle uk-table-hover">
+                                {/* Tabla desktop */}
+                                <div className="uk-overflow-auto uk-visible@m">
+                                    <table className="uk-table uk-table-divider uk-table-middle uk-table-hover" style={{minWidth: 700}}>
                                         <thead>
                                         <tr>
                                             <th>Nombre</th>
@@ -106,8 +106,8 @@ function Users({token}) {
                                             <th>Rol</th>
                                             <th>Teléfono</th>
                                             <th>Estado</th>
-                                            <th style={{width: 130}}>Descuento (%)</th>
-                                            <th>Acciones</th>
+                                            <th style={{width: 100}}>Dto. (%)</th>
+                                            <th></th>
                                         </tr>
                                         </thead>
                                         <tbody>
@@ -116,29 +116,20 @@ function Users({token}) {
                                                 <td>
                                                     {u.firstName} {u.lastName}
                                                     {u.autoMonthlyInvoice && (
-                                                        <span
-                                                            className="uk-label uk-label-primary"
-                                                            style={{ fontSize: '0.65em', marginLeft: 6, verticalAlign: 'middle' }}
-                                                            title="Facturación automática mensual activa"
-                                                        >
+                                                        <span className="uk-label uk-label-primary"
+                                                            style={{ fontSize: '0.6em', marginLeft: 6, verticalAlign: 'middle' }}
+                                                            title="Facturación automática mensual">
                                                             Auto-fact.
                                                         </span>
                                                     )}
                                                 </td>
-                                                <td>{u.email}</td>
+                                                <td style={{fontSize: '0.85rem'}}>{u.email || '-'}</td>
                                                 <td>
                                                     <span className={`uk-label ${{
-                                                        admin: 'uk-label-danger',
-                                                        cashier: 'uk-label-warning',
-                                                        worker: 'uk-label-success',
-                                                        customer: 'uk-label-default'
+                                                        admin: 'uk-label-danger', cashier: 'uk-label-warning',
+                                                        worker: 'uk-label-success', customer: 'uk-label-default'
                                                     }[u.role]}`}>
-                                                        {{
-                                                            admin: 'Admin',
-                                                            cashier: 'Cajero',
-                                                            worker: 'Trabajador',
-                                                            customer: 'Cliente'
-                                                        }[u.role]}
+                                                        {{admin:'Admin',cashier:'Cajero',worker:'Trabajador',customer:'Cliente'}[u.role]}
                                                     </span>
                                                 </td>
                                                 <td>{u.phone || '-'}</td>
@@ -148,46 +139,69 @@ function Users({token}) {
                                                     </span>
                                                 </td>
                                                 <td>
-                                                    <input
-                                                        type="number"
-                                                        min={0}
-                                                        max={100}
-                                                        step={1}
-                                                        className="uk-input uk-form-width-small"
+                                                    <input type="number" min={0} max={100} step={1}
+                                                        className="uk-input uk-form-small" style={{width: 70}}
                                                         value={typeof u.discount === 'number' ? u.discount : (u.discount ? Number(u.discount) : 0)}
-                                                        onChange={(e) => {
-                                                            const val = e.target.value;
-                                                            setUsers(prev => prev.map(x => x.id === u.id ? { ...x, discount: val } : x));
-                                                        }}
+                                                        onChange={(e) => setUsers(prev => prev.map(x => x.id === u.id ? { ...x, discount: e.target.value } : x))}
                                                         onBlur={(e) => saveDiscount(u, e.target.value)}
-                                                        onKeyDown={(e) => {
-                                                            if (e.key === 'Enter') {
-                                                                e.preventDefault();
-                                                                saveDiscount(u, e.currentTarget.value);
-                                                                e.currentTarget.blur();
-                                                            }
-                                                        }}
+                                                        onKeyDown={(e) => { if (e.key === 'Enter') { saveDiscount(u, e.currentTarget.value); e.currentTarget.blur(); } }}
                                                     />
                                                 </td>
                                                 <td>
-                                                    <button
-                                                        className="uk-button uk-button-primary uk-button-small"
-                                                        onClick={() => navigate(`/usuarios/${u.id}`)}
-                                                    >
+                                                    <button className="uk-button uk-button-primary uk-button-small"
+                                                        onClick={() => navigate(`/usuarios/${u.id}`)}>
                                                         <span uk-icon="pencil"></span>
                                                     </button>
                                                 </td>
                                             </tr>
                                         ))}
                                         {users.length === 0 && (
-                                            <tr>
-                                                <td colSpan="7" className="uk-text-center uk-text-muted">
-                                                    {searchTerm ? 'No se encontraron usuarios con esa búsqueda.' : 'No hay usuarios.'}
-                                                </td>
-                                            </tr>
+                                            <tr><td colSpan="7" className="uk-text-center uk-text-muted">
+                                                {searchTerm ? 'Sin resultados.' : 'No hay usuarios.'}
+                                            </td></tr>
                                         )}
                                         </tbody>
                                     </table>
+                                </div>
+
+                                {/* Cards móvil */}
+                                <div className="uk-hidden@m">
+                                    {users.map(u => (
+                                        <div key={u.id} onClick={() => navigate(`/usuarios/${u.id}`)}
+                                             style={{
+                                                 padding: '12px 0', borderBottom: '1px solid #e2e8f0',
+                                                 cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                                             }}>
+                                            <div>
+                                                <div style={{fontWeight: 600, fontSize: '0.9rem'}}>
+                                                    {u.firstName} {u.lastName}
+                                                    {u.autoMonthlyInvoice && (
+                                                        <span className="uk-label uk-label-primary"
+                                                            style={{fontSize: '0.55em', marginLeft: 4, verticalAlign: 'middle'}}>
+                                                            Auto-fact.
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div style={{fontSize: '0.8rem', color: '#64748b', marginTop: 2}}>
+                                                    {u.phone || u.email || '-'}
+                                                </div>
+                                            </div>
+                                            <div style={{display: 'flex', alignItems: 'center', gap: 6}}>
+                                                <span className={`uk-label ${{
+                                                    admin: 'uk-label-danger', cashier: 'uk-label-warning',
+                                                    worker: 'uk-label-success', customer: 'uk-label-default'
+                                                }[u.role]}`} style={{fontSize: '0.6rem'}}>
+                                                    {{admin:'Admin',cashier:'Cajero',worker:'Trabajador',customer:'Cliente'}[u.role]}
+                                                </span>
+                                                <span uk-icon="icon: chevron-right; ratio: 0.8" style={{color: '#94a3b8'}}></span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {users.length === 0 && (
+                                        <div style={{textAlign: 'center', padding: 20, color: '#94a3b8'}}>
+                                            {searchTerm ? 'Sin resultados.' : 'No hay usuarios.'}
+                                        </div>
+                                    )}
                                 </div>
 
                                 <div id="offcanvas-user-form" uk-offcanvas="overlay: true; mode: slide; flip: true">
@@ -225,9 +239,6 @@ function Users({token}) {
                             </>
                         )}
                     </div>
-                </div>
-
-
             </div>
         </div>
     );

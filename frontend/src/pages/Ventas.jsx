@@ -11,23 +11,8 @@ import {useNavigate} from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import VentaRow from '../components/VentaRow.jsx';
 import PageToolbar from '../components/PageToolbar.jsx';
-
-function getPrimerDiaMes() {
-    const hoy = new Date();
-    return hoy.toISOString().slice(0, 8) + '01';
-}
-
-function getUltimoDiaMes() {
-    const hoy = new Date();
-    const ultimo = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0);
-    const year = ultimo.getFullYear();
-    const month = String(ultimo.getMonth() + 1).padStart(2, '0');
-    const day = String(ultimo.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-}
-
-
-// formatEUR importado desde utils/format.js
+import DateRangeSelector from '../components/DateRangeSelector.jsx';
+import { getPrimerDiaMes, getUltimoDiaMes } from '../utils/dates.js';
 
 export default function Ventas({token}) {
     const [fechaInicio, setFechaInicio] = useState(() => localStorage.getItem('ventas_fechaInicio') || getPrimerDiaMes());
@@ -174,15 +159,6 @@ export default function Ventas({token}) {
         XLSX.writeFile(wb, filename);
     };
 
-    // Al cambiar las fechas
-    const handleFechaInicio = (e) => {
-        setFechaInicio(e.target.value);
-        localStorage.setItem('ventas_fechaInicio', e.target.value);
-    };
-    const handleFechaFin = (e) => {
-        setFechaFin(e.target.value);
-        localStorage.setItem('ventas_fechaFin', e.target.value);
-    };
 
     const navigate = useNavigate();
 
@@ -429,16 +405,17 @@ export default function Ventas({token}) {
         </div>
 
         <div className="uk-card uk-card-default uk-card-body">
-            {/* Fechas y acciones */}
-            <div style={{display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'flex-end', marginBottom: 12}}>
-                <div>
-                    <label className="uk-form-label">Desde</label>
-                    <input className="uk-input" type="date" value={fechaInicio} onChange={handleFechaInicio} style={{width: 150}} />
-                </div>
-                <div>
-                    <label className="uk-form-label">Hasta</label>
-                    <input className="uk-input" type="date" value={fechaFin} onChange={handleFechaFin} style={{width: 150}} />
-                </div>
+            <DateRangeSelector
+                from={fechaInicio}
+                to={fechaFin}
+                onChange={({ from, to }) => {
+                    setFechaInicio(from);
+                    setFechaFin(to);
+                    localStorage.setItem('ventas_fechaInicio', from);
+                    localStorage.setItem('ventas_fechaFin', to);
+                }}
+            />
+            <div style={{display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 10}}>
                 <div style={{flex: 1}}></div>
                 <div style={{display: 'flex', flexWrap: 'wrap', gap: 4}}>
                     {selectedOrders.length > 0 && (

@@ -131,6 +131,31 @@ export default async function cashRoutes(fastify) {
         return {closure, movesIncluded: moves.length};
     });
 
+    // GET /api/cash/closures/:id/movements
+    fastify.get('/closures/:id/movements', async (request, reply) => {
+        const id = Number(request.params.id);
+        if (!Number.isInteger(id)) return reply.code(400).send({error: 'id inválido'});
+
+        const closure = await prisma.cashClosure.findUnique({
+            where: {id},
+            include: {
+                user: {select: {id: true, firstName: true, lastName: true}},
+            }
+        });
+        if (!closure) return reply.code(404).send({error: 'Cierre no encontrado'});
+
+        const movements = await prisma.cashMovement.findMany({
+            where: {closureId: id},
+            orderBy: {movementat: 'asc'},
+            include: {
+                personUser: {select: {id: true, firstName: true, lastName: true}},
+                order: {select: {id: true, orderNum: true}},
+            },
+        });
+
+        return {closure, movements};
+    });
+
     // GET /api/cash/closures
     fastify.get('/closures', async (request) => {
         const {from, to} = request.query || {};
@@ -140,6 +165,12 @@ export default async function cashRoutes(fastify) {
             if (from) where.closedat.gte = new Date(from);
             if (to) where.closedat.lte = new Date(to);
         }
-        return prisma.cashClosure.findMany({where, orderBy: {closedat: 'desc'}});
+        return prisma.cashClosure.findMany({
+            where,
+            orderBy: {closedat: 'desc'},
+            include: {
+                user: {select: {id: true, firstName: true, lastName: true}},
+            }
+        });
     });
 }
