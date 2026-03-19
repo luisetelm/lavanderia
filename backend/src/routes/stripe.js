@@ -61,7 +61,7 @@ export default async function (fastify) {
                     orderId: type === 'order' ? Number(id) : null,
                     invoiceId: type === 'invoice' ? BigInt(id) : null,
                     clientId: clientId,
-                    recordedBy: req.user?.id || null,
+                    recordedBy: req.user?.userId || null,
                     note: `Checkout Stripe - ${description}`,
                 }
             });
@@ -130,7 +130,7 @@ export default async function (fastify) {
                     orderId: type === 'order' ? Number(id) : null,
                     invoiceId: type === 'invoice' ? BigInt(id) : null,
                     clientId: clientId,
-                    recordedBy: req.user?.id || null,
+                    recordedBy: req.user?.userId || null,
                     note: `Enlace de pago - ${description}`,
                 }
             });

@@ -1,6 +1,7 @@
 import React, {useState, useEffect} from 'react';
 import {Routes, Route, NavLink, Navigate, useLocation} from 'react-router-dom';
 import Login from './pages/Login';
+import Dashboard from './pages/Dashboard';
 import POS from './pages/POS';
 import Tasks from './pages/Tasks';
 import Inventory from './pages/Inventory';
@@ -130,6 +131,7 @@ export default function App() {
                         </button>
                     </div>
                     <ul className="sidebar-nav">
+                        <li><NavLink to="/dashboard"><span uk-icon="icon: home; ratio: 0.9"></span> Dashboard</NavLink></li>
                         <li><NavLink to="/pos"><span uk-icon="icon: cart; ratio: 0.9"></span> POS</NavLink></li>
                         <li><NavLink to="/productos"><span uk-icon="icon: grid; ratio: 0.9"></span> Productos</NavLink></li>
                         <li><NavLink to="/tareas"><span uk-icon="icon: list; ratio: 0.9"></span> Tareas</NavLink></li>
@@ -157,7 +159,8 @@ export default function App() {
             <main className="app-main">
                 <ErrorBoundary>
                 <Routes>
-                    <Route path="/" element={<Navigate to="/pos" replace/>}/>
+                    <Route path="/" element={<Navigate to="/dashboard" replace/>}/>
+                    <Route path="/dashboard" element={<Dashboard token={token} user={user}/>}/>
                     <Route path="/pos" element={<POS token={token} user={user}/>}/>
                     <Route path="/productos" element={<Inventory token={token}/>}/>
                     <Route path="/tareas" element={<Tasks token={token} user={user}/>}/>

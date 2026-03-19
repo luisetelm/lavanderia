@@ -2,6 +2,7 @@
 //import nextOrderNum from '../utils/generateOrderNum.js';
 import {isValidSpanishPhone} from '../utils/validatePhone.js';
 import {sendSMScustomer} from "../services/twilio.js";
+import {sendTextMessage as sendWhatsApp} from "../services/whatsapp.js";
 import {crearFactura} from "./invoices.js";
 
 export default async function (fastify, opts) {
@@ -239,7 +240,7 @@ export default async function (fastify, opts) {
                     include: {product: true},
                 }, client: {
                     select: {
-                        id: true, firstName: true, lastName: true, email: true, phone: true,
+                        id: true, firstName: true, lastName: true, email: true, phone: true, notifyChannel: true,
                     },
                 },
             },
@@ -253,37 +254,43 @@ export default async function (fastify, opts) {
             const clientName = client.firstName || '';
             const message = `Hola ${clientName}, tu pedido ${orderNum} está listo para recoger. Consulta nuestro horario de apertura: https://share.google/d4uMKGaiCaBywfRt2`;
 
-            // SMS
-            try {
-                const sms = await sendSMScustomer(client.phone, message);
-                await prisma.notification.create({
-                    data: {
-                        orderid: updated.id,
-                        type: 'sms',
-                        recipient: client.phone,
-                        content: message,
-                        status: 'sent',
-                        statusCode: parseInt(sms.code),
-                        subid: sms.subid,
-                        statusMessage: sms.message,
-                    },
-                });
-            } catch (err) {
-                const sms = await sendSMScustomer(client.phone, message);
-                await prisma.notification.create({
-                    data: {
-                        orderid: updated.id,
-                        type: 'sms',
-                        recipient: client.phone,
-                        content: message,
-                        status: 'failed',
-                        statusCode: parseInt(sms.code),
-                        subid: sms.subid,
-                        statusMessage: sms.message,
-                    },
-                });
-            }
+            // Guardar preferencia de canal del cliente
+            const channel = sendSMS === 'whatsapp' ? 'whatsapp' : 'sms';
+            await prisma.user.update({ where: { id: client.id }, data: { notifyChannel: channel } });
 
+            if (channel === 'whatsapp') {
+                try {
+                    const phone = `34${client.phone}`;
+                    await sendWhatsApp(phone, message);
+                    await prisma.notification.create({
+                        data: { orderid: updated.id, type: 'whatsapp', recipient: client.phone, content: message, status: 'sent' },
+                    });
+                } catch (err) {
+                    console.error('Error enviando WhatsApp ready:', err);
+                    await prisma.notification.create({
+                        data: { orderid: updated.id, type: 'whatsapp', recipient: client.phone, content: message, status: 'failed', statusMessage: err.message?.slice(0, 255) },
+                    });
+                }
+            } else {
+                try {
+                    const sms = await sendSMScustomer(client.phone, message);
+                    await prisma.notification.create({
+                        data: { orderid: updated.id, type: 'sms', recipient: client.phone, content: message, status: 'sent', statusCode: parseInt(sms.code), subid: sms.subid, statusMessage: sms.message },
+                    });
+                } catch (err) {
+                    console.error('Error enviando SMS ready:', err);
+                    try {
+                        const sms = await sendSMScustomer(client.phone, message);
+                        await prisma.notification.create({
+                            data: { orderid: updated.id, type: 'sms', recipient: client.phone, content: message, status: 'failed', statusCode: parseInt(sms.code), subid: sms.subid, statusMessage: sms.message },
+                        });
+                    } catch (retryErr) {
+                        await prisma.notification.create({
+                            data: { orderid: updated.id, type: 'sms', recipient: client.phone, content: message, status: 'failed' },
+                        });
+                    }
+                }
+            }
         }
 
         if (status === 'collected' && updated.client?.phone && sendSMS) {
@@ -291,20 +298,35 @@ export default async function (fastify, opts) {
             const clientName = `${client.firstName || ''} ${client.lastName || ''}`.trim();
             const message = `Hola ${clientName}, esperamos que todo haya ido perfecto en Tinte y Burbuja 😊. Si puedes, déjanos una reseña: https://g.page/r/Cau9_6UCpQ8ZEBI/review`;
 
-            // SMS
-            try {
-                await sendSMScustomer(client.phone, message);
-                await prisma.notification.create({
-                    data: {
-                        orderid: updated.id, type: 'sms', recipient: client.phone, content: message, status: 'sent',
-                    },
-                });
-            } catch (err) {
-                await prisma.notification.create({
-                    data: {
-                        orderid: updated.id, type: 'sms', recipient: client.phone, content: message, status: 'failed',
-                    },
-                });
+            // Guardar preferencia de canal del cliente
+            const channel = sendSMS === 'whatsapp' ? 'whatsapp' : 'sms';
+            await prisma.user.update({ where: { id: client.id }, data: { notifyChannel: channel } });
+
+            if (channel === 'whatsapp') {
+                try {
+                    const phone = `34${client.phone}`;
+                    await sendWhatsApp(phone, message);
+                    await prisma.notification.create({
+                        data: { orderid: updated.id, type: 'whatsapp', recipient: client.phone, content: message, status: 'sent' },
+                    });
+                } catch (err) {
+                    console.error('Error enviando WhatsApp collected:', err);
+                    await prisma.notification.create({
+                        data: { orderid: updated.id, type: 'whatsapp', recipient: client.phone, content: message, status: 'failed', statusMessage: err.message?.slice(0, 255) },
+                    });
+                }
+            } else {
+                try {
+                    await sendSMScustomer(client.phone, message);
+                    await prisma.notification.create({
+                        data: { orderid: updated.id, type: 'sms', recipient: client.phone, content: message, status: 'sent' },
+                    });
+                } catch (err) {
+                    console.error('Error enviando SMS collected:', err);
+                    await prisma.notification.create({
+                        data: { orderid: updated.id, type: 'sms', recipient: client.phone, content: message, status: 'failed' },
+                    });
+                }
             }
 
         }
@@ -374,7 +396,7 @@ export default async function (fastify, opts) {
                         status: 'completed',
                         orderId: orderId,
                         clientId: order.clientId,
-                        recordedBy: req.user?.id || null,
+                        recordedBy: req.user?.userId || null,
                         note: `Pago pedido #${updatedOrder.orderNum}`,
                     }
                 });
@@ -511,7 +533,7 @@ export default async function (fastify, opts) {
                             }
                         }
                     },
-                    client: {select: {id: true, firstName: true, lastName: true, email: true, phone: true}},
+                    client: {select: {id: true, firstName: true, lastName: true, email: true, phone: true, notifyChannel: true}},
                     notification: {select: {id: true, type: true, sentAt: true, status: true, content: true}},
                     invoiceTickets: {
                         include: {

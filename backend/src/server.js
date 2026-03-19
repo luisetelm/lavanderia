@@ -16,6 +16,7 @@ import portalRoutes from './routes/portal.js';
 import whatsappRoutes, { whatsappWebhookRoutes } from './routes/whatsapp.js';
 import messagesRoutes from './routes/messages.js';
 import googleRoutes from './routes/google.js';
+import dashboardRoutes from './routes/dashboard.js';
 import fastifyStatic from '@fastify/static';
 import path from 'path';
 import cron from 'node-cron';
@@ -78,6 +79,7 @@ app.register(whatsappRoutes, {prefix: '/api/whatsapp'});
 app.register(whatsappWebhookRoutes, {prefix: '/api/whatsapp'});
 app.register(messagesRoutes, {prefix: '/api/messages'});
 app.register(googleRoutes, {prefix: '/api/google'});
+app.register(dashboardRoutes, {prefix: '/api/dashboard'});
 
 // Servir la carpeta de PDFs de facturas de forma pública
 app.register(fastifyStatic, {

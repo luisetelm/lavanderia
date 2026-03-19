@@ -12,6 +12,7 @@ import * as XLSX from 'xlsx';
 import VentaRow from '../components/VentaRow.jsx';
 import PageToolbar from '../components/PageToolbar.jsx';
 import DateRangeSelector from '../components/DateRangeSelector.jsx';
+import Pagination from '../components/Pagination.jsx';
 import { getPrimerDiaMes, getUltimoDiaMes } from '../utils/dates.js';
 
 export default function Ventas({token}) {
@@ -36,6 +37,9 @@ export default function Ventas({token}) {
     // Estado para batch collect
     const [collectMethod, setCollectMethod] = useState('transfer');
     const [showBatchCollect, setShowBatchCollect] = useState(false);
+    // Paginación
+    const PAGE_SIZE = 50;
+    const [page, setPage] = useState(0);
 
     // Helper: normalizar una orden para que siempre tenga invoiceTickets como array
     const normalizeOrder = (o) => ({
@@ -226,6 +230,23 @@ export default function Ventas({token}) {
         return inv && inv.paid !== true && inv.paymentStatus !== 'paid';
     });
     const totalSinCobrar = facturasSinCobrar.reduce((sum, v) => sum + (Number(v.total) || 0), 0);
+
+    // Paginación sobre los datos filtrados
+    const totalPages = Math.ceil(ventasFiltradas.length / PAGE_SIZE);
+    const safePage = Math.min(page, Math.max(totalPages - 1, 0));
+    const ventasPaginadas = ventasFiltradas.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
+    const paginationMeta = {
+        page: safePage,
+        totalPages,
+        total: ventasFiltradas.length,
+        hasPrevPage: safePage > 0,
+        hasNextPage: safePage < totalPages - 1,
+    };
+
+    // Resetear página al cambiar filtros o fechas
+    useEffect(() => {
+        setPage(0);
+    }, [paidFilter, invoiceTypeFilter, methodFilter, onlyPositive, invoiceUnpaidFilter, fechaInicio, fechaFin]);
 
 
     useEffect(() => {
@@ -489,6 +510,9 @@ export default function Ventas({token}) {
                 <span className="uk-badge uk-badge-muted">No hay ventas en el rango seleccionado.</span>
             </div>) : (
                 <>
+                    <div style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: 6 }}>
+                        Mostrando {safePage * PAGE_SIZE + 1}–{Math.min((safePage + 1) * PAGE_SIZE, ventasFiltradas.length)} de {ventasFiltradas.length} ventas
+                    </div>
                     <div className="uk-overflow-auto">
                     <table className="uk-table uk-table-divider uk-table-small" style={{minWidth: 700}}>
                         <thead>
@@ -496,21 +520,24 @@ export default function Ventas({token}) {
                             <th>
                                 <input
                                     type="checkbox"
-                                    checked={selectedOrders.length > 0 && ventasFiltradas.filter(v => canSelectOrder(v)).every(v => selectedOrders.includes(v.id))}
+                                    checked={selectedOrders.length > 0 && ventasPaginadas.filter(v => canSelectOrder(v)).every(v => selectedOrders.includes(v.id))}
                                     onChange={e => {
                                         if (e.target.checked) {
-                                            const validIds = ventasFiltradas.filter(v => canSelectOrder(v)).map(v => v.id);
-                                            setSelectedOrders(validIds);
-                                            if (validIds.length > 0) {
-                                                const first = ventasFiltradas.find(v => v.id === validIds[0]);
+                                            const validIds = ventasPaginadas.filter(v => canSelectOrder(v)).map(v => v.id);
+                                            setSelectedOrders(prev => [...new Set([...prev, ...validIds])]);
+                                            if (validIds.length > 0 && !selectionCriteria) {
+                                                const first = ventasPaginadas.find(v => v.id === validIds[0]);
                                                 setSelectionCriteria({
                                                     clientId: first.client?.id,
                                                     paid: first.paid
                                                 });
                                             }
                                         } else {
-                                            setSelectedOrders([]);
-                                            setSelectionCriteria(null);
+                                            const pageIds = new Set(ventasPaginadas.map(v => v.id));
+                                            setSelectedOrders(prev => prev.filter(id => !pageIds.has(id)));
+                                            if (selectedOrders.every(id => pageIds.has(id))) {
+                                                setSelectionCriteria(null);
+                                            }
                                         }
                                     }}
                                 />
@@ -525,7 +552,7 @@ export default function Ventas({token}) {
                         </tr>
                         </thead>
                         <tbody>
-                        {ventasFiltradas.map((v) => (
+                        {ventasPaginadas.map((v) => (
                             <VentaRow
                                 key={v.id}
                                 venta={v}
@@ -541,6 +568,12 @@ export default function Ventas({token}) {
                         </tbody>
                     </table>
                     </div>
+                    {totalPages > 1 && (
+                        <Pagination
+                            meta={paginationMeta}
+                            onPageChange={(p) => setPage(p - 1)}
+                        />
+                    )}
                 </>
             )}
         </div>

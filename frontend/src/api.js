@@ -262,11 +262,18 @@ export function portalRequestAccess(phone) {
 }
 
 export function portalVerifyToken(magicToken) {
-    return request(`/portal/verify/${magicToken}`, null);
+    return request(`/portal/verify?token=${encodeURIComponent(magicToken)}`, null);
 }
 
 export function portalFetchMe(token) {
     return request('/portal/me', token);
+}
+
+export function portalUpdatePreferences(token, { notifyChannel }) {
+    return request('/portal/preferences', token, {
+        method: 'PATCH',
+        body: JSON.stringify({ notifyChannel }),
+    });
 }
 
 export function portalFetchOrders(token) {
@@ -327,6 +334,11 @@ export function sendMessage(token, { clientId, channel, content, orderId }) {
 // --- Google Reviews ---
 export function fetchGoogleStatus(token) {
     return request('/google/status', token);
+}
+
+// --- Dashboard ---
+export function fetchDashboard(token) {
+    return request('/dashboard', token);
 }
 
 export function fetchGoogleReviews(token) {

@@ -106,6 +106,7 @@ export default async function (fastify, opts) {
                 codigopostal: true,
                 pais: true,
                 discount: true,
+                notifyChannel: true,
             }, orderBy: {createdAt: 'desc'}, skip, take: pageSize,
         });
 
@@ -292,6 +293,7 @@ export default async function (fastify, opts) {
             codigopostal,
             pais,
             discount,
+            notifyChannel,
         } = req.body;
         const data = {
             firstName,
@@ -317,6 +319,10 @@ export default async function (fastify, opts) {
                 return reply.status(400).send({error: 'discount debe ser un número entre 0 y 100'});
             }
             data.discount = d;
+        }
+        // Asignación de notifyChannel si viene
+        if (notifyChannel !== undefined) {
+            data.notifyChannel = ['sms', 'whatsapp', 'none'].includes(notifyChannel) ? notifyChannel : null;
         }
         if (password) {
             data.password = await hash(password, 10);
@@ -344,6 +350,7 @@ export default async function (fastify, opts) {
                     codigopostal: true,
                     pais: true,
                     discount: true,
+                    notifyChannel: true,
                 },
             });
             return user;

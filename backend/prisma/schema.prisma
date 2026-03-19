@@ -104,6 +104,7 @@ model User {
   isbigclient        Boolean        @default(false)
   autoMonthlyInvoice Boolean        @default(false)
   discount           Float          @default(0)
+  notifyChannel      String?        @db.VarChar(10) // 'sms', 'whatsapp', 'none'
   cashClosures       CashClosure[]
   personMovements    CashMovement[] @relation("person_movements")
   cashMovements      CashMovement[] @relation("user_movements")

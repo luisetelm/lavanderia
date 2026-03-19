@@ -81,9 +81,13 @@ export default async function (fastify) {
     });
 
     // Verificar token del magic link
-    fastify.get('/verify/:token', async (req, reply) => {
+    fastify.get('/verify', async (req, reply) => {
+        const token = req.query.token;
+        if (!token) {
+            return reply.code(400).send({ error: 'Token obligatorio' });
+        }
         try {
-            const payload = jwt.verify(req.params.token, process.env.JWT_SECRET);
+            const payload = jwt.verify(token, process.env.JWT_SECRET);
 
             if (payload.role !== 'portal_client') {
                 return reply.code(401).send({ error: 'Token inválido' });
@@ -98,7 +102,7 @@ export default async function (fastify) {
 
             const client = await prisma.user.findUnique({
                 where: { id: payload.id },
-                select: { id: true, firstName: true, lastName: true, email: true, phone: true }
+                select: { id: true, firstName: true, lastName: true, email: true, phone: true, notifyChannel: true }
             });
 
             return reply.send({ token: sessionToken, user: client });
@@ -135,11 +139,25 @@ export default async function (fastify) {
             select: {
                 id: true, firstName: true, lastName: true,
                 email: true, phone: true,
-                denominacionsocial: true, nif: true
+                denominacionsocial: true, nif: true,
+                notifyChannel: true
             }
         });
         if (!client) return reply.code(404).send({ error: 'Cliente no encontrado' });
         return reply.send(client);
+    });
+
+    // Actualizar preferencia de notificación
+    fastify.patch('/preferences', { preHandler: requirePortalAuth }, async (req, reply) => {
+        const { notifyChannel } = req.body || {};
+        if (!['sms', 'whatsapp', 'none'].includes(notifyChannel)) {
+            return reply.code(400).send({ error: 'Canal inválido. Usa: sms, whatsapp o none' });
+        }
+        await prisma.user.update({
+            where: { id: req.user.id },
+            data: { notifyChannel },
+        });
+        return reply.send({ ok: true, notifyChannel });
     });
 
     // Listar pedidos del cliente

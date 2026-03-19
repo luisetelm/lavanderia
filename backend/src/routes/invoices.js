@@ -847,7 +847,7 @@ export default async function (fastify) {
                         status: 'completed',
                         invoiceId: invoiceId,
                         clientId: invoice.clientId,
-                        recordedBy: req.user?.id || null,
+                        recordedBy: req.user?.userId || null,
                         note: note || `Cobro factura ${invoice.number}`,
                     }
                 });
@@ -869,7 +869,7 @@ export default async function (fastify) {
                                     amount: ticket.order.total,
                                     note: `Cobro factura ${invoice.number} - Pedido #${ticket.order.orderNum}`,
                                     orderid: ticket.ticketId,
-                                    userid: req.user?.id,
+                                    userid: req.user?.userId,
                                 }
                             });
                         }
@@ -935,7 +935,7 @@ export default async function (fastify) {
                             status: 'completed',
                             invoiceId: invoiceId,
                             clientId: invoice.clientId,
-                            recordedBy: req.user?.id || null,
+                            recordedBy: req.user?.userId || null,
                             note: `Cobro factura ${invoice.number}`,
                         }
                     });
@@ -956,7 +956,7 @@ export default async function (fastify) {
                                         amount: ticket.order.total,
                                         note: `Cobro factura ${invoice.number} - Pedido #${ticket.order.orderNum}`,
                                         orderid: ticket.ticketId,
-                                        userid: req.user?.id,
+                                        userid: req.user?.userId,
                                     }
                                 });
                             }

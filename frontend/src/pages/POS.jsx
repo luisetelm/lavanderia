@@ -6,7 +6,9 @@ import {
     payWithCard,
     payWithCash,
     fetchOrder,
-    fetchUsers, // Caja API:
+    fetchUsers,
+    updateUser,
+    // Caja API:
     fetchUnclosedCashMovements,
     fetchLastClosure,
     createCashMovement,
@@ -61,6 +63,10 @@ export default function POS({token, user}) {
     const [fechaLimite, setFechaLimite] = useState(null);
     const [isValidated, setIsValidated] = useState(false);
     const [showTicketSection, setShowTicketSection] = useState(true);
+
+    // Preferencia de notificación: se muestra si el cliente no tiene canal elegido
+    const [showNotifyPrompt, setShowNotifyPrompt] = useState(false);
+    const [pendingPayload, setPendingPayload] = useState(null);
 
     // Estado para forzar la recarga del DateCarousel
     const [dateCarouselKey, setDateCarouselKey] = useState(0);
@@ -143,8 +149,6 @@ export default function POS({token, user}) {
                         if (grouped[key]) grouped[key].push(o);
                     }
                 });
-
-                setLoadByDay(grouped);
             } catch (e) {
                 console.error('fetchLoads falló:', e);
             }
@@ -226,7 +230,7 @@ export default function POS({token, user}) {
             return {
                 productId: c.productId,
                 quantity: c.quantity,
-                unitPrice: appliedPrice // precio con tarifa y descuento ya aplicados
+                unitPrice: appliedPrice
             };
         });
 
@@ -248,6 +252,17 @@ export default function POS({token, user}) {
 
         payload.workerId = user.id;
 
+        // Si el cliente seleccionado no tiene preferencia de notificación, preguntar
+        if (selectedUser && !selectedUser.notifyChannel) {
+            setPendingPayload(payload);
+            setShowNotifyPrompt(true);
+            return;
+        }
+
+        await submitOrder(payload);
+    };
+
+    const submitOrder = async (payload) => {
         try {
             const o = await createOrder(token, payload);
             setOrder(o);
@@ -262,6 +277,23 @@ export default function POS({token, user}) {
         }
     };
 
+    const handleNotifyChoice = async (channel) => {
+        setShowNotifyPrompt(false);
+        // Guardar preferencia del cliente
+        if (selectedUser) {
+            try {
+                await updateUser(token, selectedUser.id, { notifyChannel: channel });
+                setSelectedUser(prev => ({ ...prev, notifyChannel: channel }));
+            } catch (err) {
+                console.error('Error guardando preferencia:', err);
+            }
+        }
+        // Continuar con la creación del pedido
+        if (pendingPayload) {
+            await submitOrder(pendingPayload);
+            setPendingPayload(null);
+        }
+    };
 
 
 
@@ -598,6 +630,34 @@ export default function POS({token, user}) {
             onCancelEdit={() => setEditingId(null)}
             onRemove={removeMove}
         />
+
+        {/* Prompt de preferencia de notificación */}
+        {showNotifyPrompt && (
+            <div className="uk-modal uk-open" style={{ display: 'block' }}>
+                <div className="uk-modal-dialog uk-modal-body" style={{ maxWidth: 400 }}>
+                    <h2 className="uk-modal-title" style={{ fontSize: '1.05rem', marginBottom: 4 }}>
+                        Preferencia de notificación
+                    </h2>
+                    <p style={{ fontSize: '0.82rem', color: '#64748b', margin: '0 0 16px' }}>
+                        ¿Cómo prefiere {selectedUser?.firstName} recibir avisos sobre sus pedidos?
+                    </p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                            <button className="uk-button uk-width-1-2" style={{ background: '#25D366', color: '#fff' }}
+                                onClick={() => handleNotifyChoice('whatsapp')}>WhatsApp</button>
+                            <button className="uk-button uk-button-primary uk-width-1-2"
+                                onClick={() => handleNotifyChoice('sms')}>SMS</button>
+                        </div>
+                        <button className="uk-button uk-button-default uk-width-1-1"
+                            onClick={() => handleNotifyChoice('none')}>No desea recibir avisos</button>
+                    </div>
+                    <div style={{ marginTop: 12, textAlign: 'right' }}>
+                        <button className="uk-button uk-button-link" onClick={() => { setShowNotifyPrompt(false); setPendingPayload(null); }}
+                            style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Cancelar</button>
+                    </div>
+                </div>
+            </div>
+        )}
     </div>)
         ;
 }

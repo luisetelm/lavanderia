@@ -16,6 +16,7 @@ import {
 import UIkit from 'uikit';
 import {printSaleTicket, printWashLabels} from '../utils/printUtils.js';
 import {formatEUR} from '../utils/format.js';
+import StatusChangeModal from './StatusChangeModal.jsx';
 
 // En tu componente, donde tengas el token y el ID de la factura
 
@@ -596,38 +597,14 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
                     )}
 
 
-                    {showModal && (<div id="confirm-modal" className="uk-modal uk-open" style={{display: 'block'}}>
-                        <div className="uk-modal-dialog uk-modal-body">
-                            <h2 className="uk-modal-title">
-                                {modalAction === 'ready' ? '¿Marcar como listo?' : '¿Marcar como recogido?'}
-                            </h2>
-                            <p>
-                                Indica también si quieres notificar al cliente. Al marcar como recogido, el
-                                mensaje es una petición para dejar una reseña.
-                            </p>
-                            <div className="uk-margin uk-flex uk-flex-between" uk-flex="true">
-                                <button className="uk-button uk-button-default uk-margin-small-right"
-                                        onClick={() => setShowModal(false)}>
-                                    Cancelar
-                                </button>
-                                <div className={'uk-button-group'}>
-                                    <button className="uk-button uk-button-danger"
-                                            onClick={() => executeAction(false)}>
-                                        Sin notificar
-                                    </button>
-                                    <button className="uk-button uk-button-primary"
-                                            onClick={() => executeAction(true)}>
-                                        Enviar SMS
-                                    </button>
-                                    <button className="uk-button uk-button-default"
-                                            style={{background: '#25D366', color: '#fff'}}
-                                            onClick={() => executeAction('whatsapp')}>
-                                        WhatsApp
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>)}
+                    {showModal && (
+                        <StatusChangeModal
+                            action={modalAction}
+                            clientChannel={order?.client?.notifyChannel || null}
+                            onConfirm={(sendSMS) => executeAction(sendSMS)}
+                            onCancel={() => setShowModal(false)}
+                        />
+                    )}
 
                     {(localError || error) && <div style={{color: 'red', marginTop: 8}}>{localError || error}</div>}
                 </div>
