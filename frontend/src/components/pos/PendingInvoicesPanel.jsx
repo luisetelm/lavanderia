@@ -2,14 +2,20 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { fetchUnpaidInvoices, collectInvoice } from '../../api.js';
 import { formatEUR } from '../../utils/format.js';
 
+const METHODS = [
+    { value: 'cash', label: 'Efectivo', icon: '💵' },
+    { value: 'card_pos', label: 'Tarjeta', icon: '💳' },
+    { value: 'transfer', label: 'Transferencia', icon: '🏦' },
+];
+
 export default function PendingInvoicesPanel({ show, onClose, token, onCollected }) {
     const [query, setQuery] = useState('');
     const [invoices, setInvoices] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
-    // Per-invoice collect state
+    // Id de la factura cuyo selector de método está abierto
+    const [selectingId, setSelectingId] = useState(null);
     const [collectingId, setCollectingId] = useState(null);
-    const [collectMethod, setCollectMethod] = useState('cash');
 
     const loadInvoices = useCallback(async () => {
         setLoading(true);
@@ -33,15 +39,19 @@ export default function PendingInvoicesPanel({ show, onClose, token, onCollected
         return () => clearTimeout(timer);
     }, [show, loadInvoices]);
 
-    const handleCollect = async (invoice) => {
-        if (!window.confirm(`¿Cobrar factura ${invoice.number} por ${formatEUR(Number(invoice.totalGross))}?`)) return;
+    // Cerrar selector si se cierra el panel
+    useEffect(() => {
+        if (!show) setSelectingId(null);
+    }, [show]);
+
+    const handleCollect = async (invoice, method) => {
         setCollectingId(invoice.id);
         setError('');
         try {
-            await collectInvoice(token, invoice.id, { method: collectMethod });
-            // Remove from list
+            await collectInvoice(token, invoice.id, { method });
             setInvoices(prev => prev.filter(i => i.id !== invoice.id));
             setCollectingId(null);
+            setSelectingId(null);
             onCollected?.();
         } catch (e) {
             console.error('Error cobrando factura:', e);
@@ -85,36 +95,6 @@ export default function PendingInvoicesPanel({ show, onClose, token, onCollected
                 />
             </div>
 
-            {/* Método de cobro global */}
-            <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                marginBottom: 12,
-                padding: '8px 10px',
-                background: '#f8fafc',
-                borderRadius: 6,
-                fontSize: '0.85rem',
-            }}>
-                <strong style={{ whiteSpace: 'nowrap' }}>Método:</strong>
-                {[
-                    { value: 'cash', label: 'Efectivo' },
-                    { value: 'card_pos', label: 'Tarjeta' },
-                    { value: 'transfer', label: 'Transferencia' },
-                ].map(opt => (
-                    <label key={opt.value} style={{ display: 'flex', alignItems: 'center', gap: 3, cursor: 'pointer' }}>
-                        <input
-                            type="radio"
-                            name="pending-collect-method"
-                            value={opt.value}
-                            checked={collectMethod === opt.value}
-                            onChange={() => setCollectMethod(opt.value)}
-                        />
-                        {opt.label}
-                    </label>
-                ))}
-            </div>
-
             {error && (
                 <div className="uk-alert-danger" style={{ padding: '8px 12px', marginBottom: 8, borderRadius: 4 }}>
                     {error}
@@ -139,6 +119,7 @@ export default function PendingInvoicesPanel({ show, onClose, token, onCollected
                             const orders = (inv.invoiceTickets || [])
                                 .map(t => t.order?.orderNum)
                                 .filter(Boolean);
+                            const isSelecting = selectingId === inv.id;
                             const isCollecting = collectingId === inv.id;
 
                             return (
@@ -171,16 +152,62 @@ export default function PendingInvoicesPanel({ show, onClose, token, onCollected
                                             <div style={{ fontWeight: 700, fontSize: '1rem', marginBottom: 4 }}>
                                                 {formatEUR(Number(inv.totalGross))}
                                             </div>
-                                            <button
-                                                className="uk-button uk-button-primary uk-button-small"
-                                                onClick={() => handleCollect(inv)}
-                                                disabled={isCollecting}
-                                                type="button"
-                                            >
-                                                {isCollecting ? 'Cobrando...' : 'Cobrar'}
-                                            </button>
+                                            {!isSelecting ? (
+                                                <button
+                                                    className="uk-button uk-button-primary uk-button-small"
+                                                    onClick={() => setSelectingId(inv.id)}
+                                                    disabled={isCollecting}
+                                                    type="button"
+                                                >
+                                                    Cobrar
+                                                </button>
+                                            ) : (
+                                                <button
+                                                    className="uk-button uk-button-default uk-button-small"
+                                                    onClick={() => setSelectingId(null)}
+                                                    type="button"
+                                                    style={{ fontSize: '0.75rem' }}
+                                                >
+                                                    Cancelar
+                                                </button>
+                                            )}
                                         </div>
                                     </div>
+
+                                    {/* Selector de método de pago inline */}
+                                    {isSelecting && (
+                                        <div style={{
+                                            marginTop: 8,
+                                            padding: '8px 10px',
+                                            background: '#f0f9ff',
+                                            borderRadius: 6,
+                                            border: '1px solid #bae6fd',
+                                            display: 'flex',
+                                            gap: 6,
+                                            justifyContent: 'center',
+                                            flexWrap: 'wrap',
+                                        }}>
+                                            {METHODS.map(m => (
+                                                <button
+                                                    key={m.value}
+                                                    className="uk-button uk-button-small"
+                                                    disabled={isCollecting}
+                                                    type="button"
+                                                    style={{
+                                                        background: '#fff',
+                                                        border: '1px solid #cbd5e1',
+                                                        borderRadius: 6,
+                                                        fontSize: '0.8rem',
+                                                        padding: '4px 12px',
+                                                        cursor: isCollecting ? 'wait' : 'pointer',
+                                                    }}
+                                                    onClick={() => handleCollect(inv, m.value)}
+                                                >
+                                                    {isCollecting ? '...' : `${m.icon} ${m.label}`}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
                                 </li>
                             );
                         })}
