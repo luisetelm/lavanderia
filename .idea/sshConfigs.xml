@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="SshConfigs">
+    <configs>
+      <sshConfig host="35.181.163.250" id="3f895297-3525-48fe-9489-4844d2f951f7" keyPath="C:\Users\luise\Downloads\LightsailDefaultKey-eu-west-3 (5).pem" port="22" nameFormat="DESCRIPTIVE" username="ubuntu" useOpenSSHConfig="true" />
+    </configs>
+  </component>
+</project>

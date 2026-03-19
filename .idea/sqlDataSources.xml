@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="DdlMappings">
+    <mapping uuid="8a4a5d80-947b-4449-b9f2-f4fdfee1a474" name="App Lavandería Mapping">
+      <data-sources db="c967c4fe-1ac9-4489-a9b2-157c2b427fa6" />
+      <scope>
+        <node kind="database" qname="lavanderia" />
+      </scope>
+    </mapping>
+  </component>
+</project>
