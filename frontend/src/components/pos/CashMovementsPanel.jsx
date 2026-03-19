@@ -101,7 +101,7 @@ export default function CashMovementsPanel({
                         </div>
                         <div>
                                         <span
-                                            className="uk-margin-small-right">{signed(m.type, Number(m.amount)).toFixed(2)} \u20ac</span>
+                                            className="uk-margin-small-right">{signed(m.type, Number(m.amount)).toFixed(2)} €</span>
                             <button className="uk-button uk-button-small"
                                     onClick={() => onStartEdit(m)} uk-icon="pencil">Editar
                             </button>

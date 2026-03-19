@@ -61,11 +61,12 @@ export default async function dashboardRoutes(fastify) {
                     },
                 }),
 
-                // 4. Pedidos pendientes de cobro (paid = false, status != cancelled)
+                // 4. Pedidos pendientes de cobro (paid = false, status != cancelled, total > 0)
                 prisma.order.findMany({
                     where: {
                         paid: false,
                         status: { not: 'cancelled' },
+                        total: { gt: 0 },
                     },
                     orderBy: { createdAt: 'desc' },
                     take: 10,

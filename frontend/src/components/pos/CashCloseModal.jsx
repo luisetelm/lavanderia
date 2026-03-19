@@ -38,20 +38,20 @@ export default function CashCloseModal({
                         <div className="uk-form-stacked">
                             <label className="uk-form-label">Apertura</label>
                             <input className="uk-input" type="text" readOnly
-                                   value={openingAmount.toFixed(2) + ' \u20ac'}/>
+                                   value={openingAmount.toFixed(2) + ' €'}/>
                         </div>
                     </div>
                     <div className="uk-width-1-2">
                         <div className="uk-form-stacked">
                             <label className="uk-form-label">Movimientos</label>
-                            <input className="uk-input" type="text" readOnly value={sumMoves.toFixed(2) + ' \u20ac'}/>
+                            <input className="uk-input" type="text" readOnly value={sumMoves.toFixed(2) + ' €'}/>
                         </div>
                     </div>
                     <div className="uk-width-1-2">
                         <div className="uk-form-stacked">
                             <label className="uk-form-label">Esperado</label>
                             <input className="uk-input" type="text" readOnly
-                                   value={expectedAmount.toFixed(2) + ' \u20ac'}/>
+                                   value={expectedAmount.toFixed(2) + ' €'}/>
                         </div>
                     </div>
                     <div className="uk-width-1-2">
@@ -64,7 +64,7 @@ export default function CashCloseModal({
                     <div className="uk-width-1-2">
                         <div className="uk-form-stacked">
                             <label className="uk-form-label">Descuadre</label>
-                            <input className="uk-input" type="text" readOnly value={diffAmount.toFixed(2) + ' \u20ac'}/>
+                            <input className="uk-input" type="text" readOnly value={diffAmount.toFixed(2) + ' €'}/>
                         </div>
                     </div>
                     <div className="uk-width-1-1">
@@ -79,17 +79,17 @@ export default function CashCloseModal({
                     <div className="uk-grid-small" uk-grid="true">
                         <div className="uk-width-1-2">Ventas
                             (efectivo): {(unclosedMoves.filter(m => m.type === 'sale_cash_in')
-                                .reduce((a, m) => a + Number(m.amount), 0)).toFixed(2)} \u20ac
+                                .reduce((a, m) => a + Number(m.amount), 0)).toFixed(2)} €
                         </div>
                         <div className="uk-width-1-2">Retiros: {(unclosedMoves.filter(m => m.type === 'withdrawal')
-                            .reduce((a, m) => a + Number(m.amount), 0)).toFixed(2)} \u20ac
+                            .reduce((a, m) => a + Number(m.amount), 0)).toFixed(2)} €
                         </div>
                         <div className="uk-width-1-2">Ingresos: {(unclosedMoves.filter(m => m.type === 'deposit')
-                            .reduce((a, m) => a + Number(m.amount), 0)).toFixed(2)} \u20ac
+                            .reduce((a, m) => a + Number(m.amount), 0)).toFixed(2)} €
                         </div>
                         <div
                             className="uk-width-1-2">Devoluciones: {(unclosedMoves.filter(m => m.type === 'refund_cash_out')
-                            .reduce((a, m) => a + Number(m.amount), 0)).toFixed(2)} \u20ac
+                            .reduce((a, m) => a + Number(m.amount), 0)).toFixed(2)} €
                         </div>
                     </div>
                     <hr/>
@@ -97,7 +97,7 @@ export default function CashCloseModal({
                     <ul className="uk-list uk-list-divider" style={{maxHeight: 160, overflow: 'auto'}}>
                         {unclosedMoves.map(m => (<li key={m.id} className="uk-flex uk-flex-between">
                             <span>{typeLabel[m.type]} {m.note ? `- ${m.note}` : ''}</span>
-                            <span>{signed(m.type, Number(m.amount)).toFixed(2)} \u20ac</span>
+                            <span>{signed(m.type, Number(m.amount)).toFixed(2)} €</span>
                         </li>))}
                         {!unclosedMoves.length && <li>Sin movimientos</li>}
                     </ul>

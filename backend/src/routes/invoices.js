@@ -765,6 +765,56 @@ export default async function (fastify) {
         }
     });
 
+    // Facturas pendientes de cobro (para POS / trabajadores)
+    fastify.get('/unpaid', async (req, reply) => {
+        try {
+            const q = (req.query.q || '').trim();
+            const pageNum = parseInt(req.query.page ?? 0, 10) || 0;
+            const pageSize = parseInt(req.query.size ?? 50, 10) || 50;
+
+            const where = {
+                OR: [
+                    { paid: false },
+                    { paid: null },
+                ],
+                paymentStatus: { not: 'paid' },
+            };
+
+            if (q) {
+                where.User = {
+                    OR: [
+                        { firstName: { contains: q, mode: 'insensitive' } },
+                        { lastName: { contains: q, mode: 'insensitive' } },
+                        { phone: { contains: q } },
+                        { denominacionsocial: { contains: q, mode: 'insensitive' } },
+                    ],
+                };
+            }
+
+            const [total, invoices] = await Promise.all([
+                prisma.invoices.count({ where }),
+                prisma.invoices.findMany({
+                    where,
+                    skip: pageNum * pageSize,
+                    take: pageSize,
+                    orderBy: { issuedAt: 'desc' },
+                    include: {
+                        User: { select: { id: true, firstName: true, lastName: true, phone: true, denominacionsocial: true } },
+                        invoiceTickets: { include: { order: { select: { id: true, orderNum: true } } } },
+                    },
+                }),
+            ]);
+
+            return reply.send(convertBigIntToString({
+                data: invoices,
+                meta: { total, page: pageNum, size: pageSize },
+            }));
+        } catch (e) {
+            console.error('Error listando facturas pendientes:', e);
+            return reply.code(500).send({ error: 'Error listando facturas pendientes' });
+        }
+    });
+
     // Obtener una factura
     fastify.get('/:id', async (req, reply) => {
         try {

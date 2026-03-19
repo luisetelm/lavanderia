@@ -29,6 +29,7 @@ import CashMovementModal from '../components/pos/CashMovementModal.jsx';
 import CashCloseModal from '../components/pos/CashCloseModal.jsx';
 import CashMovementsPanel from '../components/pos/CashMovementsPanel.jsx';
 import UserSelectorModal from '../components/pos/UserSelectorModal.jsx';
+import PendingInvoicesPanel from '../components/pos/PendingInvoicesPanel.jsx';
 
 const isValidSpanishPhone = (phone) => /^[6789]\d{8}$/.test(phone);
 
@@ -75,6 +76,7 @@ export default function POS({token, user}) {
     const [showMovementModal, setShowMovementModal] = useState(false);
     const [showCloseModal, setShowCloseModal] = useState(false);
     const [showMovesCanvas, setShowMovesCanvas] = useState(false);
+    const [showPendingInvoices, setShowPendingInvoices] = useState(false);
 
     // Caja: datos
     const [cashErr, setCashErr] = useState('');
@@ -492,6 +494,10 @@ export default function POS({token, user}) {
                         <span uk-icon="icon: list; ratio: 0.8" style={{marginRight: 4}}></span>
                         Movimientos
                     </button>
+                    <button type="button" className="uk-button uk-button-small uk-button-default" onClick={() => setShowPendingInvoices(true)}>
+                        <span uk-icon="icon: credit-card; ratio: 0.8" style={{marginRight: 4}}></span>
+                        Facturas
+                    </button>
                 </div>
             }
         />
@@ -629,6 +635,13 @@ export default function POS({token, user}) {
             onSaveEdit={saveEditMove}
             onCancelEdit={() => setEditingId(null)}
             onRemove={removeMove}
+        />
+
+        <PendingInvoicesPanel
+            show={showPendingInvoices}
+            onClose={() => setShowPendingInvoices(false)}
+            token={token}
+            onCollected={() => loadCash()}
         />
 
         {/* Prompt de preferencia de notificación */}

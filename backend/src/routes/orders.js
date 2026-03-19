@@ -192,6 +192,14 @@ export default async function (fastify, opts) {
         const data = {};
 
         if (status) {
+            // No permitir marcar como recogido si no está pagado
+            if (status === 'collected') {
+                const currentOrder = await prisma.order.findUnique({ where: { id: orderId }, select: { paid: true } });
+                if (currentOrder && !currentOrder.paid) {
+                    return reply.status(400).send({ error: 'No se puede marcar como recogido un pedido que no ha sido cobrado. Cobra primero el pedido.' });
+                }
+            }
+
             data.status = status;
             data.updatedAt = new Date();
 
@@ -666,8 +674,15 @@ export default async function (fastify, opts) {
             }, 0);
 
             // Actualizar el total del pedido
+            // Si el total queda en 0 (pedido interno/100% descuento), marcar como pagado
+            const roundedTotal = parseFloat(newOrderTotal.toFixed(2));
+            const updateData = { total: roundedTotal };
+            if (roundedTotal === 0) {
+                updateData.paid = true;
+                updateData.paymentMethod = 'none';
+            }
             await prisma.order.update({
-                where: {id: currentLine.orderId}, data: {total: parseFloat(newOrderTotal.toFixed(2))}
+                where: {id: currentLine.orderId}, data: updateData
             });
 
             // Devolver el pedido actualizado completo

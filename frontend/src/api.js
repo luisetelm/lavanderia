@@ -253,6 +253,14 @@ export function collectInvoicesBatch(token, invoiceIds, method) {
     });
 }
 
+export function fetchUnpaidInvoices(token, { q = '', page = 0, size = 50 } = {}) {
+    const params = new URLSearchParams();
+    if (q) params.set('q', q);
+    params.set('page', page);
+    params.set('size', size);
+    return request(`/invoices/unpaid?${params}`, token);
+}
+
 // --- Portal de cliente ---
 export function portalRequestAccess(phone) {
     return request('/portal/request-access', null, {

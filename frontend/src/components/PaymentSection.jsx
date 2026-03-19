@@ -559,7 +559,7 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
                         Marcar como listo
                     </button>)}
 
-                    {order.status === 'ready' && (<button
+                    {order.status === 'ready' && order.paid && (<button
                         type="button"
                         className="uk-button uk-button-default uk-width-1-1@l"
                         onClick={() => showConfirmModal('collected')}
@@ -568,7 +568,11 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
                         Marcar como recogido
                     </button>)}
 
-                    {console.log(order)}
+                    {order.status === 'ready' && !order.paid && (
+                        <p style={{ fontSize: '0.8rem', color: '#f59e0b', margin: '4px 0' }}>
+                            ⚠️ Cobra el pedido antes de marcar como recogido.
+                        </p>
+                    )}
 
                     {!order.paid && (<button
                         className="uk-button uk-button-danger uk-width-1-1@l"
