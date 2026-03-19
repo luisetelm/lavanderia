@@ -1,6 +1,31 @@
 import jwt from 'jsonwebtoken';
 import { sendSMScustomer } from '../services/twilio.js';
 
+/**
+ * Normaliza un teléfono al formato de 9 dígitos español (sin prefijo)
+ * para que coincida con el formato almacenado en la BD.
+ * Acepta: 612345678, +34612345678, 34612345678, 0034612345678
+ */
+function normalizePhoneForDB(phone) {
+    const cleaned = phone.replace(/[\s\-().]/g, '');  // quitar espacios, guiones, paréntesis, puntos
+    const digits = cleaned.replace(/\D/g, '');            // solo dígitos
+
+    // Si empieza por 0034 (prefijo internacional)
+    if (digits.startsWith('0034') && digits.length === 13) {
+        return digits.slice(4);
+    }
+    // Si empieza por 34 y tiene 11 dígitos
+    if (digits.startsWith('34') && digits.length === 11) {
+        return digits.slice(2);
+    }
+    // Si ya son 9 dígitos españoles
+    if (/^[6789]\d{8}$/.test(digits)) {
+        return digits;
+    }
+    // Devolver tal cual si no coincide con ningún patrón
+    return cleaned;
+}
+
 export default async function (fastify) {
     const prisma = fastify.prisma;
 
@@ -12,16 +37,23 @@ export default async function (fastify) {
             return reply.code(400).send({ error: 'Teléfono obligatorio' });
         }
 
-        // Buscar cliente por teléfono
+        // Normalizar el teléfono al formato de la BD (9 dígitos sin prefijo)
+        const normalizedPhone = normalizePhoneForDB(phone);
+        console.log(`[Portal] Acceso solicitado — input: "${phone}" → normalizado: "${normalizedPhone}"`);
+
+        // Buscar cliente por teléfono (coincidencia exacta con formato normalizado)
         const client = await prisma.user.findFirst({
-            where: { phone, role: 'customer' },
+            where: { phone: normalizedPhone, role: 'customer' },
             select: { id: true, firstName: true, phone: true }
         });
 
         if (!client) {
+            console.warn(`[Portal] No se encontró cliente con teléfono "${normalizedPhone}" y role "customer"`);
             // No revelar si el usuario existe o no (seguridad)
             return reply.send({ ok: true, message: 'Si existe una cuenta con ese teléfono, recibirás un SMS con el enlace de acceso.' });
         }
+
+        console.log(`[Portal] Cliente encontrado: id=${client.id}, nombre=${client.firstName}`);
 
         // Generar JWT de portal (24h de expiración)
         const portalToken = jwt.sign(
@@ -30,18 +62,19 @@ export default async function (fastify) {
             { expiresIn: '24h' }
         );
 
-        const baseUrl = process.env.APP_URL || 'https://app.tinteyburbuja.es';
+        const baseUrl = process.env.APP_URL || 'https://app.tinteyburbuja.com';
         const link = `${baseUrl}/portal/verify/${portalToken}`;
 
         // Enviar SMS con el enlace
         try {
-            await sendSMScustomer(
+            const result = await sendSMScustomer(
                 client.phone,
                 `Hola ${client.firstName}, accede a tu portal de cliente de Tinte y Burbuja: ${link}`
             );
+            console.log('[Portal] SMS enviado correctamente:', JSON.stringify(result));
         } catch (err) {
-            console.error('[Portal] Error enviando SMS:', err);
-            // No fallar - el link se ha generado igualmente
+            console.error('[Portal] ERROR enviando SMS:', err?.message || err);
+            return reply.code(500).send({ error: 'Error al enviar el SMS. Inténtalo de nuevo más tarde.' });
         }
 
         return reply.send({ ok: true, message: 'Si existe una cuenta con ese teléfono, recibirás un SMS con el enlace de acceso.' });
@@ -197,7 +230,7 @@ export default async function (fastify) {
         }
 
         let amount, description;
-        const baseUrl = process.env.APP_URL || 'https://app.tinteyburbuja.es';
+        const baseUrl = process.env.APP_URL || 'https://app.tinteyburbuja.com';
 
         if (type === 'order') {
             const order = await prisma.order.findFirst({

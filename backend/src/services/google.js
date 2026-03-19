@@ -4,7 +4,7 @@
  * Env vars:
  *   GOOGLE_CLIENT_ID       - OAuth2 Client ID
  *   GOOGLE_CLIENT_SECRET   - OAuth2 Client Secret
- *   GOOGLE_REDIRECT_URI    - OAuth2 redirect (e.g. https://app.tinteyburbuja.es/api/google/callback)
+ *   GOOGLE_REDIRECT_URI    - OAuth2 redirect (e.g. https://app.tinteyburbuja.com/api/google/callback)
  *   GOOGLE_ACCOUNT_ID      - Google Business account ID
  *   GOOGLE_LOCATION_ID     - Google Business location ID
  *

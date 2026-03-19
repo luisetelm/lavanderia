@@ -23,7 +23,7 @@ Guía paso a paso para desplegar Tinte y Burbuja en AWS Lightsail con PostgreSQL
 
 1. Lightsail > Networking > **Create static IP**
 2. Asociar a `lavanderia-app`
-3. En tu proveedor DNS: `app.tinteyburbuja.es` → esta IP
+3. En tu proveedor DNS: `app.tinteyburbuja.com` → esta IP
 
 ### Puertos del firewall
 
@@ -152,7 +152,7 @@ DATABASE_URL=postgresql://lavanderia:TU_PASSWORD_SEGURA@localhost:5432/lavanderi
 JWT_SECRET=genera-un-string-aleatorio-de-64-caracteres
 
 PORT=4000
-APP_URL=https://app.tinteyburbuja.es
+APP_URL=https://app.tinteyburbuja.com
 
 # Email
 FROM_EMAIL=hola@tinteyburbuja.com
@@ -175,7 +175,7 @@ STRIPE_WEBHOOK_SECRET=whsec_...
 # Google Reviews (cuando lo configures)
 #GOOGLE_CLIENT_ID=
 #GOOGLE_CLIENT_SECRET=
-#GOOGLE_REDIRECT_URI=https://app.tinteyburbuja.es/api/google/callback
+#GOOGLE_REDIRECT_URI=https://app.tinteyburbuja.com/api/google/callback
 #GOOGLE_ACCOUNT_ID=
 #GOOGLE_LOCATION_ID=
 EOF
@@ -223,14 +223,14 @@ sudo nginx -t
 sudo systemctl restart nginx
 ```
 
-Verificar: `http://app.tinteyburbuja.es` debería cargar (sin SSL aún).
+Verificar: `http://app.tinteyburbuja.com` debería cargar (sin SSL aún).
 
 ---
 
 ## Paso 6: SSL con Let's Encrypt
 
 ```bash
-sudo certbot --nginx -d app.tinteyburbuja.es
+sudo certbot --nginx -d app.tinteyburbuja.com
 ```
 
 Seguir instrucciones (email, aceptar TOS, redirigir HTTP→HTTPS).
@@ -270,14 +270,14 @@ Con HTTPS activo, configurar:
 
 ### Stripe
 Dashboard > Developers > Webhooks > Add endpoint:
-- URL: `https://app.tinteyburbuja.es/api/stripe/webhook`
+- URL: `https://app.tinteyburbuja.com/api/stripe/webhook`
 - Eventos: `checkout.session.completed`, `payment_intent.payment_failed`
 - Copiar webhook secret → `.env` → `STRIPE_WEBHOOK_SECRET`
 - Reiniciar: `pm2 restart lavanderia`
 
 ### WhatsApp (cuando lo actives)
 Meta Business > WhatsApp > Configuration:
-- Callback URL: `https://app.tinteyburbuja.es/api/whatsapp/webhook`
+- Callback URL: `https://app.tinteyburbuja.com/api/whatsapp/webhook`
 - Verify token: el de `.env` → `WHATSAPP_VERIFY_TOKEN`
 
 ---
@@ -330,8 +330,8 @@ df -h
 
 ## Verificación post-deploy
 
-1. `https://app.tinteyburbuja.es` → Login
-2. `https://app.tinteyburbuja.es/portal/login` → Portal cliente
+1. `https://app.tinteyburbuja.com` → Login
+2. `https://app.tinteyburbuja.com/portal/login` → Portal cliente
 3. Login → POS funcional, crear pedido, pagar
 4. Ventas → Filtros, facturar, cobrar
 5. `pm2 logs lavanderia` → Sin errores

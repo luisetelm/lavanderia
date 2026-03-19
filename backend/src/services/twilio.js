@@ -25,23 +25,36 @@ const formatToE164 = (phoneNumber) => {
 };
 
 export async function sendSMScustomer(to, body, senderName = 'LAVANDERIA') {
-    try {
-        console.log('Enviando SMS a:', to);
-        const phone = [formatToE164(to)];
+    const formattedPhone = formatToE164(to);
+    console.log('[SMS] Enviando SMS a:', formattedPhone, '(original:', to, ')');
 
-        const username = "hola@tinteyburbuja.es";
-        const token = "zk1Y8mArOKQUtJp0lXIkGbLzvYsOJIL0";
-        const message = body;
+    const username = process.env.LABSMOBILE_USER || "hola@tinteyburbuja.es";
+    const token = process.env.LABSMOBILE_TOKEN || "zk1Y8mArOKQUtJp0lXIkGbLzvYsOJIL0";
+
+    try {
         const clientLabsMobile = new LabsMobileClient(username, token);
-        const bodySms = new LabsMobileModelTextMessage(phone, message);
+        const phone = [formattedPhone];
+        const bodySms = new LabsMobileModelTextMessage(phone, body);
         bodySms.long = 1;
         bodySms.tpoa = senderName;
-        return await clientLabsMobile.sendSms(bodySms);
+
+        const result = await clientLabsMobile.sendSms(bodySms);
+
+        // El SDK de LabsMobile NO lanza error en algunos fallos, solo retorna undefined
+        if (!result) {
+            console.error('[SMS] LabsMobile devolvió resultado vacío — revisar LabsMobile.log para más detalles');
+            throw new Error('LabsMobile devolvió un resultado vacío. Posible error de autenticación o parámetros.');
+        }
+
+        console.log('[SMS] Resultado LabsMobile:', JSON.stringify(result));
+        return result;
     } catch (error) {
         if (error instanceof ParametersException) {
-            console.log(error.message);
+            console.error('[SMS] Error de parámetros LabsMobile:', error.message);
         } else if (error instanceof RestException) {
-            console.log(`Error: ${error.status} - ${error.message}`);
+            console.error(`[SMS] Error REST LabsMobile: ${error.status} - ${error.message}`);
+        } else {
+            console.error('[SMS] Error inesperado enviando SMS:', error.message || error);
         }
         throw error;
     }

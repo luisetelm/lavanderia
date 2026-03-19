@@ -29,6 +29,20 @@ export function login(email, password) {
     });
 }
 
+export function forgotPassword(email) {
+    return request('/auth/forgot-password', null, {
+        method: 'POST',
+        body: JSON.stringify({ email }),
+    });
+}
+
+export function resetPassword(token, password) {
+    return request('/auth/reset-password', null, {
+        method: 'POST',
+        body: JSON.stringify({ token, password }),
+    });
+}
+
 export function register(data) {
     return request('/auth/register', null, {
         method: 'POST', body: JSON.stringify(data),

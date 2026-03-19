@@ -27,5 +27,5 @@ npm run build
 
 echo ""
 echo "=== Deploy completado ==="
-echo "Verifica: https://app.tinteyburbuja.es"
+echo "Verifica: https://app.tinteyburbuja.com"
 echo "Logs:     pm2 logs lavanderia"

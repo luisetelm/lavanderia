@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { login } from '../api.js';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 
 export default function Login({ onLogin }) {
     const [email, setEmail] = useState('');
@@ -109,6 +109,12 @@ export default function Login({ onLogin }) {
                     >
                         {loading ? 'Entrando...' : 'Entrar'}
                     </button>
+
+                    <div style={{ textAlign: 'center', marginTop: 16 }}>
+                        <Link to="/forgot-password" style={{ color: '#048ABF', fontSize: '0.85rem', textDecoration: 'none' }}>
+                            ¿Olvidaste tu contraseña?
+                        </Link>
+                    </div>
                 </form>
             </div>
         </div>

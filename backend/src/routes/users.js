@@ -2,6 +2,7 @@
 import {hash} from 'bcrypt';
 
 import nodemailer from 'nodemailer';
+import { emailTemplate } from '../utils/emailTemplate.js';
 
 const emailTransporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST, port: process.env.SMTP_PORT, secure: false, requireTLS: true, auth: {
@@ -14,16 +15,35 @@ const sendWelcomeEmail = async (email, firstName, lastName, password) => {
         from: {name: process.env.FROM_NAME, address: process.env.FROM_EMAIL},
         to: email,
         subject: 'Bienvenido - Credenciales de acceso',
-        html: `
-            <h2>¡Bienvenido ${firstName} ${lastName}!</h2>
-            <p>Tu cuenta ha sido creada exitosamente.</p>
-            <p><strong>Tus credenciales de acceso son:</strong></p>
-            <ul>
-                <li><strong>Email:</strong> ${email}</li>
-                <li><strong>Contraseña:</strong> ${password}</li>
-            </ul>
-            <p>Por favor, guarda esta información en un lugar seguro.</p>
-        `
+        html: emailTemplate({
+            title: `¡Bienvenido ${firstName}!`,
+            body: `
+                <p>Hola <strong>${firstName} ${lastName}</strong>,</p>
+                <p>Tu cuenta ha sido creada exitosamente.</p>
+                <p><strong>Tus credenciales de acceso son:</strong></p>
+                <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
+                    <tr>
+                        <td style="padding: 10px 14px; background: #f1f5f9; border-radius: 6px 6px 0 0; border-bottom: 1px solid #e2e8f0;">
+                            <strong>Email:</strong>
+                        </td>
+                        <td style="padding: 10px 14px; background: #f1f5f9; border-radius: 6px 6px 0 0; border-bottom: 1px solid #e2e8f0;">
+                            ${email}
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 10px 14px; background: #f1f5f9; border-radius: 0 0 6px 6px;">
+                            <strong>Contraseña:</strong>
+                        </td>
+                        <td style="padding: 10px 14px; background: #f1f5f9; border-radius: 0 0 6px 6px;">
+                            ${password}
+                        </td>
+                    </tr>
+                </table>
+                <p style="font-size: 13px; color: #94a3b8;">
+                    Por favor, guarda esta información en un lugar seguro.
+                </p>
+            `,
+        }),
     };
 
     try {

@@ -46,7 +46,7 @@ export default async function (fastify) {
                 });
             }
 
-            const baseUrl = process.env.APP_URL || 'https://app.tinteyburbuja.es';
+            const baseUrl = process.env.APP_URL || 'https://app.tinteyburbuja.com';
             return reply.redirect(`${baseUrl}/resenas?google_connected=1`);
         } catch (e) {
             console.error('[Google] Error en callback:', e);

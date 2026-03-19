@@ -40,7 +40,7 @@ export default async function (fastify) {
                 clientId = invoice.clientId;
             }
 
-            const baseUrl = process.env.APP_URL || 'https://app.tinteyburbuja.es';
+            const baseUrl = process.env.APP_URL || 'https://app.tinteyburbuja.com';
 
             const session = await createCheckoutSession({
                 amount,
@@ -108,7 +108,7 @@ export default async function (fastify) {
                 clientId = invoice.clientId;
             }
 
-            const baseUrl = process.env.APP_URL || 'https://app.tinteyburbuja.es';
+            const baseUrl = process.env.APP_URL || 'https://app.tinteyburbuja.com';
 
             // Para el portal de cliente, la success/cancel URL apunta al portal
             const session = await createCheckoutSession({

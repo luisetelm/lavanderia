@@ -6,6 +6,7 @@ import path from 'path';
 import MailComposer from 'nodemailer/lib/mail-composer/index.js';
 import {SESClient, SendRawEmailCommand} from '@aws-sdk/client-ses';
 import nodemailer from 'nodemailer';
+import { emailTemplate } from '../utils/emailTemplate.js';
 
 // Si no se define AWS_REGION en entorno, asumimos una región por defecto razonable.
 const DEFAULT_AWS_REGION = process.env.AWS_REGION || 'eu-west-1';
@@ -201,7 +202,15 @@ async function convertirSimplificadaANormal(prisma, invoiceId, orderIds) {
                 from: {name: FROM_NAME || 'Tinte y Burbuja', address: FROM_EMAIL},
                 to: [cliente.email, 'hola@tinteyburbuja.com'],
                 subject: `Factura ${result.number} - Tinte y Burbuja`,
-                text: `Estimado cliente,\n\nAdjuntamos la factura correspondiente a su pedido.\n\nGracias por confiar en nosotros.\n\nUn saludo,\nTinte y Burbuja`,
+                html: emailTemplate({
+                    title: `Factura ${result.number}`,
+                    body: `
+                        <p>Estimado/a cliente,</p>
+                        <p>Adjuntamos la factura <strong>${result.number}</strong> correspondiente a su pedido.</p>
+                        <p>Gracias por confiar en nosotros.</p>
+                        <p>Un saludo,<br><strong>Tinte y Burbuja</strong></p>
+                    `,
+                }),
                 attachments: pdfContent ? [{filename: pdfFilename, content: pdfContent}] : [],
             });
             result.emailSent = true;
@@ -511,7 +520,15 @@ export async function crearFactura(prisma, {orderIds, type, invoiceData}) {
                     from: {name: FROM_NAME || 'Tinte y Burbuja', address: FROM_EMAIL},
                     to: [cliente.email, 'hola@tinteyburbuja.com'],
                     subject: `Factura ${result.number} - Tinte y Burbuja`,
-                    text: `Estimado cliente,\n\nAdjuntamos la factura correspondiente a su pedido.\n\nGracias por confiar en nosotros.\n\nUn saludo,\nTinte y Burbuja`,
+                    html: emailTemplate({
+                        title: `Factura ${result.number}`,
+                        body: `
+                            <p>Estimado/a cliente,</p>
+                            <p>Adjuntamos la factura <strong>${result.number}</strong> correspondiente a su pedido.</p>
+                            <p>Gracias por confiar en nosotros.</p>
+                            <p>Un saludo,<br><strong>Tinte y Burbuja</strong></p>
+                        `,
+                    }),
                     attachments: pdfContent ? [{filename: pdfFilename, content: pdfContent}] : [],
                 });
                 result.emailSent = true;
@@ -620,7 +637,7 @@ function buildInvoiceHtml({invoice, cliente}) {
   <div class="wrapper">
     <div class="header">
       <div class="brand">
-        <img class="logo" src="https://app.tinteyburbuja.es/logo.png" alt="Logo" />
+        <img class="logo" src="https://app.tinteyburbuja.com/logo.png" alt="Logo" />
       </div>
       <div class="seller">
         <div class="name">Gestiones y Apartamentos Úbeda S.L.</div>
@@ -682,7 +699,7 @@ function buildInvoiceHtml({invoice, cliente}) {
     </div>` : ''}
 
   </div>
-  <div class="urls">https://www.tinteyburbuja.es</div>
+  <div class="urls">https://www.tinteyburbuja.com</div>
 </body>
 </html>`;
 }

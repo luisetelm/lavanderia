@@ -12,6 +12,8 @@ import Messages from './pages/Messages.jsx';
 import Reviews from './pages/Reviews.jsx';
 import CashAudit from './pages/CashAudit.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
+import ForgotPassword from './pages/ForgotPassword.jsx';
+import ResetPassword from './pages/ResetPassword.jsx';
 import PortalLogin from './pages/portal/PortalLogin.jsx';
 import PortalVerify from './pages/portal/PortalVerify.jsx';
 import PortalDashboard from './pages/portal/PortalDashboard.jsx';
@@ -106,6 +108,8 @@ export default function App() {
     if (!token) {
         return (
             <Routes>
+                <Route path="/forgot-password" element={<ForgotPassword />} />
+                <Route path="/reset-password" element={<ResetPassword />} />
                 <Route path="*" element={<Login onLogin={handleLogin}/>}/>
             </Routes>
         );
