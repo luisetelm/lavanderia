@@ -13,11 +13,9 @@ export default async function dashboardRoutes(fastify) {
                 todayOrders,
                 pendingOrders,
                 readyOrders,
-                unpaidOrders,
                 lastClosure,
                 unclosedMovements,
                 recentActivity,
-                weekOrders,
             ] = await Promise.all([
                 // 1. Pedidos de hoy (para KPIs)
                 prisma.order.findMany({
@@ -61,21 +59,7 @@ export default async function dashboardRoutes(fastify) {
                     },
                 }),
 
-                // 4. Pedidos pendientes de cobro (paid = false, status != cancelled, total > 0)
-                prisma.order.findMany({
-                    where: {
-                        paid: false,
-                        status: { not: 'cancelled' },
-                        total: { gt: 0 },
-                    },
-                    orderBy: { createdAt: 'desc' },
-                    take: 10,
-                    include: {
-                        client: { select: { id: true, firstName: true, lastName: true } },
-                    },
-                }),
-
-                // 5. Último cierre de caja
+                // 4. Último cierre de caja
                 prisma.cashClosure.findFirst({
                     orderBy: { closedat: 'desc' },
                     include: {
@@ -83,34 +67,18 @@ export default async function dashboardRoutes(fastify) {
                     },
                 }),
 
-                // 6. Movimientos de caja sin cerrar
+                // 5. Movimientos de caja sin cerrar
                 prisma.cashMovement.findMany({
                     where: { closureId: null },
                     select: { type: true, amount: true },
                 }),
 
-                // 7. Actividad reciente: últimos pedidos actualizados
+                // 6. Actividad reciente: últimos pedidos actualizados
                 prisma.order.findMany({
                     orderBy: { updatedAt: 'desc' },
                     take: 10,
                     include: {
                         client: { select: { id: true, firstName: true, lastName: true } },
-                    },
-                }),
-
-                // 8. Pedidos de los últimos 14 días (para gráfico de días laborables)
-                prisma.order.findMany({
-                    where: {
-                        createdAt: {
-                            gte: new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000),
-                        },
-                    },
-                    select: {
-                        id: true,
-                        total: true,
-                        paid: true,
-                        createdAt: true,
-                        status: true,
                     },
                 }),
             ]);
@@ -166,28 +134,6 @@ export default async function dashboardRoutes(fastify) {
                     : null,
             };
 
-            // Tendencia semanal: últimos 5 días laborables (sin sáb/dom)
-            const weeklyTrend = [];
-            let daysBack = 0;
-            while (weeklyTrend.length < 5) {
-                const d = new Date(now.getTime() - daysBack * 24 * 60 * 60 * 1000);
-                const dow = d.getDay(); // 0=dom, 6=sáb
-                if (dow !== 0 && dow !== 6) {
-                    const dayStr = d.toISOString().slice(0, 10);
-                    const dayOrders = weekOrders.filter(o => o.createdAt.toISOString().slice(0, 10) === dayStr);
-                    weeklyTrend.unshift({
-                        date: dayStr,
-                        label: d.toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric' }),
-                        orders: dayOrders.length,
-                        revenue: dayOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0),
-                    });
-                }
-                daysBack++;
-                if (daysBack > 14) break; // seguridad
-            }
-
-            // Total pendiente de cobro global
-            const totalUnpaidAmount = unpaidOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
 
             return reply.send({
                 todayStats,
@@ -211,16 +157,7 @@ export default async function dashboardRoutes(fastify) {
                     updatedAt: o.updatedAt,
                     client: o.client,
                 })),
-                unpaidOrders: unpaidOrders.map(o => ({
-                    id: o.id,
-                    orderNum: o.orderNum,
-                    total: o.total,
-                    createdAt: o.createdAt,
-                    client: o.client,
-                })),
-                totalUnpaidAmount,
                 cashStatus,
-                weeklyTrend,
                 recentActivity: recentActivity.map(o => ({
                     id: o.id,
                     orderNum: o.orderNum,

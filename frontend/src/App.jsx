@@ -164,8 +164,8 @@ export default function App() {
                     <Route path="/pos" element={<POS token={token} user={user}/>}/>
                     <Route path="/productos" element={<Inventory token={token}/>}/>
                     <Route path="/tareas" element={<Tasks token={token} user={user}/>}/>
-                    <Route path="/usuarios" element={<Users token={token}/>}/>
-                    <Route path="/usuarios/:id" element={<UserEdit token={token} />}/>
+                    <Route path="/usuarios" element={<Users token={token} user={user}/>}/>
+                    <Route path="/usuarios/:id" element={<UserEdit token={token} user={user}/>}/>
                     <Route path="/mensajes" element={<Messages token={token}/>}/>
                     <Route path="/ventas" element={<Ventas token={token}/>}/>
                     <Route path="/resenas" element={<Reviews token={token}/>}/>

@@ -7,7 +7,7 @@ import UserForm from '../components/UserForm.jsx';
 import PageToolbar from '../components/PageToolbar.jsx';
 
 
-function Users({token}) {
+function Users({token, user: loggedUser}) {
     const [users, setUsers] = useState([]);
     const [showNew, setShowNew] = useState(false);
     const [error, setError] = useState('');
@@ -78,7 +78,7 @@ function Users({token}) {
                                 <span uk-search-icon="true"></span>
                                 <input
                                     className="uk-search-input"
-                                    placeholder="Buscar..."
+                                    placeholder="Buscar por nombre, apellidos, email o teléfono..."
                                     value={searchTerm}
                                     onChange={e => setSearchTerm(e.target.value)}
                                 />
@@ -215,6 +215,7 @@ function Users({token}) {
                                         {showNew && (
                                             <UserForm
                                                 token={token}
+                                                loggedUser={loggedUser}
                                                 onSave={() => {
                                                     load();
                                                     UIkit.offcanvas('#offcanvas-user-form').hide();

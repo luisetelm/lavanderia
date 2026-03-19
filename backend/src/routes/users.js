@@ -54,7 +54,7 @@ const sendWelcomeEmail = async (email, firstName, lastName, password) => {
     }
 };
 
-const isValidSpanishPhone = (phone) => /^[6789]\d{8}$/.test(phone);
+import { isValidSpanishPhone, normalizePhone } from '../utils/validatePhone.js';
 
 export default async function (fastify, opts) {
     const prisma = fastify.prisma;
@@ -75,11 +75,24 @@ export default async function (fastify, opts) {
         }
 
         if (q) {
-            where.OR = [{firstName: {contains: q, mode: 'insensitive'}}, {
-                lastName: {
-                    contains: q, mode: 'insensitive'
-                }
-            }, {email: {contains: q, mode: 'insensitive'}}, {phone: {contains: q, mode: 'insensitive'}},];
+            const words = q.trim().split(/\s+/);
+            if (words.length > 1) {
+                // Multi-word: each word must match firstName OR lastName
+                where.AND = words.map(w => ({
+                    OR: [
+                        { firstName: { contains: w, mode: 'insensitive' } },
+                        { lastName: { contains: w, mode: 'insensitive' } },
+                    ],
+                }));
+            } else {
+                where.OR = [
+                    { firstName: { contains: q, mode: 'insensitive' } },
+                    { lastName: { contains: q, mode: 'insensitive' } },
+                    { email: { contains: q, mode: 'insensitive' } },
+                    { phone: { contains: q, mode: 'insensitive' } },
+                    { denominacionsocial: { contains: q, mode: 'insensitive' } },
+                ];
+            }
         }
 
         // Obtener el total de registros para la paginación
@@ -96,6 +109,7 @@ export default async function (fastify, opts) {
                 phone: true,
                 isActive: true,
                 isbigclient: true,
+                autoMonthlyInvoice: true,
                 createdAt: true,
                 denominacionsocial: true,
                 nif: true,
@@ -139,6 +153,8 @@ export default async function (fastify, opts) {
                 phone: true,
                 isActive: true,
                 isbigclient: true,
+                autoMonthlyInvoice: true,
+                notifyChannel: true,
                 denominacionsocial: true,
                 nif: true,
                 tipopersona: true,
@@ -179,8 +195,52 @@ export default async function (fastify, opts) {
             orderBy: {createdAt: 'desc'}
         });
 
-        return { ...user, orders };
+        // Facturas del cliente
+        const invoices = await prisma.invoices.findMany({
+            where: {clientId: Number(id)},
+            select: {
+                id: true,
+                number: true,
+                issuedAt: true,
+                totalGross: true,
+                paid: true,
+                type: true,
+                paymentStatus: true,
+            },
+            orderBy: {issuedAt: 'desc'},
+            take: 50,
+        });
+
+        // Notificaciones enviadas al teléfono del usuario
+        let notifications = [];
+        if (user.phone) {
+            notifications = await prisma.notification.findMany({
+                where: {recipient: user.phone},
+                select: {
+                    id: true,
+                    type: true,
+                    content: true,
+                    status: true,
+                    sentAt: true,
+                    orderid: true,
+                    statusMessage: true,
+                },
+                orderBy: {sentAt: 'desc'},
+                take: 50,
+            });
+        }
+
+        return { ...user, orders, invoices, notifications };
     });
+
+    // Helper: comprueba si el cliente tiene los datos mínimos para facturación
+    const isEmpty = (v) => !v || (typeof v === 'string' && v.trim() === '');
+    const canInvoice = (d) =>
+        !isEmpty(d.email || d.emailVal) &&
+        (!isEmpty(d.denominacionsocial) || !isEmpty(d.firstName) || !isEmpty(d.lastName)) &&
+        !isEmpty(d.direccion) &&
+        !isEmpty(d.codigopostal) &&
+        !isEmpty(d.localidad);
 
     // Crear usuario
     fastify.post('/', async (req, reply) => {
@@ -193,6 +253,7 @@ export default async function (fastify, opts) {
             phone,
             isActive,
             isbigclient,
+            autoMonthlyInvoice,
             denominacionsocial,
             nif,
             tipopersona,
@@ -204,15 +265,31 @@ export default async function (fastify, opts) {
             discount,
         } = req.body;
 
-        if (!firstName || !lastName || !email || !password) {
-            return reply.status(400).send({error: 'firstName, lastName, email y password son obligatorios'});
-        }
-        if (phone && !isValidSpanishPhone(phone)) {
-            return reply.status(400).send({error: 'Teléfono inválido. Formato español, p.ej. 600123456'});
+        if (!firstName || !lastName) {
+            return reply.status(400).send({error: 'firstName y lastName son obligatorios'});
         }
 
-        const exists = await prisma.user.findUnique({where: {email}});
-        if (exists) return reply.status(400).send({error: 'Email ya registrado'});
+        // Normalizar teléfono
+        const effectiveRole = role || 'customer';
+        const normalizedPhone = phone ? normalizePhone(phone) : '';
+
+        // Teléfono obligatorio para clientes
+        if (effectiveRole === 'customer' && !normalizedPhone) {
+            return reply.status(400).send({error: 'El teléfono es obligatorio para clientes'});
+        }
+        if (normalizedPhone && !isValidSpanishPhone(normalizedPhone)) {
+            return reply.status(400).send({error: 'Teléfono inválido. Formato español, p.ej. 600123456 ó +34600123456'});
+        }
+
+        if (email) {
+            const exists = await prisma.user.findUnique({where: {email}});
+            if (exists) return reply.status(400).send({error: 'Email ya registrado'});
+        }
+
+        // Validar datos fiscales si se activa auto-facturación
+        if (autoMonthlyInvoice && !canInvoice({ email, firstName, lastName, denominacionsocial, direccion, codigopostal, localidad })) {
+            return reply.status(400).send({error: 'Para activar la facturación automática se requiere: email, dirección, C.P. y localidad'});
+        }
 
         // Validación de discount 0-100 si llega
         let discountValue = 0;
@@ -224,17 +301,18 @@ export default async function (fastify, opts) {
             discountValue = d;
         }
 
-        const hashed = await hash(password, 10);
+        const hashed = password ? await hash(password, 10) : null;
         const user = await prisma.user.create({
             data: {
                 firstName,
                 lastName,
-                email,
+                email: email?.trim() !== '' ? email : null,
                 password: hashed,
-                role: role || 'customer',
-                phone: phone || null,
+                role: effectiveRole,
+                phone: normalizedPhone || null,
                 isActive: isActive !== undefined ? isActive : true,
                 isbigclient: isbigclient || false,
+                autoMonthlyInvoice: autoMonthlyInvoice || false,
                 denominacionsocial: denominacionsocial || null,
                 nif: nif || null,
                 tipopersona: tipopersona || null,
@@ -253,6 +331,7 @@ export default async function (fastify, opts) {
                 phone: true,
                 isActive: true,
                 isbigclient: true,
+                autoMonthlyInvoice: true,
                 denominacionsocial: true,
                 nif: true,
                 tipopersona: true,
@@ -284,6 +363,7 @@ export default async function (fastify, opts) {
             phone,
             isActive,
             isbigclient,
+            autoMonthlyInvoice,
             denominacionsocial,
             nif,
             tipopersona,
@@ -295,14 +375,33 @@ export default async function (fastify, opts) {
             discount,
             notifyChannel,
         } = req.body;
+
+        // Normalizar teléfono
+        const normalizedPhone = phone ? normalizePhone(phone) : '';
+        const effectiveRole = role || 'customer';
+
+        // Teléfono obligatorio para clientes
+        if (effectiveRole === 'customer' && !normalizedPhone) {
+            return reply.status(400).send({error: 'El teléfono es obligatorio para clientes'});
+        }
+        if (normalizedPhone && !isValidSpanishPhone(normalizedPhone)) {
+            return reply.status(400).send({error: 'Teléfono inválido. Formato español, p.ej. 600123456 ó +34600123456'});
+        }
+
+        // Validar datos fiscales si se activa auto-facturación
+        if (autoMonthlyInvoice && !canInvoice({ email, firstName, lastName, denominacionsocial, direccion, codigopostal, localidad })) {
+            return reply.status(400).send({error: 'Para activar la facturación automática se requiere: email, dirección, C.P. y localidad'});
+        }
+
         const data = {
             firstName,
             lastName,
             email: email?.trim() !== '' ? email : null,
-            role,
-            phone,
+            role: effectiveRole,
+            phone: normalizedPhone || null,
             isActive,
             isbigclient,
+            autoMonthlyInvoice: autoMonthlyInvoice || false,
             denominacionsocial,
             nif,
             tipopersona,
@@ -341,6 +440,7 @@ export default async function (fastify, opts) {
                     phone: true,
                     isActive: true,
                     isbigclient: true,
+                    autoMonthlyInvoice: true,
                     denominacionsocial: true,
                     nif: true,
                     tipopersona: true,

@@ -551,8 +551,12 @@ export async function crearFactura(prisma, {orderIds, type, invoiceData}) {
 
 // Mantén tu convertBigIntToString tal cual
 function convertBigIntToString(obj) {
+    if (obj === null || obj === undefined) return obj;
+    if (typeof obj === 'bigint') return obj.toString();
+    if (obj instanceof Date) return obj.toISOString();
+    if (typeof obj?.toFixed === 'function' || typeof obj?.toNumber === 'function') return Number(obj);
     if (Array.isArray(obj)) return obj.map(convertBigIntToString);
-    if (obj && typeof obj === 'object') return Object.fromEntries(Object.entries(obj).map(([k, v]) => [k, typeof v === 'bigint' ? v.toString() : convertBigIntToString(v)]));
+    if (typeof obj === 'object') return Object.fromEntries(Object.entries(obj).map(([k, v]) => [k, convertBigIntToString(v)]));
     return obj;
 }
 

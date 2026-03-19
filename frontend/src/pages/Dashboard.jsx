@@ -106,10 +106,7 @@ export default function Dashboard({ token, user }) {
 
     if (!data) return null;
 
-    const { todayStats, ordersByStatus, pendingOrders, readyOrders, unpaidOrders, totalUnpaidAmount, cashStatus, weeklyTrend, recentActivity } = data;
-
-    // Encontrar el valor máximo de la tendencia para escalar las barras
-    const maxRevenue = Math.max(...weeklyTrend.map(d => d.revenue), 1);
+    const { todayStats, ordersByStatus, pendingOrders, readyOrders, cashStatus, recentActivity } = data;
 
     return (
         <div>
@@ -131,7 +128,6 @@ export default function Dashboard({ token, user }) {
                 <KpiCard label="Pedidos hoy" value={todayStats.ordersCount} icon="cart" />
                 <KpiCard label="Ingresos hoy" value={formatEUR(todayStats.totalRevenue)} icon="credit-card" accent />
                 <KpiCard label="Cobrado" value={formatEUR(todayStats.paidRevenue)} icon="check" color="#22c55e" />
-                <KpiCard label="Pte. cobro" value={formatEUR(todayStats.unpaidRevenue)} icon="clock" color={todayStats.unpaidRevenue > 0 ? '#ef4444' : '#64748b'} />
                 <KpiCard label="Caja actual" value={formatEUR(cashStatus.currentBalance)} icon="database" sub={`${cashStatus.movementsCount} mov.`} />
             </div>
 
@@ -272,53 +268,8 @@ export default function Dashboard({ token, user }) {
                 </div>
             </div>
 
-            {/* Fila inferior: Tendencia semanal + Actividad reciente */}
+            {/* Actividad reciente */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 16, marginBottom: 20 }}>
-                {/* Tendencia semanal */}
-                <div className="uk-card uk-card-default uk-card-body" style={{ padding: '16px 18px' }}>
-                    <strong style={{ fontSize: '0.9rem' }}>📊 Últimos días laborables</strong>
-                    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, marginTop: 14, height: 100 }}>
-                        {weeklyTrend.map((d, i) => {
-                            const height = maxRevenue > 0 ? Math.max(4, (d.revenue / maxRevenue) * 100) : 4;
-                            const isToday = i === weeklyTrend.length - 1;
-                            return (
-                                <div key={d.date} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                                    <div style={{
-                                        fontSize: '0.6rem',
-                                        color: '#64748b',
-                                        marginBottom: 3,
-                                        fontWeight: isToday ? 700 : 400,
-                                    }}>
-                                        {formatEUR(d.revenue)}
-                                    </div>
-                                    <div style={{
-                                        width: '100%',
-                                        maxWidth: 40,
-                                        height: `${height}%`,
-                                        background: isToday ? '#048ABF' : '#bfdbfe',
-                                        borderRadius: 4,
-                                        transition: 'height 0.3s',
-                                    }} title={`${d.orders} pedidos — ${formatEUR(d.revenue)}`}></div>
-                                    <div style={{
-                                        fontSize: '0.65rem',
-                                        color: isToday ? '#048ABF' : '#94a3b8',
-                                        marginTop: 4,
-                                        fontWeight: isToday ? 700 : 400,
-                                        textTransform: 'capitalize',
-                                    }}>
-                                        {d.label}
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, fontSize: '0.72rem', color: '#64748b' }}>
-                        <span>{weeklyTrend.reduce((s, d) => s + d.orders, 0)} pedidos</span>
-                        <span>{formatEUR(weeklyTrend.reduce((s, d) => s + d.revenue, 0))} total</span>
-                    </div>
-                </div>
-
-                {/* Actividad reciente */}
                 <div className="uk-card uk-card-default" style={{ overflow: 'hidden' }}>
                     <div style={{ padding: '14px 18px', borderBottom: '1px solid #e5e7eb' }}>
                         <strong style={{ fontSize: '0.9rem' }}>🕐 Actividad reciente</strong>
@@ -354,49 +305,6 @@ export default function Dashboard({ token, user }) {
                     </div>
                 </div>
             </div>
-
-            {/* Pendientes de cobro */}
-            {unpaidOrders.length > 0 && (
-                <div className="uk-card uk-card-default" style={{ overflow: 'hidden', marginBottom: 20 }}>
-                    <div style={{
-                        padding: '14px 18px',
-                        borderBottom: '1px solid #e5e7eb',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 8,
-                        background: '#fef2f2',
-                    }}>
-                        <strong style={{ fontSize: '0.9rem', color: '#991b1b' }}>💰 Pendientes de cobro</strong>
-                        <span style={{ marginLeft: 'auto', fontSize: '0.85rem', fontWeight: 700, color: '#ef4444' }}>
-                            {formatEUR(totalUnpaidAmount)}
-                        </span>
-                    </div>
-                    <div className="uk-overflow-auto">
-                        <table className="uk-table uk-table-small uk-table-divider" style={{ margin: 0, fontSize: '0.82rem' }}>
-                            <thead>
-                                <tr>
-                                    <th>Pedido</th>
-                                    <th>Cliente</th>
-                                    <th>Fecha</th>
-                                    <th style={{ textAlign: 'right' }}>Importe</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {unpaidOrders.map(o => (
-                                    <tr key={o.id} style={{ cursor: 'pointer' }} onClick={() => navigate('/tareas', { state: { filterOrderId: o.id, orderNumber: o.orderNum || o.id } })}>
-                                        <td style={{ fontWeight: 600 }}>#{o.orderNum}</td>
-                                        <td>{o.client ? `${o.client.firstName} ${o.client.lastName || ''}` : '—'}</td>
-                                        <td style={{ color: '#64748b' }}>
-                                            {o.createdAt ? new Date(o.createdAt).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' }) : '—'}
-                                        </td>
-                                        <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatEUR(o.total)}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            )}
 
             {/* Caja */}
             {cashStatus && (

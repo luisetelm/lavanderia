@@ -1,30 +1,6 @@
 import jwt from 'jsonwebtoken';
 import { sendSMScustomer } from '../services/twilio.js';
-
-/**
- * Normaliza un teléfono al formato de 9 dígitos español (sin prefijo)
- * para que coincida con el formato almacenado en la BD.
- * Acepta: 612345678, +34612345678, 34612345678, 0034612345678
- */
-function normalizePhoneForDB(phone) {
-    const cleaned = phone.replace(/[\s\-().]/g, '');  // quitar espacios, guiones, paréntesis, puntos
-    const digits = cleaned.replace(/\D/g, '');            // solo dígitos
-
-    // Si empieza por 0034 (prefijo internacional)
-    if (digits.startsWith('0034') && digits.length === 13) {
-        return digits.slice(4);
-    }
-    // Si empieza por 34 y tiene 11 dígitos
-    if (digits.startsWith('34') && digits.length === 11) {
-        return digits.slice(2);
-    }
-    // Si ya son 9 dígitos españoles
-    if (/^[6789]\d{8}$/.test(digits)) {
-        return digits;
-    }
-    // Devolver tal cual si no coincide con ningún patrón
-    return cleaned;
-}
+import { normalizePhone } from '../utils/validatePhone.js';
 
 export default async function (fastify) {
     const prisma = fastify.prisma;
@@ -38,7 +14,7 @@ export default async function (fastify) {
         }
 
         // Normalizar el teléfono al formato de la BD (9 dígitos sin prefijo)
-        const normalizedPhone = normalizePhoneForDB(phone);
+        const normalizedPhone = normalizePhone(phone);
         console.log(`[Portal] Acceso solicitado — input: "${phone}" → normalizado: "${normalizedPhone}"`);
 
         // Buscar cliente por teléfono (coincidencia exacta con formato normalizado)
