@@ -1,4 +1,4 @@
-import React, {useState, useEffect} from 'react';
+import React, {useState, useEffect, useCallback} from 'react';
 import {Routes, Route, NavLink, Navigate, useLocation} from 'react-router-dom';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
@@ -21,6 +21,7 @@ import PortalDashboard from './pages/portal/PortalDashboard.jsx';
 import PortalOrders from './pages/portal/PortalOrders.jsx';
 import PortalOrderDetail from './pages/portal/PortalOrderDetail.jsx';
 import PortalInvoices from './pages/portal/PortalInvoices.jsx';
+import { fetchConversations } from './api.js';
 
 
 function PortalApp() {
@@ -99,11 +100,28 @@ export default function App() {
     }
 
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+    const [unreadMsgCount, setUnreadMsgCount] = useState(0);
 
     // Cerrar menú móvil al navegar
     useEffect(() => {
         setMobileMenuOpen(false);
     }, [location.pathname]);
+
+    // Polling de mensajes no leídos para el badge del sidebar
+    const loadUnreadCount = useCallback(async () => {
+        if (!token || !user || (user.role !== 'admin' && user.role !== 'cashier')) return;
+        try {
+            const convs = await fetchConversations(token);
+            const total = convs.reduce((sum, c) => sum + (c.unreadCount || 0), 0);
+            setUnreadMsgCount(total);
+        } catch (e) { /* silenciar */ }
+    }, [token, user]);
+
+    useEffect(() => {
+        loadUnreadCount();
+        const interval = setInterval(loadUnreadCount, 60000);
+        return () => clearInterval(interval);
+    }, [loadUnreadCount]);
 
     // Login: layout limpio, sin sidebar ni menú
     if (!token) {
@@ -137,7 +155,10 @@ export default function App() {
                         <li><NavLink to="/tareas"><span uk-icon="icon: list; ratio: 0.9"></span> Tareas</NavLink></li>
                         <li><NavLink to="/usuarios"><span uk-icon="icon: users; ratio: 0.9"></span> Usuarios</NavLink></li>
                         {(user.role === 'admin' || user.role === 'cashier') && (
-                            <li><NavLink to="/mensajes"><span uk-icon="icon: comment; ratio: 0.9"></span> Mensajes</NavLink></li>
+                            <li><NavLink to="/mensajes">
+                                <span uk-icon="icon: comment; ratio: 0.9"></span> Mensajes
+                                {unreadMsgCount > 0 && <span className="sidebar-badge">{unreadMsgCount}</span>}
+                            </NavLink></li>
                         )}
                         {token && user.role === 'admin' && (<>
                             <li><NavLink to="/ventas"><span uk-icon="icon: credit-card; ratio: 0.9"></span> Ventas</NavLink></li>
@@ -166,7 +187,7 @@ export default function App() {
                     <Route path="/tareas" element={<Tasks token={token} user={user}/>}/>
                     <Route path="/usuarios" element={<Users token={token} user={user}/>}/>
                     <Route path="/usuarios/:id" element={<UserEdit token={token} user={user}/>}/>
-                    <Route path="/mensajes" element={<Messages token={token}/>}/>
+                    <Route path="/mensajes" element={<Messages token={token} onUnreadCount={setUnreadMsgCount}/>}/>
                     <Route path="/ventas" element={<Ventas token={token}/>}/>
                     <Route path="/resenas" element={<Reviews token={token}/>}/>
                     <Route path="/caja" element={<CashAudit token={token}/>}/>
