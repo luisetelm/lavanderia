@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { fetchConversations, fetchMessages, sendMessage } from '../api.js';
+import { fetchConversations, fetchMessages, sendMessage, fetchWhatsAppTemplates, sendWhatsAppMessage } from '../api.js';
 import PageToolbar from '../components/PageToolbar.jsx';
 
 export default function Messages({ token }) {
@@ -13,6 +13,9 @@ export default function Messages({ token }) {
     const [channel, setChannel] = useState('whatsapp');
     const [sending, setSending] = useState(false);
     const messagesEndRef = useRef(null);
+    const [templates, setTemplates] = useState([]);
+    const [showTemplates, setShowTemplates] = useState(false);
+    const [templatesLoading, setTemplatesLoading] = useState(false);
 
     const loadConversations = useCallback(async () => {
         try {
@@ -70,6 +73,48 @@ export default function Messages({ token }) {
             await loadMessages(selectedClientId);
         } catch (err) {
             alert(err.error || 'Error enviando mensaje');
+        } finally {
+            setSending(false);
+        }
+    };
+
+    const loadTemplates = async () => {
+        if (templates.length > 0) {
+            setShowTemplates(!showTemplates);
+            return;
+        }
+        setTemplatesLoading(true);
+        try {
+            const data = await fetchWhatsAppTemplates(token);
+            setTemplates(data);
+            setShowTemplates(true);
+        } catch (err) {
+            console.error('Error cargando plantillas:', err);
+            alert('Error al cargar las plantillas de WhatsApp');
+        } finally {
+            setTemplatesLoading(false);
+        }
+    };
+
+    const handleSendTemplate = async (template) => {
+        if (!selectedClientId) return;
+        const conv = conversations.find(c => c.clientId === selectedClientId);
+        if (!conv?.phone) {
+            alert('El cliente no tiene teléfono');
+            return;
+        }
+        setSending(true);
+        try {
+            await sendWhatsAppMessage(token, {
+                phone: conv.phone.startsWith('34') ? conv.phone : `34${conv.phone}`,
+                templateName: template.name,
+                templateComponents: [],
+                clientId: selectedClientId,
+            });
+            setShowTemplates(false);
+            await loadMessages(selectedClientId);
+        } catch (err) {
+            alert(err.error || 'Error enviando plantilla');
         } finally {
             setSending(false);
         }
@@ -226,6 +271,50 @@ export default function Messages({ token }) {
                                 <div ref={messagesEndRef} />
                             </div>
 
+                            {/* Templates panel */}
+                            {showTemplates && (
+                                <div style={{
+                                    borderTop: '1px solid #e5e5e5',
+                                    padding: '10px 12px',
+                                    maxHeight: 220,
+                                    overflowY: 'auto',
+                                    background: '#fafafa',
+                                }}>
+                                    <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8, color: '#555' }}>
+                                        Plantillas de WhatsApp
+                                    </div>
+                                    {templates.length === 0 ? (
+                                        <div style={{ fontSize: 12, color: '#999' }}>No hay plantillas aprobadas</div>
+                                    ) : (
+                                        templates.map(t => (
+                                            <div
+                                                key={`${t.name}-${t.language}`}
+                                                style={{
+                                                    padding: '8px 10px',
+                                                    marginBottom: 4,
+                                                    borderRadius: 6,
+                                                    border: '1px solid #e0e0e0',
+                                                    background: '#fff',
+                                                    cursor: 'pointer',
+                                                    fontSize: 13,
+                                                }}
+                                                onClick={() => handleSendTemplate(t)}
+                                            >
+                                                <div style={{ fontWeight: 500 }}>{t.name}</div>
+                                                <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>
+                                                    {t.category} &middot; {t.language}
+                                                    {t.components?.find(c => c.type === 'BODY')?.text &&
+                                                        <span style={{ display: 'block', marginTop: 2, fontStyle: 'italic' }}>
+                                                            {t.components.find(c => c.type === 'BODY').text.substring(0, 100)}...
+                                                        </span>
+                                                    }
+                                                </div>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            )}
+
                             {/* Composer */}
                             <div style={{
                                 padding: '8px 12px', borderTop: '1px solid #e5e5e5',
@@ -240,6 +329,17 @@ export default function Messages({ token }) {
                                     <option value="whatsapp">WhatsApp</option>
                                     <option value="sms">SMS</option>
                                 </select>
+                                {channel === 'whatsapp' && (
+                                    <button
+                                        className="uk-button uk-button-default uk-button-small"
+                                        onClick={loadTemplates}
+                                        disabled={templatesLoading}
+                                        title="Enviar plantilla"
+                                        style={{ padding: '0 8px', minWidth: 36 }}
+                                    >
+                                        {templatesLoading ? '...' : <span uk-icon="icon: file-text; ratio: 0.8"></span>}
+                                    </button>
+                                )}
                                 <input
                                     type="text"
                                     className="uk-input uk-form-small"

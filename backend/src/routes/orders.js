@@ -2,7 +2,7 @@
 //import nextOrderNum from '../utils/generateOrderNum.js';
 import {isValidSpanishPhone} from '../utils/validatePhone.js';
 import {sendSMScustomer} from "../services/twilio.js";
-import {sendTextMessage as sendWhatsApp} from "../services/whatsapp.js";
+import {sendTextMessage as sendWhatsApp, sendTemplateMessage as sendWhatsAppTemplate} from "../services/whatsapp.js";
 import {crearFactura} from "./invoices.js";
 
 export default async function (fastify, opts) {
@@ -269,7 +269,16 @@ export default async function (fastify, opts) {
             if (channel === 'whatsapp') {
                 try {
                     const phone = `34${client.phone}`;
-                    await sendWhatsApp(phone, message);
+                    // Intentar enviar plantilla (funciona fuera de la ventana 24h)
+                    try {
+                        await sendWhatsAppTemplate(phone, 'pedido_listo', 'es', [
+                            { type: 'body', parameters: [{ type: 'text', text: clientName }, { type: 'text', text: orderNum }] }
+                        ]);
+                    } catch (templateErr) {
+                        // Si la plantilla falla (no existe aún), intentar con texto libre (solo funciona en ventana 24h)
+                        console.warn('[WhatsApp] Template pedido_listo falló, intentando texto libre:', templateErr.message);
+                        await sendWhatsApp(phone, message);
+                    }
                     await prisma.notification.create({
                         data: { orderid: updated.id, type: 'whatsapp', recipient: client.phone, content: message, status: 'sent' },
                     });
@@ -287,16 +296,9 @@ export default async function (fastify, opts) {
                     });
                 } catch (err) {
                     console.error('Error enviando SMS ready:', err);
-                    try {
-                        const sms = await sendSMScustomer(client.phone, message);
-                        await prisma.notification.create({
-                            data: { orderid: updated.id, type: 'sms', recipient: client.phone, content: message, status: 'failed', statusCode: parseInt(sms.code), subid: sms.subid, statusMessage: sms.message },
-                        });
-                    } catch (retryErr) {
-                        await prisma.notification.create({
-                            data: { orderid: updated.id, type: 'sms', recipient: client.phone, content: message, status: 'failed' },
-                        });
-                    }
+                    await prisma.notification.create({
+                        data: { orderid: updated.id, type: 'sms', recipient: client.phone, content: message, status: 'failed' },
+                    });
                 }
             }
         }
@@ -304,7 +306,7 @@ export default async function (fastify, opts) {
         if (status === 'collected' && updated.client?.phone && sendSMS) {
             const client = updated.client;
             const clientName = `${client.firstName || ''} ${client.lastName || ''}`.trim();
-            const message = `Hola ${clientName}, esperamos que todo haya ido perfecto en Tinte y Burbuja 😊. Si puedes, déjanos una reseña: https://g.page/r/Cau9_6UCpQ8ZEBI/review`;
+            const message = `Hola ${clientName}, esperamos que todo haya ido perfecto en Tinte y Burbuja. Si puedes, déjanos una reseña: https://g.page/r/Cau9_6UCpQ8ZEBI/review`;
 
             // Guardar preferencia de canal del cliente
             const channel = sendSMS === 'whatsapp' ? 'whatsapp' : 'sms';
@@ -313,7 +315,14 @@ export default async function (fastify, opts) {
             if (channel === 'whatsapp') {
                 try {
                     const phone = `34${client.phone}`;
-                    await sendWhatsApp(phone, message);
+                    try {
+                        await sendWhatsAppTemplate(phone, 'pedido_recogido', 'es', [
+                            { type: 'body', parameters: [{ type: 'text', text: clientName }] }
+                        ]);
+                    } catch (templateErr) {
+                        console.warn('[WhatsApp] Template pedido_recogido falló, intentando texto libre:', templateErr.message);
+                        await sendWhatsApp(phone, message);
+                    }
                     await prisma.notification.create({
                         data: { orderid: updated.id, type: 'whatsapp', recipient: client.phone, content: message, status: 'sent' },
                     });
