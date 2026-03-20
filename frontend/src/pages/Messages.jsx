@@ -17,6 +17,7 @@ export default function Messages({ token, onUnreadCount }) {
     const [showTemplates, setShowTemplates] = useState(false);
     const [templatesLoading, setTemplatesLoading] = useState(false);
     const inputRef = useRef(null);
+    const threadRef = useRef(null);
 
     const totalUnread = conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0);
 
@@ -24,6 +25,29 @@ export default function Messages({ token, onUnreadCount }) {
     useEffect(() => {
         if (onUnreadCount) onUnreadCount(totalUnread);
     }, [totalUnread, onUnreadCount]);
+
+    // Bloquear scroll del body cuando el thread está abierto en móvil
+    useEffect(() => {
+        if (selectedClientId && window.innerWidth <= 1024) {
+            document.body.style.overflow = 'hidden';
+            return () => { document.body.style.overflow = ''; };
+        }
+    }, [selectedClientId]);
+
+    // Ajustar altura del thread cuando aparece el teclado en móvil
+    useEffect(() => {
+        if (!selectedClientId || !window.visualViewport) return;
+        const vv = window.visualViewport;
+        const onResize = () => {
+            if (threadRef.current) {
+                threadRef.current.style.height = `${vv.height}px`;
+            }
+        };
+        vv.addEventListener('resize', onResize);
+        // Llamar inmediatamente por si el teclado ya está abierto
+        onResize();
+        return () => vv.removeEventListener('resize', onResize);
+    }, [selectedClientId]);
 
     const loadConversations = useCallback(async () => {
         try {
@@ -231,7 +255,7 @@ export default function Messages({ token, onUnreadCount }) {
 
                 {/* Thread: hilo de mensajes */}
                 {selectedClientId ? (
-                    <div className="msg-thread">
+                    <div className="msg-thread" ref={threadRef}>
                         {/* Header */}
                         <div className="msg-thread-header">
                             <button className="msg-back-btn" onClick={handleBack}>
