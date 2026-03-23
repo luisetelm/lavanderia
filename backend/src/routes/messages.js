@@ -17,6 +17,7 @@ export default async function (fastify) {
                     m."content" as "lastMessage",
                     m."channel" as "lastChannel",
                     m."direction" as "lastDirection",
+                    m."mediaType" as "lastMediaType",
                     m."createdAt" as "lastMessageAt",
                     u."firstName",
                     u."lastName",

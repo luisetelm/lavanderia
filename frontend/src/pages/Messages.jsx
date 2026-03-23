@@ -24,6 +24,54 @@ function formatFileSize(bytes) {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+/* ── Helpers para media ── */
+const MEDIA_LABELS = {
+    image: { icon: '📷', label: 'Imagen' },
+    video: { icon: '🎥', label: 'Vídeo' },
+    audio: { icon: '🎵', label: 'Audio' },
+    document: { icon: '📄', label: 'Documento' },
+    sticker: { icon: '🏷️', label: 'Sticker' },
+    location: { icon: '📍', label: 'Ubicación' },
+    contact: { icon: '👤', label: 'Contacto' },
+};
+
+/** Detecta tipo de media a partir del texto del content (mensajes antiguos sin mediaType) */
+function detectMediaFromContent(content) {
+    if (!content) return null;
+    const lower = content.toLowerCase().trim();
+    if (lower === '[image]' || lower === '[imagen]') return 'image';
+    if (lower === '[video]' || lower === '[vídeo]') return 'video';
+    if (lower === '[audio]') return 'audio';
+    if (lower === '[document]' || lower === '[documento]') return 'document';
+    if (lower === '[sticker]') return 'sticker';
+    return null;
+}
+
+/** Devuelve una preview legible para el sidebar de conversaciones */
+function mediaPreviewText(mediaType, content) {
+    const info = MEDIA_LABELS[mediaType];
+    if (!info) return content;
+    // Si el content es solo un placeholder como [image], usar la etiqueta bonita
+    if (!content || content.startsWith('[')) return `${info.icon} ${info.label}`;
+    // Si hay caption, mostrarlo con el icono
+    return `${info.icon} ${content}`;
+}
+
+/* ── Placeholder cuando la media no está disponible ── */
+function MediaUnavailable({ mediaType }) {
+    const info = MEDIA_LABELS[mediaType] || { icon: '📎', label: 'Archivo' };
+    return (
+        <div style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '10px 14px', background: 'rgba(0,0,0,0.04)', borderRadius: 8,
+            color: '#94a3b8', fontSize: 13, fontStyle: 'italic',
+        }}>
+            <span style={{ fontSize: 24 }}>{info.icon}</span>
+            <span>{info.label} no disponible</span>
+        </div>
+    );
+}
+
 /* ── Componente de burbuja multimedia ── */
 function MediaBubble({ mediaType, mediaUrl, content, onImageClick }) {
     const src = mediaUrl ? `/uploads/${mediaUrl}` : null;
@@ -433,7 +481,12 @@ export default function Messages({ token, onUnreadCount }) {
                                                     <span style={{ fontSize: 10, marginRight: 3, color: '#94a3b8', fontWeight: 600 }}>SMS</span>
                                                 )}
                                                 <span className="msg-conv-text">
-                                                    {c.lastDirection === 'inbound' ? '' : 'Tú: '}{c.lastMessage}
+                                                    {c.lastDirection === 'inbound' ? '' : 'Tú: '}
+                                                    {(() => {
+                                                        const mt = c.lastMediaType || detectMediaFromContent(c.lastMessage);
+                                                        if (mt) return mediaPreviewText(mt, c.lastMessage);
+                                                        return c.lastMessage;
+                                                    })()}
                                                 </span>
                                             </span>
                                             {c.unreadCount > 0 && (
@@ -485,17 +538,25 @@ export default function Messages({ token, onUnreadCount }) {
                             ) : messages.length === 0 ? (
                                 <div className="msg-empty" style={{ paddingTop: 40 }}>Sin mensajes</div>
                             ) : (
-                                messages.map(m => (
+                                messages.map(m => {
+                                    const effectiveMediaType = m.mediaType || detectMediaFromContent(m.content);
+                                    const hasMedia = !!effectiveMediaType;
+                                    const hasMediaUrl = !!m.mediaUrl;
+                                    const isSticker = effectiveMediaType === 'sticker';
+
+                                    return (
                                     <div key={m.id} className={`msg-bubble-row ${m.direction === 'outbound' ? 'outbound' : 'inbound'}`}>
-                                        <div className={`msg-bubble ${m.direction === 'outbound' ? 'outbound' : 'inbound'} ${m.mediaType === 'sticker' ? 'msg-bubble-sticker' : ''}`}>
+                                        <div className={`msg-bubble ${m.direction === 'outbound' ? 'outbound' : 'inbound'} ${isSticker ? 'msg-bubble-sticker' : ''}`}>
                                             {/* Contenido multimedia */}
-                                            {m.mediaType && m.mediaUrl ? (
+                                            {hasMedia && hasMediaUrl ? (
                                                 <MediaBubble
-                                                    mediaType={m.mediaType}
+                                                    mediaType={effectiveMediaType}
                                                     mediaUrl={m.mediaUrl}
                                                     content={m.content}
                                                     onImageClick={setLightboxSrc}
                                                 />
+                                            ) : hasMedia && !hasMediaUrl ? (
+                                                <MediaUnavailable mediaType={effectiveMediaType} />
                                             ) : (
                                                 <div className="msg-bubble-text">{m.content}</div>
                                             )}
@@ -518,7 +579,8 @@ export default function Messages({ token, onUnreadCount }) {
                                             </div>
                                         </div>
                                     </div>
-                                ))
+                                    );
+                                })
                             )}
                             <div ref={messagesEndRef} />
                         </div>
