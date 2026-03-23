@@ -1,5 +1,8 @@
 import { sendSMScustomer } from '../services/twilio.js';
-import { sendTextMessage, sendTemplateMessage } from '../services/whatsapp.js';
+import { sendTextMessage, uploadMediaToWhatsApp, sendMediaMessage } from '../services/whatsapp.js';
+import fs from 'fs';
+import path from 'path';
+import { pipeline } from 'stream/promises';
 
 export default async function (fastify) {
     const prisma = fastify.prisma;
@@ -80,6 +83,8 @@ export default async function (fastify) {
                     createdAt: m.createdAt,
                     phone: m.phone,
                     orderId: m.orderId,
+                    mediaUrl: m.mediaUrl || null,
+                    mediaType: m.mediaType || null,
                     source: 'message',
                 })),
                 ...notifications.map(n => ({
@@ -155,6 +160,100 @@ export default async function (fastify) {
         } catch (err) {
             console.error('[Messages] Error enviando mensaje:', err);
             return reply.code(500).send({ error: err.message || 'Error enviando mensaje' });
+        }
+    });
+
+    // Enviar mensaje multimedia (imagen, video, audio, documento)
+    fastify.post('/send-media', async (req, reply) => {
+        const ALLOWED_MIME = {
+            image: ['image/jpeg', 'image/png', 'image/webp'],
+            video: ['video/mp4', 'video/3gpp'],
+            audio: ['audio/aac', 'audio/mp4', 'audio/mpeg', 'audio/amr', 'audio/ogg', 'audio/opus'],
+            document: [
+                'application/pdf',
+                'application/msword',
+                'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                'application/vnd.ms-excel',
+                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                'application/vnd.ms-powerpoint',
+                'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+                'text/plain',
+            ],
+        };
+
+        try {
+            const data = await req.file();
+            if (!data) return reply.code(400).send({ error: 'Se requiere un fichero' });
+
+            // Extraer campos del multipart
+            const fields = {};
+            for (const [key, field] of Object.entries(data.fields)) {
+                if (field.value !== undefined) fields[key] = field.value;
+            }
+
+            const { clientId, caption, channel } = fields;
+            if (!clientId) return reply.code(400).send({ error: 'clientId obligatorio' });
+
+            const client = await prisma.user.findUnique({
+                where: { id: Number(clientId) },
+                select: { id: true, phone: true },
+            });
+            if (!client || !client.phone) {
+                return reply.code(400).send({ error: 'Cliente no encontrado o sin teléfono' });
+            }
+
+            const mimeType = data.mimetype;
+            const originalName = data.filename || 'file';
+
+            // Detectar tipo de media a partir del MIME
+            let mediaType = null;
+            for (const [type, mimes] of Object.entries(ALLOWED_MIME)) {
+                if (mimes.includes(mimeType)) { mediaType = type; break; }
+            }
+            if (!mediaType) {
+                return reply.code(400).send({ error: `Tipo de archivo no soportado: ${mimeType}` });
+            }
+
+            // Guardar fichero en disco
+            const mediaDir = path.join(process.cwd(), 'uploads', 'chat-media');
+            if (!fs.existsSync(mediaDir)) fs.mkdirSync(mediaDir, { recursive: true });
+
+            const ext = path.extname(originalName) || '.bin';
+            const filename = `out_${Date.now()}_${Math.random().toString(36).slice(2, 8)}${ext}`;
+            const filePath = path.join(mediaDir, filename);
+
+            await pipeline(data.file, fs.createWriteStream(filePath));
+
+            const localMediaUrl = `chat-media/${filename}`;
+
+            // Solo WhatsApp soporta media; SMS se ignora silenciosamente
+            let externalId = null;
+            if (channel !== 'sms') {
+                const phone = client.phone.startsWith('34') ? client.phone : `34${client.phone}`;
+                const waMediaId = await uploadMediaToWhatsApp(filePath, mimeType);
+                const waRes = await sendMediaMessage(phone, mediaType, waMediaId, caption || undefined, mediaType === 'document' ? originalName : undefined);
+                externalId = waRes?.messages?.[0]?.id || null;
+            }
+
+            // Guardar en BD
+            const message = await prisma.message.create({
+                data: {
+                    externalId,
+                    channel: channel || 'whatsapp',
+                    direction: 'outbound',
+                    clientId: Number(clientId),
+                    phone: client.phone,
+                    content: caption || `[${mediaType}]`,
+                    mediaUrl: localMediaUrl,
+                    mediaType,
+                    status: 'sent',
+                }
+            });
+
+            return reply.send({ ok: true, message });
+        } catch (err) {
+            console.error('[Messages] Error enviando media:', err);
+            return reply.code(500).send({ error: err.message || 'Error enviando media' });
         }
     });
 }

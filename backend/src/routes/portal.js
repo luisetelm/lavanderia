@@ -167,7 +167,7 @@ export default async function (fastify) {
                 lines: {
                     select: {
                         id: true, quantity: true, unitPrice: true,
-                        totalPrice: true, discount: true, notes: true,
+                        totalPrice: true, discount: true, annotations: true,
                         product: { select: { id: true, name: true } }
                     }
                 },

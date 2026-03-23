@@ -78,19 +78,43 @@ export default function PortalOrderDetail({ token }) {
                         const lineTotal = subtotal - discountAmt;
                         return (
                             <div key={l.id} style={{
-                                display: 'flex', justifyContent: 'space-between',
+                                display: 'flex', flexDirection: 'column',
                                 padding: '8px 0', borderBottom: '1px solid #f5f5f5'
                             }}>
-                                <div>
-                                    <div style={{ fontWeight: 500 }}>{l.product?.name || `Producto #${l.productId}`}</div>
-                                    <div style={{ fontSize: 12, color: '#888' }}>
-                                        {l.quantity} x {formatEUR(l.unitPrice)}
-                                        {l.discount > 0 && (
-                                            <span style={{ color: '#f0506e' }}> (-{l.discount}%)</span>
-                                        )}
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                    <div>
+                                        <div style={{ fontWeight: 500 }}>{l.product?.name || `Producto #${l.productId}`}</div>
+                                        <div style={{ fontSize: 12, color: '#888' }}>
+                                            {l.quantity} x {formatEUR(l.unitPrice)}
+                                            {l.discount > 0 && (
+                                                <span style={{ color: '#f0506e' }}> (-{l.discount}%)</span>
+                                            )}
+                                        </div>
                                     </div>
+                                    <div style={{ fontWeight: 600 }}>{formatEUR(lineTotal)}</div>
                                 </div>
-                                <div style={{ fontWeight: 600 }}>{formatEUR(lineTotal)}</div>
+                                {(() => {
+                                    const annotations = Array.isArray(l.annotations) ? l.annotations : [];
+                                    const notes = annotations.filter(a => a.type === 'note');
+                                    const photos = annotations.filter(a => a.type === 'photo');
+                                    return (<>
+                                        {notes.map((a, i) => (
+                                            <div key={`n${i}`} style={{ fontSize: 12, color: '#92400e', marginTop: 4 }}>
+                                                {a.text}
+                                            </div>
+                                        ))}
+                                        {photos.length > 0 && (
+                                            <div style={{ display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap' }}>
+                                                {photos.map((a, i) => (
+                                                    <a key={`p${i}`} href={`/uploads/line-photos/${a.file}`} target="_blank" rel="noopener noreferrer">
+                                                        <img src={`/uploads/line-photos/${a.file}`} alt={`Foto ${i + 1}`}
+                                                             style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 6, border: '1px solid #e5e7eb' }} />
+                                                    </a>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </>);
+                                })()}
                             </div>
                         );
                     })}

@@ -13,7 +13,20 @@ import Messages from './pages/Messages.jsx';
 import Reviews from './pages/Reviews.jsx';
 import CashAudit from './pages/CashAudit.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
+import DraftOrderBanner from './components/DraftOrderBanner.jsx';
+import { DraftOrderProvider } from './context/DraftOrderContext.jsx';
+import { useDraftOrder } from './hooks/useDraftOrder.js';
 import ForgotPassword from './pages/ForgotPassword.jsx';
+
+// Wrapper for main content that adds padding when draft banner is visible
+function AppMain({ children }) {
+    const { bannerHeight } = useDraftOrder();
+    return (
+        <main className="app-main" style={bannerHeight > 0 ? { paddingBottom: bannerHeight + 8 } : undefined}>
+            {children}
+        </main>
+    );
+}
 import ResetPassword from './pages/ResetPassword.jsx';
 import PortalLogin from './pages/portal/PortalLogin.jsx';
 import PortalVerify from './pages/portal/PortalVerify.jsx';
@@ -135,6 +148,7 @@ export default function App() {
     }
 
     return (<AuthRedirect>
+        <DraftOrderProvider>
         <div className="app-layout">
             <nav className={`app-sidebar ${mobileMenuOpen ? 'sidebar-open' : ''}`}>
                 <div className="sidebar-inner">
@@ -177,7 +191,7 @@ export default function App() {
                     </div>
                 </div>
             </nav>
-            <main className="app-main">
+            <AppMain>
                 <ErrorBoundary>
                 <Routes>
                     <Route path="/" element={<Navigate to="/dashboard" replace/>}/>
@@ -195,7 +209,9 @@ export default function App() {
                     <Route path="/login" element={<Login onLogin={handleLogin}/>}/>
                 </Routes>
                 </ErrorBoundary>
-            </main>
+            </AppMain>
+            <DraftOrderBanner token={token} worker={user} />
         </div>
+        </DraftOrderProvider>
     </AuthRedirect>);
 }

@@ -11,6 +11,7 @@ import {
     retryNotification,
     downloadInvoicePDF,
     updateOrderLine,
+    addLineAnnotation,
     createStripeCheckout
 } from '../api.js';
 import UIkit from 'uikit';
@@ -34,12 +35,40 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
     const [editingLineId, setEditingLineId] = useState(null);
     const [lineDiscounts, setLineDiscounts] = useState({});
 
+    // Anotaciones post-creación inline
+    const [annotatingLineId, setAnnotatingLineId] = useState(null);
+    const [annotationText, setAnnotationText] = useState('');
+    const [annotationUploading, setAnnotationUploading] = useState(false);
+
     // Modal de confirmación (listo/recogido)
     const [showModal, setShowModal] = useState(false);
     const [modalAction, setModalAction] = useState(null);
 
     // Notas internas controladas
     const [internalNotes, setInternalNotes] = useState('');
+
+    /* ── Comprimir foto a JPEG pequeño (reutilizable) ── */
+    const compressPhoto = (file) => new Promise((resolve) => {
+        const img = new Image();
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            img.onload = () => {
+                const MAX = 800;
+                let w = img.width, h = img.height;
+                if (w > MAX || h > MAX) {
+                    const ratio = Math.min(MAX / w, MAX / h);
+                    w = Math.round(w * ratio);
+                    h = Math.round(h * ratio);
+                }
+                const canvas = document.createElement('canvas');
+                canvas.width = w; canvas.height = h;
+                canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+                resolve(canvas.toDataURL('image/jpeg', 0.6));
+            };
+            img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+    });
 
     const showConfirmModal = (action) => {
         setModalAction(action);
@@ -507,6 +536,179 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
                                 </div>
                             )
                         )}
+
+                        {/* Anotaciones de la línea (notas + fotos unificadas) */}
+                        {(() => {
+                            const annotations = Array.isArray(l.annotations) ? l.annotations : [];
+                            const receiptNotes = annotations.filter(a => a.origin === 'receipt' && a.type === 'note');
+                            const receiptPhotos = annotations.filter(a => a.origin === 'receipt' && a.type === 'photo');
+                            const internalAnnotations = annotations.filter(a => a.origin === 'internal');
+                            const hasAnnotations = annotations.length > 0;
+
+                            return (<>
+                                {/* Notas de recepción (inmutables) */}
+                                {receiptNotes.map((a, i) => (
+                                    <div key={`rn${i}`} style={{ fontSize: 11, color: '#b45309', marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
+                                        <span uk-icon="icon: file-edit; ratio: 0.55"></span>
+                                        {a.text}
+                                    </div>
+                                ))}
+
+                                {/* Fotos de recepción (inmutables) */}
+                                {receiptPhotos.length > 0 && (
+                                    <div style={{ display: 'flex', gap: 4, marginTop: 4, flexWrap: 'wrap' }}>
+                                        {receiptPhotos.map((a, i) => (
+                                            <a key={`rp${i}`} href={`/uploads/line-photos/${a.file}`} target="_blank" rel="noopener noreferrer">
+                                                <img src={`/uploads/line-photos/${a.file}`} alt={`Foto ${i + 1}`}
+                                                     style={{ width: 44, height: 44, objectFit: 'cover', borderRadius: 4, border: '1px solid #ddd' }} />
+                                            </a>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {/* Anotaciones internas posteriores */}
+                                {internalAnnotations.length > 0 && (
+                                    <div style={{ marginTop: 6, paddingLeft: 8, borderLeft: '2px solid #e0e7ff' }}>
+                                        {internalAnnotations.map((a, i) => (
+                                            <div key={`ia${i}`} style={{ fontSize: 10, color: '#6366f1', marginBottom: 2 }}>
+                                                {a.type === 'note' && <><span uk-icon="icon: comment; ratio: 0.45"></span> {a.text}</>}
+                                                {a.type === 'photo' && (
+                                                    <a href={`/uploads/line-photos/${a.file}`} target="_blank" rel="noopener noreferrer">
+                                                        <img src={`/uploads/line-photos/${a.file}`} alt="" style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 3 }} />
+                                                    </a>
+                                                )}
+                                                <span style={{ color: '#94a3b8', marginLeft: 4, fontSize: 9 }}>
+                                                    {a.by} · {new Date(a.at).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {/* Botón para añadir anotación */}
+                                <div style={{ marginTop: 4 }}>
+                                    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                                        <button
+                                            type="button"
+                                            style={{
+                                                fontSize: 10, padding: '1px 6px', borderRadius: 4,
+                                                border: `1px solid ${annotatingLineId === l.id ? '#4f46e5' : '#c7d2fe'}`,
+                                                background: annotatingLineId === l.id ? '#4f46e5' : '#eef2ff',
+                                                color: annotatingLineId === l.id ? '#fff' : '#4f46e5',
+                                                cursor: 'pointer',
+                                            }}
+                                            onClick={() => {
+                                                setAnnotatingLineId(annotatingLineId === l.id ? null : l.id);
+                                                setAnnotationText('');
+                                            }}
+                                        >
+                                            <span uk-icon="icon: comment; ratio: 0.45"></span> Nota
+                                        </button>
+                                        <label style={{
+                                            fontSize: 10, padding: '1px 6px', borderRadius: 4,
+                                            border: '1px solid #c7d2fe', background: '#eef2ff',
+                                            color: annotationUploading ? '#94a3b8' : '#4f46e5',
+                                            cursor: annotationUploading ? 'wait' : 'pointer',
+                                            opacity: annotationUploading ? 0.6 : 1,
+                                        }}>
+                                            {annotationUploading
+                                                ? <><span uk-spinner="ratio: 0.3"></span> Subiendo...</>
+                                                : <><span uk-icon="icon: camera; ratio: 0.45"></span> Foto</>
+                                            }
+                                            <input type="file" accept="image/*" capture="environment" style={{ display: 'none' }}
+                                                disabled={annotationUploading}
+                                                onChange={async (e) => {
+                                                    const file = e.target.files?.[0];
+                                                    if (!file) return;
+                                                    setAnnotationUploading(true);
+                                                    try {
+                                                        const compressed = await compressPhoto(file);
+                                                        await addLineAnnotation(token, l.id, { type: 'photo', photo: compressed });
+                                                        await loadOrder();
+                                                    } catch (err) { console.error('Error añadiendo foto:', err); }
+                                                    finally { setAnnotationUploading(false); }
+                                                    e.target.value = '';
+                                                }}
+                                            />
+                                        </label>
+                                    </div>
+
+                                    {/* Panel inline de nota con chips rápidos */}
+                                    {annotatingLineId === l.id && (
+                                        <div style={{ marginTop: 6, padding: '6px 8px', background: '#f8fafc', borderRadius: 6, border: '1px solid #e0e7ff' }}>
+                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginBottom: 5 }}>
+                                                {['Mancha difícil', 'Prenda delicada', 'Sin garantía', 'Botones sueltos', 'Color desteñido', 'Revisado OK'].map(chip => (
+                                                    <button
+                                                        key={chip}
+                                                        type="button"
+                                                        style={{
+                                                            fontSize: '0.6rem', padding: '1px 7px', borderRadius: 10,
+                                                            border: '1px solid #c7d2fe', background: '#eef2ff',
+                                                            color: '#4f46e5', cursor: 'pointer',
+                                                        }}
+                                                        onClick={() => {
+                                                            const cur = annotationText.trim();
+                                                            const sep = cur ? '. ' : '';
+                                                            setAnnotationText(cur + sep + chip);
+                                                        }}
+                                                    >
+                                                        {chip}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                            <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                                                <input
+                                                    type="text"
+                                                    value={annotationText}
+                                                    onChange={(e) => setAnnotationText(e.target.value)}
+                                                    placeholder="Escribe una nota..."
+                                                    autoFocus
+                                                    onKeyDown={async (e) => {
+                                                        if (e.key === 'Enter' && annotationText.trim()) {
+                                                            e.preventDefault();
+                                                            try {
+                                                                await addLineAnnotation(token, l.id, { type: 'note', text: annotationText.trim() });
+                                                                setAnnotationText('');
+                                                                setAnnotatingLineId(null);
+                                                                await loadOrder();
+                                                            } catch (err) { console.error('Error añadiendo nota:', err); }
+                                                        } else if (e.key === 'Escape') {
+                                                            setAnnotatingLineId(null);
+                                                            setAnnotationText('');
+                                                        }
+                                                    }}
+                                                    style={{
+                                                        flex: 1, fontSize: '0.75rem', padding: '4px 8px',
+                                                        border: '1px solid #c7d2fe', borderRadius: 4,
+                                                        outline: 'none',
+                                                    }}
+                                                />
+                                                <button
+                                                    type="button"
+                                                    disabled={!annotationText.trim()}
+                                                    style={{
+                                                        fontSize: 10, padding: '3px 8px', borderRadius: 4,
+                                                        border: 'none', background: annotationText.trim() ? '#4f46e5' : '#cbd5e1',
+                                                        color: '#fff', cursor: annotationText.trim() ? 'pointer' : 'default',
+                                                    }}
+                                                    onClick={async () => {
+                                                        if (!annotationText.trim()) return;
+                                                        try {
+                                                            await addLineAnnotation(token, l.id, { type: 'note', text: annotationText.trim() });
+                                                            setAnnotationText('');
+                                                            setAnnotatingLineId(null);
+                                                            await loadOrder();
+                                                        } catch (err) { console.error('Error añadiendo nota:', err); }
+                                                    }}
+                                                >
+                                                    Guardar
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </>);
+                        })()}
                     </div>);
                 })}
 

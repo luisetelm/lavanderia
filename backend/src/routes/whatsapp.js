@@ -2,7 +2,10 @@ import {
     sendTemplateMessage,
     sendTextMessage,
     parseWebhookPayload,
-    fetchTemplates
+    fetchTemplates,
+    uploadMediaToWhatsApp,
+    sendMediaMessage,
+    downloadMedia
 } from '../services/whatsapp.js';
 
 /**
@@ -115,11 +118,41 @@ export async function whatsappWebhookRoutes(fastify) {
             // Procesar mensajes entrantes
             for (const msg of messages) {
                 // Buscar cliente por teléfono
-                const phone = msg.from.startsWith('34') ? msg.from : `34${msg.from}`;
                 const client = await prisma.user.findFirst({
                     where: { phone: { contains: msg.from.slice(-9) } },
                     select: { id: true }
                 });
+
+                let localMediaUrl = null;
+                let mediaType = null;
+
+                // Determinar mediaType
+                const mediaTypes = ['image', 'video', 'audio', 'document', 'sticker'];
+                if (mediaTypes.includes(msg.type)) {
+                    mediaType = msg.type;
+                } else if (msg.type === 'location') {
+                    mediaType = 'location';
+                } else if (msg.type === 'contacts') {
+                    mediaType = 'contact';
+                }
+
+                // Descargar media si hay mediaId
+                if (msg.mediaId) {
+                    try {
+                        const { localPath } = await downloadMedia(msg.mediaId);
+                        localMediaUrl = localPath;
+                    } catch (dlErr) {
+                        console.error(`[WhatsApp] Error descargando media ${msg.mediaId}:`, dlErr.message);
+                    }
+                }
+
+                // Construir content según tipo
+                let content = msg.text || `[${msg.type}]`;
+                if (msg.type === 'location' && msg.location) {
+                    content = JSON.stringify(msg.location);
+                } else if (msg.type === 'contacts' && msg.contacts) {
+                    content = JSON.stringify(msg.contacts);
+                }
 
                 await prisma.message.create({
                     data: {
@@ -128,13 +161,14 @@ export async function whatsappWebhookRoutes(fastify) {
                         direction: 'inbound',
                         clientId: client?.id || null,
                         phone: msg.from,
-                        content: msg.text || `[${msg.type}]`,
-                        mediaUrl: msg.mediaUrl,
+                        content,
+                        mediaUrl: localMediaUrl,
+                        mediaType,
                         status: 'received',
                     }
                 });
 
-                console.log(`[WhatsApp] Mensaje recibido de ${msg.from}: ${msg.text?.substring(0, 50)}`);
+                console.log(`[WhatsApp] Mensaje ${msg.type} recibido de ${msg.from}${mediaType ? ` (${mediaType})` : ''}`);
             }
 
             // Procesar actualizaciones de estado

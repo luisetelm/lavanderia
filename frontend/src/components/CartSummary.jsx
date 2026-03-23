@@ -1,21 +1,31 @@
 import React from 'react';
 
-export default function CartSummary({ cart, products, isbigclient = false, onUpdateQuantity, onRemove }) {
+export default function CartSummary({ cart, products, isbigclient = false, discount = 0, onUpdateQuantity, onRemove }) {
 
-
-    console.log(isbigclient);
-    const getPrice = (product) => {
+    const getBasePrice = (product) => {
         if (isbigclient && product.bigClientPrice && product.bigClientPrice > 0) {
             return product.bigClientPrice;
         }
         return product.basePrice;
     };
 
-    // Cálculo del total usando la función getPrice
+    const getPrice = (product) => {
+        let price = getBasePrice(product);
+        const d = Number(discount || 0);
+        if (!isNaN(d) && d > 0) {
+            const factor = Math.max(0, Math.min(100, d));
+            price = price * (1 - factor / 100);
+        }
+        return price;
+    };
+
+    // Cálculo del total usando la función getPrice (con descuento aplicado)
     const total = cart.reduce((sum, c) => {
         const p = products.find((prod) => prod.id === c.productId);
         return sum + (p ? getPrice(p) : 0) * c.quantity;
     }, 0);
+
+    const hasDiscount = Number(discount || 0) > 0;
 
     return (
         <div>
@@ -61,6 +71,11 @@ export default function CartSummary({ cart, products, isbigclient = false, onUpd
                                 +
                             </button>
                             <span style={{ marginLeft: '8px' }}>
+                                {hasDiscount && (
+                                    <span style={{ textDecoration: 'line-through', color: '#94a3b8', fontSize: '0.8em', marginRight: 4 }}>
+                                        {((getBasePrice(p) || 0) * c.quantity).toFixed(2)} €
+                                    </span>
+                                )}
                                 {((price || 0) * c.quantity).toFixed(2)} €
                             </span>
                             <button
@@ -81,7 +96,17 @@ export default function CartSummary({ cart, products, isbigclient = false, onUpd
                     </div>
                 );
             })}
-            <h3 style={{ marginTop: 10 }}>Total: {total.toFixed(2)} €</h3>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
+                <h3 style={{ margin: 0 }}>Total: {total.toFixed(2)} €</h3>
+                {hasDiscount && (
+                    <span style={{
+                        background: '#10b981', color: '#fff', borderRadius: 6,
+                        padding: '2px 8px', fontSize: '0.75rem', fontWeight: 600
+                    }}>
+                        -{Number(discount)}% dto.
+                    </span>
+                )}
+            </div>
         </div>
     );
 }

@@ -132,11 +132,24 @@ export async function printSaleTicket(order, products = [], printerName) {
             const importeSinIva = (l.unitPrice * l.quantity) / (1 + (iva / 100));
             const importeIva = (l.unitPrice * l.quantity) - importeSinIva;
 
+            // Extraer notas y fotos de recepción de annotations
+            const annotations = Array.isArray(l.annotations) ? l.annotations : [];
+            const receiptNotes = annotations.filter(a => a.origin === 'receipt' && a.type === 'note');
+            const receiptPhotos = annotations.filter(a => a.origin === 'receipt' && a.type === 'photo');
+
+            let detailHtml = '';
+            if (receiptNotes.length > 0) {
+                detailHtml += receiptNotes.map(a => `<div style="font-size:9px;color:#b45309;margin-left:12px;">⚠ ${a.text}</div>`).join('');
+            }
+            if (receiptPhotos.length > 0) {
+                detailHtml += `<div style="font-size:9px;color:#666;margin-left:12px;">📷 ${receiptPhotos.length} foto${receiptPhotos.length > 1 ? 's' : ''} adjunta${receiptPhotos.length > 1 ? 's' : ''}</div>`;
+            }
+
             return `<div class="producto-linea">
                 <span class="cantidad">${l.quantity}x</span>
                 <span class="nombre">${name}</span>
                 <span class="precio">${(l.unitPrice * l.quantity).toFixed(2)}€</span>
-            </div>`;
+            </div>${detailHtml}`;
         })
         .join('');
 

@@ -1,7 +1,135 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { fetchConversations, fetchMessages, sendMessage, fetchWhatsAppTemplates, sendWhatsAppMessage } from '../api.js';
+import { fetchConversations, fetchMessages, sendMessage, sendMediaMessage, fetchWhatsAppTemplates, sendWhatsAppMessage } from '../api.js';
 import PageToolbar from '../components/PageToolbar.jsx';
 
+/* ── Constantes ── */
+const ACCEPTED_TYPES = [
+    'image/jpeg', 'image/png', 'image/webp',
+    'video/mp4', 'video/3gpp',
+    'audio/aac', 'audio/mp4', 'audio/mpeg', 'audio/amr', 'audio/ogg', 'audio/opus',
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.ms-powerpoint',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    'text/plain',
+];
+const ACCEPT_STRING = ACCEPTED_TYPES.join(',');
+
+function formatFileSize(bytes) {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/* ── Componente de burbuja multimedia ── */
+function MediaBubble({ mediaType, mediaUrl, content, onImageClick }) {
+    const src = mediaUrl ? `/uploads/${mediaUrl}` : null;
+
+    if (!mediaType || !src) return null;
+
+    switch (mediaType) {
+        case 'image':
+            return (
+                <div className="msg-bubble-media">
+                    <img
+                        src={src} alt="Imagen"
+                        className="msg-media-img"
+                        onClick={() => onImageClick(src)}
+                    />
+                    {content && content !== '[Imagen]' && content !== '[image]' && (
+                        <div className="msg-media-caption">{content}</div>
+                    )}
+                </div>
+            );
+        case 'video':
+            return (
+                <div className="msg-bubble-media">
+                    <video controls preload="metadata" className="msg-media-video">
+                        <source src={src} />
+                    </video>
+                    {content && content !== '[Vídeo]' && content !== '[video]' && (
+                        <div className="msg-media-caption">{content}</div>
+                    )}
+                </div>
+            );
+        case 'audio':
+            return (
+                <div className="msg-bubble-media">
+                    <audio controls style={{ width: '100%', minWidth: 200 }}>
+                        <source src={src} />
+                    </audio>
+                </div>
+            );
+        case 'document': {
+            const fileName = src.split('/').pop() || 'Documento';
+            return (
+                <div className="msg-bubble-media">
+                    <a href={src} target="_blank" rel="noopener noreferrer" className="msg-doc-link">
+                        <span className="msg-doc-icon">📄</span>
+                        <div className="msg-doc-info">
+                            <span className="msg-doc-name">{fileName}</span>
+                        </div>
+                        <span uk-icon="icon: download; ratio: 0.8" style={{ color: '#64748b' }}></span>
+                    </a>
+                    {content && !content.startsWith('[') && (
+                        <div className="msg-media-caption">{content}</div>
+                    )}
+                </div>
+            );
+        }
+        case 'sticker':
+            return (
+                <div className="msg-bubble-media msg-sticker">
+                    <img src={src} alt="Sticker" style={{ width: 150, height: 150, objectFit: 'contain' }} />
+                </div>
+            );
+        case 'location': {
+            let loc;
+            try { loc = JSON.parse(content); } catch { loc = null; }
+            if (!loc) return <div className="msg-bubble-text">{content}</div>;
+            const mapUrl = `https://www.google.com/maps?q=${loc.latitude},${loc.longitude}`;
+            return (
+                <div className="msg-bubble-media">
+                    <a href={mapUrl} target="_blank" rel="noopener noreferrer" className="msg-location-link">
+                        <span style={{ fontSize: 28 }}>📍</span>
+                        <div>
+                            {loc.name && <div style={{ fontWeight: 600, fontSize: 13 }}>{loc.name}</div>}
+                            {loc.address && <div style={{ fontSize: 12, color: '#64748b' }}>{loc.address}</div>}
+                            <div style={{ fontSize: 11, color: '#94a3b8' }}>{loc.latitude}, {loc.longitude}</div>
+                        </div>
+                    </a>
+                </div>
+            );
+        }
+        case 'contact': {
+            let contacts;
+            try { contacts = JSON.parse(content); } catch { contacts = null; }
+            if (!contacts || !Array.isArray(contacts)) return <div className="msg-bubble-text">{content}</div>;
+            return (
+                <div className="msg-bubble-media">
+                    {contacts.map((c, i) => (
+                        <div key={i} className="msg-contact-card">
+                            <span style={{ fontSize: 22 }}>👤</span>
+                            <div>
+                                <div style={{ fontWeight: 600, fontSize: 13 }}>{c.name?.formatted_name || 'Contacto'}</div>
+                                {c.phones?.map((p, j) => (
+                                    <div key={j} style={{ fontSize: 12, color: '#64748b' }}>{p.phone}</div>
+                                ))}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            );
+        }
+        default:
+            return null;
+    }
+}
+
+/* ── Componente principal ── */
 export default function Messages({ token, onUnreadCount }) {
     const [conversations, setConversations] = useState([]);
     const [selectedClientId, setSelectedClientId] = useState(null);
@@ -18,15 +146,22 @@ export default function Messages({ token, onUnreadCount }) {
     const [templatesLoading, setTemplatesLoading] = useState(false);
     const inputRef = useRef(null);
     const threadRef = useRef(null);
+    const fileInputRef = useRef(null);
+
+    // Attachment state
+    const [attachedFile, setAttachedFile] = useState(null);
+    const [attachPreview, setAttachPreview] = useState(null);
+    const [dragOver, setDragOver] = useState(false);
+
+    // Lightbox
+    const [lightboxSrc, setLightboxSrc] = useState(null);
 
     const totalUnread = conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0);
 
-    // Notificar al padre del conteo de no leídos
     useEffect(() => {
         if (onUnreadCount) onUnreadCount(totalUnread);
     }, [totalUnread, onUnreadCount]);
 
-    // Bloquear scroll del body cuando el thread está abierto en móvil
     useEffect(() => {
         if (selectedClientId && window.innerWidth <= 1024) {
             document.body.style.overflow = 'hidden';
@@ -34,7 +169,6 @@ export default function Messages({ token, onUnreadCount }) {
         }
     }, [selectedClientId]);
 
-    // Ajustar altura del thread cuando aparece el teclado en móvil
     useEffect(() => {
         if (!selectedClientId || !window.visualViewport) return;
         const vv = window.visualViewport;
@@ -44,7 +178,6 @@ export default function Messages({ token, onUnreadCount }) {
             }
         };
         vv.addEventListener('resize', onResize);
-        // Llamar inmediatamente por si el teclado ya está abierto
         onResize();
         return () => vv.removeEventListener('resize', onResize);
     }, [selectedClientId]);
@@ -94,16 +227,67 @@ export default function Messages({ token, onUnreadCount }) {
     const handleSelectConversation = (clientId) => {
         setSelectedClientId(clientId);
         setShowTemplates(false);
+        clearAttachment();
     };
 
     const handleBack = () => {
         setSelectedClientId(null);
         setMessages([]);
         setShowTemplates(false);
+        clearAttachment();
     };
 
+    /* ── Attachment helpers ── */
+    const clearAttachment = () => {
+        setAttachedFile(null);
+        setAttachPreview(null);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+
+    const handleFileSelect = (file) => {
+        if (!file) return;
+        if (!ACCEPTED_TYPES.includes(file.type)) {
+            alert(`Tipo de archivo no soportado: ${file.type}`);
+            return;
+        }
+        setAttachedFile(file);
+
+        if (file.type.startsWith('image/')) {
+            const reader = new FileReader();
+            reader.onload = (e) => setAttachPreview({ type: 'image', url: e.target.result });
+            reader.readAsDataURL(file);
+        } else if (file.type.startsWith('video/')) {
+            setAttachPreview({ type: 'video', url: URL.createObjectURL(file) });
+        } else {
+            setAttachPreview({ type: 'file', name: file.name, size: file.size });
+        }
+    };
+
+    /* ── Send ── */
     const handleSend = async () => {
-        if (!newMessage.trim() || !selectedClientId) return;
+        if (!selectedClientId) return;
+
+        if (attachedFile) {
+            setSending(true);
+            try {
+                await sendMediaMessage(token, {
+                    file: attachedFile,
+                    clientId: selectedClientId,
+                    caption: newMessage.trim() || undefined,
+                    channel,
+                });
+                setNewMessage('');
+                clearAttachment();
+                await loadMessages(selectedClientId);
+            } catch (err) {
+                alert(err.error || 'Error enviando archivo');
+            } finally {
+                setSending(false);
+            }
+            return;
+        }
+
+        if (!newMessage.trim()) return;
         setSending(true);
         try {
             await sendMessage(token, {
@@ -160,6 +344,16 @@ export default function Messages({ token, onUnreadCount }) {
         } finally {
             setSending(false);
         }
+    };
+
+    /* ── Drag & Drop ── */
+    const handleDragOver = (e) => { e.preventDefault(); setDragOver(true); };
+    const handleDragLeave = () => setDragOver(false);
+    const handleDrop = (e) => {
+        e.preventDefault();
+        setDragOver(false);
+        const file = e.dataTransfer?.files?.[0];
+        if (file) handleFileSelect(file);
     };
 
     const filteredConversations = conversations.filter(c => {
@@ -273,7 +467,19 @@ export default function Messages({ token, onUnreadCount }) {
                         </div>
 
                         {/* Mensajes */}
-                        <div className="msg-thread-body">
+                        <div
+                            className={`msg-thread-body ${dragOver ? 'msg-drop-active' : ''}`}
+                            onDragOver={handleDragOver}
+                            onDragLeave={handleDragLeave}
+                            onDrop={handleDrop}
+                        >
+                            {dragOver && (
+                                <div className="msg-drop-overlay">
+                                    <span uk-icon="icon: cloud-upload; ratio: 2" style={{ color: '#048ABF' }}></span>
+                                    <span style={{ fontSize: 14, color: '#048ABF', fontWeight: 600 }}>Suelta el archivo aquí</span>
+                                </div>
+                            )}
+
                             {msgLoading ? (
                                 <div className="msg-empty" style={{ paddingTop: 40 }}>Cargando mensajes...</div>
                             ) : messages.length === 0 ? (
@@ -281,8 +487,19 @@ export default function Messages({ token, onUnreadCount }) {
                             ) : (
                                 messages.map(m => (
                                     <div key={m.id} className={`msg-bubble-row ${m.direction === 'outbound' ? 'outbound' : 'inbound'}`}>
-                                        <div className={`msg-bubble ${m.direction === 'outbound' ? 'outbound' : 'inbound'}`}>
-                                            <div className="msg-bubble-text">{m.content}</div>
+                                        <div className={`msg-bubble ${m.direction === 'outbound' ? 'outbound' : 'inbound'} ${m.mediaType === 'sticker' ? 'msg-bubble-sticker' : ''}`}>
+                                            {/* Contenido multimedia */}
+                                            {m.mediaType && m.mediaUrl ? (
+                                                <MediaBubble
+                                                    mediaType={m.mediaType}
+                                                    mediaUrl={m.mediaUrl}
+                                                    content={m.content}
+                                                    onImageClick={setLightboxSrc}
+                                                />
+                                            ) : (
+                                                <div className="msg-bubble-text">{m.content}</div>
+                                            )}
+
                                             <div className="msg-bubble-meta">
                                                 <span className="msg-bubble-channel">
                                                     {m.channel === 'whatsapp' ? 'WA' : 'SMS'}
@@ -335,6 +552,32 @@ export default function Messages({ token, onUnreadCount }) {
                             </div>
                         )}
 
+                        {/* Preview del archivo adjunto */}
+                        {attachedFile && attachPreview && (
+                            <div className="msg-attach-preview">
+                                <div className="msg-attach-preview-content">
+                                    {attachPreview.type === 'image' && (
+                                        <img src={attachPreview.url} alt="Preview" className="msg-attach-thumb" />
+                                    )}
+                                    {attachPreview.type === 'video' && (
+                                        <video src={attachPreview.url} className="msg-attach-thumb" muted />
+                                    )}
+                                    {attachPreview.type === 'file' && (
+                                        <div className="msg-attach-file-info">
+                                            <span style={{ fontSize: 22 }}>📄</span>
+                                            <div>
+                                                <div style={{ fontSize: 12, fontWeight: 600, wordBreak: 'break-all' }}>{attachPreview.name}</div>
+                                                <div style={{ fontSize: 11, color: '#94a3b8' }}>{formatFileSize(attachPreview.size)}</div>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                                <button className="msg-attach-remove" onClick={clearAttachment}>
+                                    <span uk-icon="icon: close; ratio: 0.7"></span>
+                                </button>
+                            </div>
+                        )}
+
                         {/* Compositor */}
                         <div className="msg-composer">
                             <select className="uk-select uk-form-small msg-composer-channel" value={channel} onChange={e => setChannel(e.target.value)}>
@@ -346,18 +589,43 @@ export default function Messages({ token, onUnreadCount }) {
                                     {templatesLoading ? '...' : <span uk-icon="icon: file-text; ratio: 0.8"></span>}
                                 </button>
                             )}
+
+                            {/* Botón adjuntar */}
+                            <button
+                                className="msg-attach-btn"
+                                onClick={() => fileInputRef.current?.click()}
+                                title="Adjuntar archivo"
+                                disabled={sending}
+                            >
+                                <span uk-icon="icon: plus-circle; ratio: 0.85"></span>
+                            </button>
+                            <input
+                                ref={fileInputRef}
+                                type="file"
+                                accept={ACCEPT_STRING}
+                                style={{ display: 'none' }}
+                                onChange={(e) => { handleFileSelect(e.target.files?.[0]); e.target.value = ''; }}
+                            />
+
                             <input
                                 ref={inputRef}
                                 type="text"
                                 className="uk-input uk-form-small msg-composer-input"
-                                placeholder="Escribe un mensaje..."
+                                placeholder={attachedFile ? 'Añade un mensaje al archivo...' : 'Escribe un mensaje...'}
                                 value={newMessage}
                                 onChange={e => setNewMessage(e.target.value)}
                                 onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
                                 disabled={sending}
                             />
-                            <button className="uk-button uk-button-primary uk-button-small msg-composer-send" onClick={handleSend} disabled={sending || !newMessage.trim()}>
-                                <span uk-icon="icon: arrow-right; ratio: 0.85"></span>
+                            <button
+                                className="uk-button uk-button-primary uk-button-small msg-composer-send"
+                                onClick={handleSend}
+                                disabled={sending || (!newMessage.trim() && !attachedFile)}
+                            >
+                                {sending
+                                    ? <span uk-spinner="ratio: 0.4"></span>
+                                    : <span uk-icon="icon: arrow-right; ratio: 0.85"></span>
+                                }
                             </button>
                         </div>
                     </div>
@@ -370,6 +638,16 @@ export default function Messages({ token, onUnreadCount }) {
                     </div>
                 )}
             </div>
+
+            {/* Lightbox para imágenes */}
+            {lightboxSrc && (
+                <div className="msg-lightbox" onClick={() => setLightboxSrc(null)}>
+                    <button className="msg-lightbox-close" onClick={() => setLightboxSrc(null)}>
+                        <span uk-icon="icon: close; ratio: 1.2"></span>
+                    </button>
+                    <img src={lightboxSrc} alt="Imagen ampliada" onClick={(e) => e.stopPropagation()} />
+                </div>
+            )}
         </div>
     );
 }

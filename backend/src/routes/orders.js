@@ -4,6 +4,8 @@ import {isValidSpanishPhone} from '../utils/validatePhone.js';
 import {sendSMScustomer} from "../services/twilio.js";
 import {sendTextMessage as sendWhatsApp, sendTemplateMessage as sendWhatsAppTemplate} from "../services/whatsapp.js";
 import {crearFactura} from "./invoices.js";
+import fs from 'fs';
+import path from 'path';
 
 export default async function (fastify, opts) {
     const prisma = fastify.prisma;
@@ -81,6 +83,7 @@ export default async function (fastify, opts) {
         // Calcular totales y preparar líneas
         let total = 0;
         const lineCreates = [];
+        const pendingAnnotations = []; // [{ lineIndex, notes, photos }]
 
         // Obtener el cliente (ya calculado arriba) para conocer su descuento
         const userDiscount = client?.discount ? Number(client.discount) : 0;
@@ -109,6 +112,8 @@ export default async function (fastify, opts) {
 
             total += totalPrice;
 
+            const rawPhotos = l.photos || [];
+            const rawNotes = (l.notes || '').trim();
             lineCreates.push({
                 productId: l.productId,
                 variantId: l.variantId || null,
@@ -116,8 +121,11 @@ export default async function (fastify, opts) {
                 unitPrice,
                 discount: discountPct,
                 totalPrice,
-                notes: l.notes || '',
             });
+            // Guardar notas y fotos temporalmente indexadas por posición de línea
+            if (rawNotes || rawPhotos.length > 0) {
+                pendingAnnotations.push({ lineIndex: lineCreates.length - 1, notes: rawNotes, photos: rawPhotos });
+            }
         }
 
         // Fecha límite: si viene, se parsea; si no, se propone (ej. dentro de una semana laboral)
@@ -166,7 +174,52 @@ export default async function (fastify, opts) {
             },
         });
 
-        // Serializar como hacías
+        // Guardar anotaciones de recepción (notas + fotos) en annotations
+        if (pendingAnnotations.length > 0) {
+            const photosDir = path.join(process.cwd(), 'uploads', 'line-photos');
+            if (!fs.existsSync(photosDir)) fs.mkdirSync(photosDir, { recursive: true });
+
+            const userName = req.user ? `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim() || `user#${req.user.id}` : 'sistema';
+            const now = new Date().toISOString();
+
+            for (const pa of pendingAnnotations) {
+                const line = order.lines[pa.lineIndex];
+                if (!line) continue;
+
+                const annotations = [];
+
+                // Nota de recepción
+                if (pa.notes) {
+                    annotations.push({ type: 'note', text: pa.notes, at: now, by: userName, origin: 'receipt' });
+                }
+
+                // Fotos de recepción
+                for (let pi = 0; pi < pa.photos.length; pi++) {
+                    const dataUrl = pa.photos[pi];
+                    if (!dataUrl || !dataUrl.startsWith('data:image')) continue;
+
+                    const matches = dataUrl.match(/^data:image\/(\w+);base64,(.+)$/);
+                    if (!matches) continue;
+
+                    const ext = matches[1] === 'jpeg' ? 'jpg' : matches[1];
+                    const buffer = Buffer.from(matches[2], 'base64');
+                    const filename = `${order.id}_${line.id}_${pi}.${ext}`;
+
+                    fs.writeFileSync(path.join(photosDir, filename), buffer);
+                    annotations.push({ type: 'photo', file: filename, at: now, by: userName, origin: 'receipt' });
+                }
+
+                if (annotations.length > 0) {
+                    await prisma.orderLine.update({
+                        where: { id: line.id },
+                        data: { annotations: JSON.stringify(annotations) },
+                    });
+                    line.annotations = JSON.stringify(annotations);
+                }
+            }
+        }
+
+        // Serializar
         const serialized = {
             ...order, lines: order.lines.map((l) => ({
                 id: l.id,
@@ -175,7 +228,7 @@ export default async function (fastify, opts) {
                 quantity: l.quantity,
                 unitPrice: l.unitPrice,
                 totalPrice: l.totalPrice,
-                notes: l.notes,
+                annotations: l.annotations ? (typeof l.annotations === 'string' ? JSON.parse(l.annotations) : l.annotations) : [],
                 productName: l.product?.name || '',
             })),
         };
@@ -212,7 +265,7 @@ export default async function (fastify, opts) {
         }
 
 
-        if (observaciones !== undefined) data.observaciones = observaciones;
+        // observaciones es inmutable tras la creación (aparece en el ticket)
         if (observacionesInternas !== undefined) data.observacionesInternas = observacionesInternas;
         if (fechaLimiteRaw !== undefined) {
             const fechaLimite = new Date(fechaLimiteRaw);
@@ -492,7 +545,7 @@ export default async function (fastify, opts) {
                             quantity: true,
                             unitPrice: true,
                             totalPrice: true,
-                            notes: true,
+                            annotations: true,
                             discount: true,
                             product: {
                                 select: {id: true, name: true, basePrice: true}
@@ -543,7 +596,7 @@ export default async function (fastify, opts) {
                             quantity: true,
                             unitPrice: true,
                             totalPrice: true,
-                            notes: true,
+                            annotations: true,
                             discount: true,
                             product: {
                                 select: {id: true, name: true, basePrice: true}
@@ -609,7 +662,7 @@ export default async function (fastify, opts) {
                     quantity: l.quantity,
                     unitPrice: l.unitPrice,
                     totalPrice: l.totalPrice,
-                    notes: l.notes || '',
+                    annotations: l.annotations ? (typeof l.annotations === 'string' ? JSON.parse(l.annotations) : l.annotations) : [],
                     productName: l.product?.name || '',
                     product: {
                         id: l.product?.id, name: l.product?.name, basePrice: l.product?.basePrice,
@@ -715,6 +768,77 @@ export default async function (fastify, opts) {
         } catch (err) {
             console.error('Error actualizando línea:', err);
             return reply.status(500).send({error: 'Error al actualizar la línea'});
+        }
+    });
+
+    // ── Annotations: append-only log por línea ──
+    fastify.post('/lines/:lineId/annotations', async (req, reply) => {
+        const prisma = fastify.prisma;
+        const lineId = Number(req.params.lineId);
+        if (isNaN(lineId)) return reply.status(400).send({ error: 'ID de línea inválido' });
+
+        const { type, text, caption, photo } = req.body; // photo = base64 dataUrl
+        if (!type || !['note', 'photo'].includes(type)) {
+            return reply.status(400).send({ error: 'type debe ser "note" o "photo"' });
+        }
+        if (type === 'note' && (!text || !text.trim())) {
+            return reply.status(400).send({ error: 'text es obligatorio para anotaciones de tipo note' });
+        }
+        if (type === 'photo' && !photo) {
+            return reply.status(400).send({ error: 'photo (base64 dataUrl) es obligatorio para anotaciones de tipo photo' });
+        }
+
+        try {
+            const line = await prisma.orderLine.findUnique({ where: { id: lineId } });
+            if (!line) return reply.status(404).send({ error: 'Línea no encontrada' });
+
+            // Parsear annotations existentes
+            let annotations = [];
+            try { annotations = line.annotations ? JSON.parse(line.annotations) : []; } catch { annotations = []; }
+
+            if (annotations.length >= 50) {
+                return reply.status(400).send({ error: 'Límite de anotaciones alcanzado (máx 50)' });
+            }
+
+            const entry = {
+                type,
+                at: new Date().toISOString(),
+                by: req.user ? `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim() || `user#${req.user.id}` : 'sistema',
+                origin: 'internal',
+            };
+
+            if (type === 'note') {
+                entry.text = text.trim();
+            }
+
+            if (type === 'photo') {
+                // Guardar foto en disco
+                const photosDir = path.join(process.cwd(), 'uploads', 'line-photos');
+                if (!fs.existsSync(photosDir)) fs.mkdirSync(photosDir, { recursive: true });
+
+                const matches = photo.match(/^data:image\/(\w+);base64,(.+)$/);
+                if (!matches) return reply.status(400).send({ error: 'Formato de imagen inválido' });
+
+                const ext = matches[1] === 'jpeg' ? 'jpg' : matches[1];
+                const buffer = Buffer.from(matches[2], 'base64');
+                const filename = `${line.orderId}_${lineId}_ann_${Date.now()}.${ext}`;
+                fs.writeFileSync(path.join(photosDir, filename), buffer);
+
+                entry.file = filename;
+                if (caption) entry.caption = caption.trim();
+            }
+
+            annotations.push(entry);
+
+            await prisma.orderLine.update({
+                where: { id: lineId },
+                data: { annotations: JSON.stringify(annotations) },
+            });
+
+            return reply.send({ ok: true, annotation: entry, total: annotations.length });
+        } catch (err) {
+            console.error('Error añadiendo anotación:', err);
+            return reply.status(500).send({ error: 'Error al añadir anotación' });
         }
     });
 

@@ -18,6 +18,7 @@ import messagesRoutes from './routes/messages.js';
 import googleRoutes from './routes/google.js';
 import dashboardRoutes from './routes/dashboard.js';
 import fastifyStatic from '@fastify/static';
+import multipart from '@fastify/multipart';
 import path from 'path';
 import cron from 'node-cron';
 import { generateMonthlyInvoices } from './services/monthlyInvoicing.js';
@@ -47,7 +48,7 @@ app.addHook('onRequest', async (request, reply) => {
 
 // JWT middleware
 app.addHook('preHandler', async (request, reply) => {
-    const publicPrefixes = ['/api/auth/login', '/api/auth/register', '/api/auth/forgot-password', '/api/auth/reset-password', '/invoices_pdfs/', '/api/stripe/webhook', '/api/portal/', '/api/whatsapp/webhook', '/api/google/callback'];
+    const publicPrefixes = ['/api/auth/login', '/api/auth/register', '/api/auth/forgot-password', '/api/auth/reset-password', '/invoices_pdfs/', '/uploads/', '/api/stripe/webhook', '/api/portal/', '/api/whatsapp/webhook', '/api/google/callback'];
     if (publicPrefixes.some(p => request.url.startsWith(p))) return;
     const auth = request.headers.authorization;
     if (!auth || !auth.startsWith('Bearer ')) {
@@ -61,6 +62,9 @@ app.addHook('preHandler', async (request, reply) => {
         return reply.status(401).send({error: 'Invalid token'});
     }
 });
+
+// Multipart (uploads de media)
+app.register(multipart, { limits: { fileSize: 100 * 1024 * 1024 } }); // 100 MB max
 
 // Rutas
 app.register(authRoutes, {prefix: '/api/auth'});
@@ -85,6 +89,13 @@ app.register(dashboardRoutes, {prefix: '/api/dashboard'});
 app.register(fastifyStatic, {
     root: path.join(process.cwd(), 'invoices_pdfs'),
     prefix: '/invoices_pdfs/',
+});
+
+// Servir la carpeta de fotos de prendas
+app.register(fastifyStatic, {
+    root: path.join(process.cwd(), 'uploads'),
+    prefix: '/uploads/',
+    decorateReply: false,
 });
 
 // Healthcheck

@@ -33,8 +33,6 @@ export default function StatusChangeModal({ action, clientChannel, onConfirm, on
                         Este cliente ha indicado que no desea recibir notificaciones.
                     </p>
                 )}
-                <h2 className="uk-modal-title" style={{ fontSize: '1.05rem', marginBottom: 4 }}>{title}</h2>
-                <p style={{ fontSize: '0.82rem', color: '#64748b', margin: '0 0 20px' }}>{description}</p>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {hasPref && (

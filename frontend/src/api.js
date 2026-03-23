@@ -136,6 +136,19 @@ export async function updateOrderLine(token, lineId, data) {
     return res.json();
 }
 
+export async function addLineAnnotation(token, lineId, data) {
+    const res = await fetch(`/api/orders/lines/${lineId}/annotations`, {
+        method: 'POST',
+        headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data),
+    });
+    if (!res.ok) throw await res.json();
+    return res.json();
+}
+
 export async function fetchUsers(token, {q = '', role, page = 0, size = 50} = {}) {
     const params = new URLSearchParams({page, size});
     if (q) params.set('q', q);
@@ -337,6 +350,23 @@ export function sendMessage(token, { clientId, channel, content, orderId }) {
         method: 'POST',
         body: JSON.stringify({ clientId, channel, content, orderId }),
     });
+}
+
+export async function sendMediaMessage(token, { file, clientId, caption, channel }) {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('clientId', String(clientId));
+    if (caption) formData.append('caption', caption);
+    formData.append('channel', channel || 'whatsapp');
+
+    const res = await fetch(`${API_BASE}/messages/send-media`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData,
+    });
+    const data = await res.json();
+    if (!res.ok) throw data;
+    return data;
 }
 
 // --- Google Reviews ---

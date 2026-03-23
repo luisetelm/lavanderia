@@ -37,13 +37,6 @@ export default function CustomerSelector({
         };
     }, [searchUser, token]);
 
-    const quickFields = {quickFirstName, quickLastName, quickClientPhone, quickClientEmail};
-    const setQuickFields = updater => {
-        setQuickFirstName(updater(quickFields).quickFirstName);
-        setQuickLastName(updater(quickFields).quickLastName);
-        setQuickClientPhone(updater(quickFields).quickClientPhone);
-        setQuickClientEmail(updater(quickFields).quickClientEmail);
-    };
 
     return (<div className="uk-grid-medium" uk-grid="true" style={{padding: '12px 0'}}>
         <div className="uk-width-1-1">
@@ -70,10 +63,6 @@ export default function CustomerSelector({
                                 key={u.id}
                                 onClick={() => {
                                     setSelectedUser(u);
-                                    setQuickFirstName('');
-                                    setQuickLastName('');
-                                    setQuickClientPhone('');
-                                    setQuickClientEmail('');
                                 }}
                                 style={{padding: '8px 14px', cursor: 'pointer', borderBottom: '1px solid #f0f0f0'}}
                                 className={`uk-link-reset ${selectedUser?.id === u.id ? 'uk-background-selected' : ''}`}
@@ -117,7 +106,6 @@ export default function CustomerSelector({
                             value={quickFirstName}
                             onChange={(e) => {
                                 setQuickFirstName(e.target.value);
-                                setSelectedUser(null);
                             }}
                         />
                     </div>
@@ -128,7 +116,6 @@ export default function CustomerSelector({
                             value={quickLastName}
                             onChange={(e) => {
                                 setQuickLastName(e.target.value);
-                                setSelectedUser(null);
                             }}
                         />
                     </div>
