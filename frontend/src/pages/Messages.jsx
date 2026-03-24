@@ -625,44 +625,69 @@ export default function Messages({ token, onUnreadCount }) {
                                         <span uk-icon="icon: close; ratio: 0.7"></span>
                                     </button>
                                 </div>
-                                {templates.length === 0 ? (
-                                    <div style={{ textAlign: 'center', padding: '12px 0' }}>
-                                        <div style={{ fontSize: 12, color: '#999', marginBottom: 10 }}>No hay plantillas aprobadas</div>
-                                        <button
-                                            className="uk-button uk-button-primary uk-button-small"
-                                            style={{ fontSize: 12, borderRadius: 6 }}
-                                            disabled={sending}
-                                            onClick={async () => {
-                                                setSending(true);
-                                                try {
-                                                    const res = await setupDefaultTemplates(token);
-                                                    const ok = res.results?.filter(r => r.status === 'created').length || 0;
-                                                    const fail = res.results?.filter(r => r.status === 'error') || [];
-                                                    let msg = `✅ ${ok} plantilla(s) creada(s). Quedarán en estado PENDIENTE hasta que Meta las apruebe.`;
-                                                    if (fail.length > 0) {
-                                                        msg += '\n\n⚠️ Errores:\n' + fail.map(f => `${f.name}: ${f.error}`).join('\n');
+                                {/* Botón para crear plantillas por defecto si faltan pedido_listo / pedido_recogido */}
+                                {(() => {
+                                    const names = templates.map(t => t.name);
+                                    const missingDefaults = !names.includes('pedido_listo') || !names.includes('pedido_recogido');
+                                    return missingDefaults && (
+                                        <div style={{ textAlign: 'center', padding: '8px 0', borderBottom: templates.length > 0 ? '1px solid #eee' : 'none', marginBottom: templates.length > 0 ? 8 : 0 }}>
+                                            {templates.length === 0 && (
+                                                <div style={{ fontSize: 12, color: '#999', marginBottom: 10 }}>No hay plantillas aprobadas</div>
+                                            )}
+                                            <button
+                                                className="uk-button uk-button-primary uk-button-small"
+                                                style={{ fontSize: 12, borderRadius: 6 }}
+                                                disabled={sending}
+                                                onClick={async () => {
+                                                    setSending(true);
+                                                    try {
+                                                        const res = await setupDefaultTemplates(token);
+                                                        const ok = res.results?.filter(r => r.status === 'created').length || 0;
+                                                        const fail = res.results?.filter(r => r.status === 'error') || [];
+                                                        let msg = `✅ ${ok} plantilla(s) creada(s). Quedarán en estado PENDIENTE hasta que Meta las apruebe.`;
+                                                        if (fail.length > 0) {
+                                                            msg += '\n\n⚠️ Errores:\n' + fail.map(f => `${f.name}: ${f.error}`).join('\n');
+                                                        }
+                                                        alert(msg);
+                                                        // Recargar plantillas (resetear cache para forzar fetch)
+                                                        setTemplates([]);
+                                                        setShowTemplates(false);
+                                                        setTimeout(() => loadTemplates(), 300);
+                                                    } catch (err) {
+                                                        alert(err.error || 'Error creando plantillas');
+                                                    } finally {
+                                                        setSending(false);
                                                     }
-                                                    alert(msg);
-                                                    loadTemplates();
-                                                } catch (err) {
-                                                    alert(err.error || 'Error creando plantillas');
-                                                } finally {
-                                                    setSending(false);
-                                                }
-                                            }}
-                                        >
-                                            {sending ? 'Creando...' : '📝 Crear plantillas por defecto'}
-                                        </button>
-                                        <div style={{ fontSize: 10, color: '#b0b0b0', marginTop: 6 }}>
-                                            Crea <b>pedido_listo</b> y <b>pedido_recogido</b>
+                                                }}
+                                            >
+                                                {sending ? 'Creando...' : '📝 Crear plantillas por defecto'}
+                                            </button>
+                                            <div style={{ fontSize: 10, color: '#b0b0b0', marginTop: 6 }}>
+                                                Crea <b>pedido_listo</b> y <b>pedido_recogido</b>
+                                            </div>
                                         </div>
-                                    </div>
-                                ) : (
-                                    templates.map(t => (
-                                        <div key={`${t.name}-${t.language}`} className="msg-template-item" onClick={() => handleSendTemplate(t)}>
-                                            <div style={{ fontWeight: 500 }}>{t.name}</div>
+                                    );
+                                })()}
+
+                                {/* Lista de plantillas */}
+                                {templates.length > 0 ? (
+                                    templates.map(t => {
+                                        const isApproved = t.status === 'APPROVED';
+                                        const statusLabel = t.status === 'APPROVED' ? '✅' : t.status === 'PENDING' ? '⏳' : t.status === 'REJECTED' ? '❌' : '❓';
+                                        return (
+                                        <div
+                                            key={`${t.name}-${t.language}`}
+                                            className="msg-template-item"
+                                            onClick={() => isApproved ? handleSendTemplate(t) : null}
+                                            style={{ opacity: isApproved ? 1 : 0.55, cursor: isApproved ? 'pointer' : 'default' }}
+                                        >
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                <span style={{ fontWeight: 500 }}>{t.name}</span>
+                                                <span title={t.status} style={{ fontSize: 11 }}>{statusLabel}</span>
+                                            </div>
                                             <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>
                                                 {t.category} &middot; {t.language}
+                                                {!isApproved && <span style={{ marginLeft: 6, color: t.status === 'REJECTED' ? '#ef4444' : '#f59e0b', fontWeight: 500 }}>({t.status})</span>}
                                                 {t.components?.find(c => c.type === 'BODY')?.text && (
                                                     <span style={{ display: 'block', marginTop: 2, fontStyle: 'italic', color: '#aaa' }}>
                                                         {t.components.find(c => c.type === 'BODY').text.substring(0, 80)}...
@@ -670,7 +695,10 @@ export default function Messages({ token, onUnreadCount }) {
                                                 )}
                                             </div>
                                         </div>
-                                    ))
+                                        );
+                                    })
+                                ) : (
+                                    !templates.length && null
                                 )}
                             </div>
                         )}
@@ -712,8 +740,8 @@ export default function Messages({ token, onUnreadCount }) {
                                 </select>
 
                                 {channel === 'whatsapp' && (
-                                    <button className="msg-composer-tpl-btn" onClick={loadTemplates} disabled={templatesLoading} title="Plantillas">
-                                        {templatesLoading ? '...' : <span uk-icon="icon: file-text; ratio: 0.8"></span>}
+                                    <button className="msg-composer-tpl-btn" onClick={loadTemplates} disabled={templatesLoading} title="Plantillas de WhatsApp">
+                                        {templatesLoading ? '...' : '📄'}
                                     </button>
                                 )}
 

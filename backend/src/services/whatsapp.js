@@ -406,7 +406,8 @@ export async function deleteTemplate(templateName) {
 }
 
 /**
- * Obtener plantillas aprobadas de la cuenta de WhatsApp Business.
+ * Obtener plantillas de la cuenta de WhatsApp Business.
+ * Devuelve todas (APPROVED, PENDING, REJECTED) para poder mostrar estado.
  */
 export async function fetchTemplates() {
     const wabaId = process.env.WHATSAPP_BUSINESS_ACCOUNT_ID;
@@ -414,7 +415,7 @@ export async function fetchTemplates() {
         throw new Error('WHATSAPP_BUSINESS_ACCOUNT_ID no configurado');
     }
 
-    const url = `https://graph.facebook.com/${API_VERSION}/${wabaId}/message_templates?status=APPROVED`;
+    const url = `https://graph.facebook.com/${API_VERSION}/${wabaId}/message_templates`;
     const res = await fetch(url, { headers: getHeaders() });
     const data = await res.json();
 
