@@ -329,7 +329,7 @@ export function fetchWhatsAppTemplates(token) {
 }
 
 export function setupDefaultTemplates(token) {
-    return request('/whatsapp/templates/setup-defaults', token, { method: 'POST' });
+    return request('/whatsapp/templates/setup-defaults', token, { method: 'POST', body: JSON.stringify({}) });
 }
 
 export function fetchWhatsAppMessages(token, { clientId, page = 0, size = 50 } = {}) {
@@ -357,7 +357,7 @@ export function sendMessage(token, { conversationId, channel, content, orderId }
 }
 
 export function markConversationAsRead(token, conversationId) {
-    return request(`/messages/read/${conversationId}`, token, { method: 'POST' });
+    return request(`/messages/read/${conversationId}`, token, { method: 'POST', body: JSON.stringify({}) });
 }
 
 export async function sendMediaMessage(token, { file, conversationId, caption, channel }) {

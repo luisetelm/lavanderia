@@ -217,8 +217,9 @@ export default function Messages({ token, onUnreadCount }) {
         }
     }, [selectedConvId]);
 
+    // Solo en móvil: ajustar altura del thread al visualViewport (keyboard iOS)
     useEffect(() => {
-        if (!selectedConvId || !window.visualViewport) return;
+        if (!selectedConvId || !window.visualViewport || window.innerWidth > 1024) return;
         const vv = window.visualViewport;
         const onResize = () => {
             if (threadRef.current) {
@@ -227,7 +228,10 @@ export default function Messages({ token, onUnreadCount }) {
         };
         vv.addEventListener('resize', onResize);
         onResize();
-        return () => vv.removeEventListener('resize', onResize);
+        return () => {
+            vv.removeEventListener('resize', onResize);
+            if (threadRef.current) threadRef.current.style.height = '';
+        };
     }, [selectedConvId]);
 
     const loadConversations = useCallback(async () => {
