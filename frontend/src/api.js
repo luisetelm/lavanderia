@@ -328,6 +328,10 @@ export function fetchWhatsAppTemplates(token) {
     return request('/whatsapp/templates', token);
 }
 
+export function setupDefaultTemplates(token) {
+    return request('/whatsapp/templates/setup-defaults', token, { method: 'POST' });
+}
+
 export function fetchWhatsAppMessages(token, { clientId, page = 0, size = 50 } = {}) {
     const params = new URLSearchParams({ page, size });
     if (clientId) params.set('clientId', clientId);
@@ -339,23 +343,27 @@ export function fetchConversations(token) {
     return request('/messages/conversations', token);
 }
 
-export function fetchMessages(token, { clientId, page = 0, size = 50 } = {}) {
+export function fetchMessages(token, { conversationId, page = 0, size = 50 } = {}) {
     const params = new URLSearchParams({ page, size });
-    if (clientId) params.set('clientId', clientId);
+    if (conversationId) params.set('conversationId', conversationId);
     return request(`/messages?${params}`, token);
 }
 
-export function sendMessage(token, { clientId, channel, content, orderId }) {
+export function sendMessage(token, { conversationId, channel, content, orderId }) {
     return request('/messages/send', token, {
         method: 'POST',
-        body: JSON.stringify({ clientId, channel, content, orderId }),
+        body: JSON.stringify({ conversationId, channel, content, orderId }),
     });
 }
 
-export async function sendMediaMessage(token, { file, clientId, caption, channel }) {
+export function markConversationAsRead(token, conversationId) {
+    return request(`/messages/read/${conversationId}`, token, { method: 'POST' });
+}
+
+export async function sendMediaMessage(token, { file, conversationId, caption, channel }) {
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('clientId', String(clientId));
+    formData.append('conversationId', String(conversationId));
     if (caption) formData.append('caption', caption);
     formData.append('channel', channel || 'whatsapp');
 

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { fetchConversations, fetchMessages, sendMessage, sendMediaMessage, fetchWhatsAppTemplates, sendWhatsAppMessage } from '../api.js';
+import { fetchConversations, fetchMessages, sendMessage, sendMediaMessage, markConversationAsRead, fetchWhatsAppTemplates, sendWhatsAppMessage, setupDefaultTemplates } from '../api.js';
 import PageToolbar from '../components/PageToolbar.jsx';
 
 /* ── Constantes ── */
@@ -180,7 +180,7 @@ function MediaBubble({ mediaType, mediaUrl, content, onImageClick }) {
 /* ── Componente principal ── */
 export default function Messages({ token, onUnreadCount }) {
     const [conversations, setConversations] = useState([]);
-    const [selectedClientId, setSelectedClientId] = useState(null);
+    const [selectedConvId, setSelectedConvId] = useState(null);
     const [messages, setMessages] = useState([]);
     const [loading, setLoading] = useState(true);
     const [msgLoading, setMsgLoading] = useState(false);
@@ -211,14 +211,14 @@ export default function Messages({ token, onUnreadCount }) {
     }, [totalUnread, onUnreadCount]);
 
     useEffect(() => {
-        if (selectedClientId && window.innerWidth <= 1024) {
+        if (selectedConvId && window.innerWidth <= 1024) {
             document.body.style.overflow = 'hidden';
             return () => { document.body.style.overflow = ''; };
         }
-    }, [selectedClientId]);
+    }, [selectedConvId]);
 
     useEffect(() => {
-        if (!selectedClientId || !window.visualViewport) return;
+        if (!selectedConvId || !window.visualViewport) return;
         const vv = window.visualViewport;
         const onResize = () => {
             if (threadRef.current) {
@@ -228,7 +228,7 @@ export default function Messages({ token, onUnreadCount }) {
         vv.addEventListener('resize', onResize);
         onResize();
         return () => vv.removeEventListener('resize', onResize);
-    }, [selectedClientId]);
+    }, [selectedConvId]);
 
     const loadConversations = useCallback(async () => {
         try {
@@ -247,11 +247,11 @@ export default function Messages({ token, onUnreadCount }) {
         return () => clearInterval(interval);
     }, [loadConversations]);
 
-    const loadMessages = useCallback(async (clientId) => {
-        if (!clientId) return;
+    const loadMessages = useCallback(async (convId) => {
+        if (!convId) return;
         setMsgLoading(true);
         try {
-            const data = await fetchMessages(token, { clientId });
+            const data = await fetchMessages(token, { conversationId: convId });
             setMessages(data);
         } catch (err) {
             console.error('Error cargando mensajes:', err);
@@ -261,25 +261,38 @@ export default function Messages({ token, onUnreadCount }) {
     }, [token]);
 
     useEffect(() => {
-        if (selectedClientId) {
-            loadMessages(selectedClientId);
-            const interval = setInterval(() => loadMessages(selectedClientId), 15000);
+        if (selectedConvId) {
+            loadMessages(selectedConvId);
+            const interval = setInterval(() => loadMessages(selectedConvId), 15000);
             return () => clearInterval(interval);
         }
-    }, [selectedClientId, loadMessages]);
+    }, [selectedConvId, loadMessages]);
 
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages]);
 
-    const handleSelectConversation = (clientId) => {
-        setSelectedClientId(clientId);
+    const handleSelectConversation = async (convId) => {
+        setSelectedConvId(convId);
         setShowTemplates(false);
         clearAttachment();
+
+        // Marcar como leído si hay mensajes sin leer
+        const conv = conversations.find(c => c.id === convId);
+        if (conv?.unreadCount > 0) {
+            try {
+                await markConversationAsRead(token, convId);
+                setConversations(prev => prev.map(c =>
+                    c.id === convId ? { ...c, unreadCount: 0 } : c
+                ));
+            } catch (err) {
+                console.error('Error marcando como leído:', err);
+            }
+        }
     };
 
     const handleBack = () => {
-        setSelectedClientId(null);
+        setSelectedConvId(null);
         setMessages([]);
         setShowTemplates(false);
         clearAttachment();
@@ -313,20 +326,20 @@ export default function Messages({ token, onUnreadCount }) {
 
     /* ── Send ── */
     const handleSend = async () => {
-        if (!selectedClientId) return;
+        if (!selectedConvId) return;
 
         if (attachedFile) {
             setSending(true);
             try {
                 await sendMediaMessage(token, {
                     file: attachedFile,
-                    clientId: selectedClientId,
+                    conversationId: selectedConvId,
                     caption: newMessage.trim() || undefined,
                     channel,
                 });
                 setNewMessage('');
                 clearAttachment();
-                await loadMessages(selectedClientId);
+                await loadMessages(selectedConvId);
             } catch (err) {
                 alert(err.error || 'Error enviando archivo');
             } finally {
@@ -339,12 +352,12 @@ export default function Messages({ token, onUnreadCount }) {
         setSending(true);
         try {
             await sendMessage(token, {
-                clientId: selectedClientId,
+                conversationId: selectedConvId,
                 channel,
                 content: newMessage.trim(),
             });
             setNewMessage('');
-            await loadMessages(selectedClientId);
+            await loadMessages(selectedConvId);
         } catch (err) {
             alert(err.error || 'Error enviando mensaje');
         } finally {
@@ -371,8 +384,8 @@ export default function Messages({ token, onUnreadCount }) {
     };
 
     const handleSendTemplate = async (template) => {
-        if (!selectedClientId) return;
-        const conv = conversations.find(c => c.clientId === selectedClientId);
+        if (!selectedConvId) return;
+        const conv = conversations.find(c => c.id === selectedConvId);
         if (!conv?.phone) {
             alert('El cliente no tiene teléfono');
             return;
@@ -383,10 +396,10 @@ export default function Messages({ token, onUnreadCount }) {
                 phone: conv.phone.startsWith('34') ? conv.phone : `34${conv.phone}`,
                 templateName: template.name,
                 templateComponents: [],
-                clientId: selectedClientId,
+                clientId: conv.clientId,
             });
             setShowTemplates(false);
-            await loadMessages(selectedClientId);
+            await loadMessages(selectedConvId);
         } catch (err) {
             alert(err.error || 'Error enviando plantilla');
         } finally {
@@ -411,7 +424,7 @@ export default function Messages({ token, onUnreadCount }) {
         return name.includes(term) || (c.phone || '').includes(term);
     });
 
-    const selectedConv = conversations.find(c => c.clientId === selectedClientId);
+    const selectedConv = conversations.find(c => c.id === selectedConvId);
 
     const formatTime = (date) => {
         const d = new Date(date);
@@ -436,7 +449,7 @@ export default function Messages({ token, onUnreadCount }) {
                 )
             } />
 
-            <div className={`msg-container ${selectedClientId ? 'thread-open' : ''}`}>
+            <div className={`msg-container ${selectedConvId ? 'thread-open' : ''}`}>
                 {/* Sidebar: lista de conversaciones */}
                 <div className="msg-sidebar">
                     <div className="msg-sidebar-header">
@@ -455,19 +468,28 @@ export default function Messages({ token, onUnreadCount }) {
                         ) : filteredConversations.length === 0 ? (
                             <div className="msg-empty">Sin conversaciones</div>
                         ) : (
-                            filteredConversations.map(c => (
+                            filteredConversations.map(c => {
+                                const hasName = c.firstName || c.lastName;
+                                const displayName = hasName
+                                    ? `${c.firstName || ''} ${c.lastName || ''}`.trim()
+                                    : `+${c.phone || 'Desconocido'}`;
+                                const initials = hasName
+                                    ? `${(c.firstName || '?')[0]}${(c.lastName || '?')[0]}`
+                                    : '?';
+
+                                return (
                                 <div
-                                    key={c.clientId}
-                                    className={`msg-conv-item ${selectedClientId === c.clientId ? 'active' : ''}`}
-                                    onClick={() => handleSelectConversation(c.clientId)}
+                                    key={c.id}
+                                    className={`msg-conv-item ${selectedConvId === c.id ? 'active' : ''}`}
+                                    onClick={() => handleSelectConversation(c.id)}
                                 >
                                     <div className="msg-conv-avatar">
-                                        {(c.firstName || '?')[0]}{(c.lastName || '?')[0]}
+                                        {initials}
                                     </div>
                                     <div className="msg-conv-info">
                                         <div className="msg-conv-top">
                                             <span className="msg-conv-name">
-                                                {c.firstName} {c.lastName}
+                                                {displayName}
                                             </span>
                                             <span className="msg-conv-time">{formatTime(c.lastMessageAt)}</span>
                                         </div>
@@ -495,13 +517,14 @@ export default function Messages({ token, onUnreadCount }) {
                                         </div>
                                     </div>
                                 </div>
-                            ))
+                                );
+                            })
                         )}
                     </div>
                 </div>
 
                 {/* Thread: hilo de mensajes */}
-                {selectedClientId ? (
+                {selectedConvId ? (
                     <div className="msg-thread" ref={threadRef}>
                         {/* Header */}
                         <div className="msg-thread-header">
@@ -509,11 +532,15 @@ export default function Messages({ token, onUnreadCount }) {
                                 <span uk-icon="icon: chevron-left; ratio: 0.9"></span>
                             </button>
                             <div className="msg-conv-avatar small">
-                                {(selectedConv?.firstName || '?')[0]}{(selectedConv?.lastName || '?')[0]}
+                                {selectedConv?.firstName || selectedConv?.lastName
+                                    ? `${(selectedConv?.firstName || '?')[0]}${(selectedConv?.lastName || '?')[0]}`
+                                    : '?'}
                             </div>
                             <div style={{ flex: 1, minWidth: 0 }}>
                                 <div style={{ fontWeight: 600, fontSize: 14, lineHeight: 1.2 }}>
-                                    {selectedConv?.firstName} {selectedConv?.lastName}
+                                    {selectedConv?.firstName || selectedConv?.lastName
+                                        ? `${selectedConv?.firstName || ''} ${selectedConv?.lastName || ''}`.trim()
+                                        : `+${selectedConv?.phone || 'Desconocido'}`}
                                 </div>
                                 <div style={{ fontSize: 11, color: '#94a3b8' }}>{selectedConv?.phone}</div>
                             </div>
@@ -595,7 +622,37 @@ export default function Messages({ token, onUnreadCount }) {
                                     </button>
                                 </div>
                                 {templates.length === 0 ? (
-                                    <div style={{ fontSize: 12, color: '#999' }}>No hay plantillas aprobadas</div>
+                                    <div style={{ textAlign: 'center', padding: '12px 0' }}>
+                                        <div style={{ fontSize: 12, color: '#999', marginBottom: 10 }}>No hay plantillas aprobadas</div>
+                                        <button
+                                            className="uk-button uk-button-primary uk-button-small"
+                                            style={{ fontSize: 12, borderRadius: 6 }}
+                                            disabled={sending}
+                                            onClick={async () => {
+                                                setSending(true);
+                                                try {
+                                                    const res = await setupDefaultTemplates(token);
+                                                    const ok = res.results?.filter(r => r.status === 'created').length || 0;
+                                                    const fail = res.results?.filter(r => r.status === 'error') || [];
+                                                    let msg = `✅ ${ok} plantilla(s) creada(s). Quedarán en estado PENDIENTE hasta que Meta las apruebe.`;
+                                                    if (fail.length > 0) {
+                                                        msg += '\n\n⚠️ Errores:\n' + fail.map(f => `${f.name}: ${f.error}`).join('\n');
+                                                    }
+                                                    alert(msg);
+                                                    loadTemplates();
+                                                } catch (err) {
+                                                    alert(err.error || 'Error creando plantillas');
+                                                } finally {
+                                                    setSending(false);
+                                                }
+                                            }}
+                                        >
+                                            {sending ? 'Creando...' : '📝 Crear plantillas por defecto'}
+                                        </button>
+                                        <div style={{ fontSize: 10, color: '#b0b0b0', marginTop: 6 }}>
+                                            Crea <b>pedido_listo</b> y <b>pedido_recogido</b>
+                                        </div>
+                                    </div>
                                 ) : (
                                     templates.map(t => (
                                         <div key={`${t.name}-${t.language}`} className="msg-template-item" onClick={() => handleSendTemplate(t)}>
@@ -641,55 +698,73 @@ export default function Messages({ token, onUnreadCount }) {
                         )}
 
                         {/* Compositor */}
-                        <div className="msg-composer">
-                            <select className="uk-select uk-form-small msg-composer-channel" value={channel} onChange={e => setChannel(e.target.value)}>
-                                <option value="whatsapp">WA</option>
-                                <option value="sms">SMS</option>
-                            </select>
-                            {channel === 'whatsapp' && (
-                                <button className="msg-composer-tpl-btn" onClick={loadTemplates} disabled={templatesLoading} title="Plantillas">
-                                    {templatesLoading ? '...' : <span uk-icon="icon: file-text; ratio: 0.8"></span>}
-                                </button>
-                            )}
+                        {(() => {
+                            const waWindowClosed = channel === 'whatsapp' && !selectedConv?.waWindowOpen;
+                            return (
+                            <div className="msg-composer">
+                                <select className="uk-select uk-form-small msg-composer-channel" value={channel} onChange={e => setChannel(e.target.value)}>
+                                    <option value="whatsapp">WA</option>
+                                    <option value="sms">SMS</option>
+                                </select>
 
-                            {/* Botón adjuntar */}
-                            <button
-                                className="msg-attach-btn"
-                                onClick={() => fileInputRef.current?.click()}
-                                title="Adjuntar archivo"
-                                disabled={sending}
-                            >
-                                <span uk-icon="icon: plus-circle; ratio: 0.85"></span>
-                            </button>
-                            <input
-                                ref={fileInputRef}
-                                type="file"
-                                accept={ACCEPT_STRING}
-                                style={{ display: 'none' }}
-                                onChange={(e) => { handleFileSelect(e.target.files?.[0]); e.target.value = ''; }}
-                            />
+                                {channel === 'whatsapp' && (
+                                    <button className="msg-composer-tpl-btn" onClick={loadTemplates} disabled={templatesLoading} title="Plantillas">
+                                        {templatesLoading ? '...' : <span uk-icon="icon: file-text; ratio: 0.8"></span>}
+                                    </button>
+                                )}
 
-                            <input
-                                ref={inputRef}
-                                type="text"
-                                className="uk-input uk-form-small msg-composer-input"
-                                placeholder={attachedFile ? 'Añade un mensaje al archivo...' : 'Escribe un mensaje...'}
-                                value={newMessage}
-                                onChange={e => setNewMessage(e.target.value)}
-                                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-                                disabled={sending}
-                            />
-                            <button
-                                className="uk-button uk-button-primary uk-button-small msg-composer-send"
-                                onClick={handleSend}
-                                disabled={sending || (!newMessage.trim() && !attachedFile)}
-                            >
-                                {sending
-                                    ? <span uk-spinner="ratio: 0.4"></span>
-                                    : <span uk-icon="icon: arrow-right; ratio: 0.85"></span>
-                                }
-                            </button>
-                        </div>
+                                {waWindowClosed ? (
+                                    /* Ventana cerrada: solo plantillas */
+                                    <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6, padding: '0 8px', fontSize: 12, color: '#94a3b8' }}>
+                                        <span style={{ fontSize: 14 }}>🔒</span>
+                                        <span>Ventana 24h cerrada — usa una <button
+                                            onClick={loadTemplates}
+                                            style={{ background: 'none', border: 'none', color: '#048ABF', cursor: 'pointer', fontWeight: 600, padding: 0, fontSize: 12, textDecoration: 'underline' }}
+                                        >plantilla</button></span>
+                                    </div>
+                                ) : (
+                                    /* Ventana abierta o canal SMS: texto libre */
+                                    <>
+                                        <button
+                                            className="msg-attach-btn"
+                                            onClick={() => fileInputRef.current?.click()}
+                                            title="Adjuntar archivo"
+                                            disabled={sending}
+                                        >
+                                            <span uk-icon="icon: plus-circle; ratio: 0.85"></span>
+                                        </button>
+                                        <input
+                                            ref={fileInputRef}
+                                            type="file"
+                                            accept={ACCEPT_STRING}
+                                            style={{ display: 'none' }}
+                                            onChange={(e) => { handleFileSelect(e.target.files?.[0]); e.target.value = ''; }}
+                                        />
+                                        <input
+                                            ref={inputRef}
+                                            type="text"
+                                            className="uk-input uk-form-small msg-composer-input"
+                                            placeholder={attachedFile ? 'Añade un mensaje al archivo...' : 'Escribe un mensaje...'}
+                                            value={newMessage}
+                                            onChange={e => setNewMessage(e.target.value)}
+                                            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+                                            disabled={sending}
+                                        />
+                                        <button
+                                            className="uk-button uk-button-primary uk-button-small msg-composer-send"
+                                            onClick={handleSend}
+                                            disabled={sending || (!newMessage.trim() && !attachedFile)}
+                                        >
+                                            {sending
+                                                ? <span key="sp" uk-spinner="ratio: 0.4"></span>
+                                                : <span key="ar" uk-icon="icon: arrow-right; ratio: 0.85"></span>
+                                            }
+                                        </button>
+                                    </>
+                                )}
+                            </div>
+                            );
+                        })()}
                     </div>
                 ) : (
                     <div className="msg-thread msg-placeholder">

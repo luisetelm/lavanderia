@@ -1,5 +1,6 @@
 import { sendSMScustomer } from '../services/twilio.js';
 import { sendTextMessage, uploadMediaToWhatsApp, sendMediaMessage } from '../services/whatsapp.js';
+import { findOrCreateConversation, touchConversation, getWhatsAppWindow } from '../services/conversation.js';
 import fs from 'fs';
 import path from 'path';
 import { pipeline } from 'stream/promises';
@@ -7,73 +8,137 @@ import { pipeline } from 'stream/promises';
 export default async function (fastify) {
     const prisma = fastify.prisma;
 
-    // Lista de conversaciones (clientes con mensajes, agrupados)
+    /* ─────────────────────────────────────────────
+     *  GET /conversations — Lista de conversaciones
+     * ───────────────────────────────────────────── */
     fastify.get('/conversations', async (req, reply) => {
         try {
-            // Obtener el último mensaje de cada cliente
-            const conversations = await prisma.$queryRaw`
-                SELECT DISTINCT ON (m."clientId")
-                    m."clientId",
-                    m."content" as "lastMessage",
-                    m."channel" as "lastChannel",
-                    m."direction" as "lastDirection",
-                    m."mediaType" as "lastMediaType",
-                    m."createdAt" as "lastMessageAt",
-                    u."firstName",
-                    u."lastName",
-                    u."phone",
-                    (SELECT COUNT(*)::int FROM "Message" m2
-                     WHERE m2."clientId" = m."clientId"
-                       AND m2."direction" = 'inbound'
-                       AND m2."status" = 'received') as "unreadCount"
-                FROM "Message" m
-                LEFT JOIN "User" u ON u."id" = m."clientId"
-                WHERE m."clientId" IS NOT NULL
-                ORDER BY m."clientId", m."createdAt" DESC
-            `;
+            const conversations = await prisma.conversation.findMany({
+                orderBy: { lastMessageAt: 'desc' },
+                include: {
+                    client: {
+                        select: { id: true, firstName: true, lastName: true, phone: true },
+                    },
+                },
+            });
 
-            // Ordenar por fecha del último mensaje (más reciente primero)
-            const sorted = conversations.sort((a, b) =>
-                new Date(b.lastMessageAt) - new Date(a.lastMessageAt)
+            // Obtener último mensaje de cada conversación (1 query batch)
+            const convIds = conversations.map(c => c.id);
+            const lastMessages = convIds.length > 0
+                ? await prisma.$queryRaw`
+                    SELECT DISTINCT ON (sub."conversationId")
+                        sub."conversationId",
+                        sub."content",
+                        sub."channel",
+                        sub."direction",
+                        sub."mediaType",
+                        sub."createdAt"
+                    FROM (
+                        SELECT "conversationId", "content", "channel", "direction", "mediaType", "createdAt"
+                        FROM "Message"
+                        WHERE "conversationId" = ANY(${convIds})
+                        UNION ALL
+                        SELECT "conversationId", "content", COALESCE("type",'sms') AS channel, 'outbound' AS direction, NULL AS "mediaType", "sentAt" AS "createdAt"
+                        FROM "Notification"
+                        WHERE "conversationId" = ANY(${convIds})
+                    ) sub
+                    ORDER BY sub."conversationId", sub."createdAt" DESC
+                `
+                : [];
+
+            const lastMsgMap = new Map();
+            for (const lm of lastMessages) lastMsgMap.set(lm.conversationId, lm);
+
+            // Obtener ventana 24h de WhatsApp para cada conversación
+            const windowResults = await Promise.all(
+                conversations.map(c => getWhatsAppWindow(prisma, c.id))
             );
 
-            return reply.send(sorted);
+            const result = conversations.map((c, i) => {
+                const lm = lastMsgMap.get(c.id);
+                const win = windowResults[i];
+                return {
+                    id: c.id,
+                    clientId: c.clientId,
+                    phone: c.client?.phone || c.phone,
+                    firstName: c.client?.firstName || null,
+                    lastName: c.client?.lastName || null,
+                    lastMessage: lm?.content || null,
+                    lastChannel: lm?.channel || null,
+                    lastDirection: lm?.direction || null,
+                    lastMediaType: lm?.mediaType || null,
+                    lastMessageAt: c.lastMessageAt,
+                    unreadCount: c.unreadCount,
+                    waWindowOpen: win.open,
+                    waWindowExpiresAt: win.expiresAt,
+                };
+            });
+
+            return reply.send(result);
         } catch (err) {
             console.error('[Messages] Error obteniendo conversaciones:', err);
             return reply.code(500).send({ error: 'Error obteniendo conversaciones' });
         }
     });
 
-    // Historial de mensajes unificado (SMS + WhatsApp) para un cliente
-    fastify.get('/', async (req, reply) => {
-        const { clientId, page = 0, size = 50 } = req.query;
-
-        if (!clientId) {
-            return reply.code(400).send({ error: 'clientId obligatorio' });
-        }
+    /* ─────────────────────────────────────────────
+     *  POST /read/:conversationId — Marcar como leído
+     * ───────────────────────────────────────────── */
+    fastify.post('/read/:conversationId', async (req, reply) => {
+        const conversationId = Number(req.params.conversationId);
+        if (isNaN(conversationId)) return reply.code(400).send({ error: 'conversationId inválido' });
 
         try {
-            // Mensajes de la tabla Message (WhatsApp + SMS nuevos)
+            const result = await prisma.message.updateMany({
+                where: {
+                    conversationId,
+                    direction: 'inbound',
+                    status: 'received',
+                },
+                data: { status: 'read' },
+            });
+
+            await prisma.conversation.update({
+                where: { id: conversationId },
+                data: { unreadCount: 0 },
+            });
+
+            return reply.send({ ok: true, marked: result.count });
+        } catch (err) {
+            console.error('[Messages] Error marcando como leído:', err);
+            return reply.code(500).send({ error: 'Error marcando como leído' });
+        }
+    });
+
+    /* ─────────────────────────────────────────────
+     *  GET / — Historial de mensajes de una conversación
+     * ───────────────────────────────────────────── */
+    fastify.get('/', async (req, reply) => {
+        const { conversationId, page = 0, size = 50 } = req.query;
+
+        if (!conversationId) {
+            return reply.code(400).send({ error: 'conversationId obligatorio' });
+        }
+
+        const convId = Number(conversationId);
+
+        try {
             const messages = await prisma.message.findMany({
-                where: { clientId: Number(clientId) },
+                where: { conversationId: convId },
                 orderBy: { createdAt: 'asc' },
                 skip: Number(page) * Number(size),
                 take: Number(size),
             });
 
-            // También incluir notificaciones antiguas (SMS del sistema Notification)
             const notifications = await prisma.notification.findMany({
-                where: {
-                    order: { clientId: Number(clientId) }
-                },
+                where: { conversationId: convId },
                 orderBy: { sentAt: 'asc' },
                 select: {
                     id: true, type: true, content: true, status: true,
                     sentAt: true, recipient: true, orderid: true,
-                }
+                },
             });
 
-            // Combinar y formatear como mensajes unificados
             const combined = [
                 ...messages.map(m => ({
                     id: `msg_${m.id}`,
@@ -101,9 +166,7 @@ export default async function (fastify) {
                 })),
             ];
 
-            // Ordenar por fecha
             combined.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
-
             return reply.send(combined);
         } catch (err) {
             console.error('[Messages] Error obteniendo mensajes:', err);
@@ -111,12 +174,14 @@ export default async function (fastify) {
         }
     });
 
-    // Enviar mensaje unificado (elige canal)
+    /* ─────────────────────────────────────────────
+     *  POST /send — Enviar mensaje de texto
+     * ───────────────────────────────────────────── */
     fastify.post('/send', async (req, reply) => {
-        const { clientId, channel, content, orderId } = req.body;
+        const { conversationId, channel, content, orderId } = req.body;
 
-        if (!clientId || !channel || !content) {
-            return reply.code(400).send({ error: 'clientId, channel y content son obligatorios' });
+        if (!conversationId || !channel || !content) {
+            return reply.code(400).send({ error: 'conversationId, channel y content son obligatorios' });
         }
 
         if (!['sms', 'whatsapp'].includes(channel)) {
@@ -124,38 +189,52 @@ export default async function (fastify) {
         }
 
         try {
-            const client = await prisma.user.findUnique({
-                where: { id: Number(clientId) },
-                select: { id: true, phone: true, firstName: true }
+            const conversation = await prisma.conversation.findUnique({
+                where: { id: Number(conversationId) },
+                include: { client: { select: { id: true, phone: true, firstName: true } } },
             });
 
-            if (!client || !client.phone) {
-                return reply.code(400).send({ error: 'Cliente no encontrado o sin teléfono' });
+            if (!conversation) return reply.code(404).send({ error: 'Conversación no encontrada' });
+
+            const phone = conversation.client?.phone || conversation.phone;
+            if (!phone) return reply.code(400).send({ error: 'Sin teléfono para enviar' });
+
+            // Verificar ventana 24h de WhatsApp para mensajes libres
+            if (channel === 'whatsapp') {
+                const win = await getWhatsAppWindow(prisma, conversation.id);
+                if (!win.open) {
+                    return reply.code(403).send({
+                        error: 'La ventana de 24h de WhatsApp está cerrada. Usa una plantilla para iniciar la conversación.',
+                        code: 'WA_WINDOW_CLOSED',
+                        expiresAt: win.expiresAt,
+                    });
+                }
             }
 
             let externalId = null;
-
             if (channel === 'sms') {
-                const smsResult = await sendSMScustomer(client.phone, content);
+                const smsResult = await sendSMScustomer(phone, content);
                 externalId = smsResult?.subid || null;
             } else {
-                const waResult = await sendTextMessage(client.phone, content);
+                const waResult = await sendTextMessage(phone, content);
                 externalId = waResult?.messages?.[0]?.id || null;
             }
 
-            // Guardar en la tabla Message
             const message = await prisma.message.create({
                 data: {
                     externalId,
                     channel,
                     direction: 'outbound',
-                    clientId: Number(clientId),
-                    phone: client.phone,
+                    clientId: conversation.clientId || null,
+                    phone,
                     content,
                     status: 'sent',
                     orderId: orderId ? Number(orderId) : null,
-                }
+                    conversationId: conversation.id,
+                },
             });
+
+            await touchConversation(prisma, conversation.id);
 
             return reply.send({ ok: true, message });
         } catch (err) {
@@ -164,7 +243,9 @@ export default async function (fastify) {
         }
     });
 
-    // Enviar mensaje multimedia (imagen, video, audio, documento)
+    /* ─────────────────────────────────────────────
+     *  POST /send-media — Enviar archivo multimedia
+     * ───────────────────────────────────────────── */
     fastify.post('/send-media', async (req, reply) => {
         const ALLOWED_MIME = {
             image: ['image/jpeg', 'image/png', 'image/webp'],
@@ -186,27 +267,37 @@ export default async function (fastify) {
             const data = await req.file();
             if (!data) return reply.code(400).send({ error: 'Se requiere un fichero' });
 
-            // Extraer campos del multipart
             const fields = {};
             for (const [key, field] of Object.entries(data.fields)) {
                 if (field.value !== undefined) fields[key] = field.value;
             }
 
-            const { clientId, caption, channel } = fields;
-            if (!clientId) return reply.code(400).send({ error: 'clientId obligatorio' });
+            const { conversationId, caption, channel } = fields;
+            if (!conversationId) return reply.code(400).send({ error: 'conversationId obligatorio' });
 
-            const client = await prisma.user.findUnique({
-                where: { id: Number(clientId) },
-                select: { id: true, phone: true },
+            const conversation = await prisma.conversation.findUnique({
+                where: { id: Number(conversationId) },
+                include: { client: { select: { id: true, phone: true } } },
             });
-            if (!client || !client.phone) {
-                return reply.code(400).send({ error: 'Cliente no encontrado o sin teléfono' });
+            if (!conversation) return reply.code(404).send({ error: 'Conversación no encontrada' });
+
+            const phone = conversation.client?.phone || conversation.phone;
+            if (!phone) return reply.code(400).send({ error: 'Sin teléfono para enviar' });
+
+            // Verificar ventana 24h de WhatsApp
+            if ((channel || 'whatsapp') !== 'sms') {
+                const win = await getWhatsAppWindow(prisma, conversation.id);
+                if (!win.open) {
+                    return reply.code(403).send({
+                        error: 'La ventana de 24h de WhatsApp está cerrada. Usa una plantilla para iniciar la conversación.',
+                        code: 'WA_WINDOW_CLOSED',
+                    });
+                }
             }
 
             const mimeType = data.mimetype;
             const originalName = data.filename || 'file';
 
-            // Detectar tipo de media a partir del MIME
             let mediaType = null;
             for (const [type, mimes] of Object.entries(ALLOWED_MIME)) {
                 if (mimes.includes(mimeType)) { mediaType = type; break; }
@@ -215,7 +306,6 @@ export default async function (fastify) {
                 return reply.code(400).send({ error: `Tipo de archivo no soportado: ${mimeType}` });
             }
 
-            // Guardar fichero en disco
             const mediaDir = path.join(process.cwd(), 'uploads', 'chat-media');
             if (!fs.existsSync(mediaDir)) fs.mkdirSync(mediaDir, { recursive: true });
 
@@ -224,37 +314,71 @@ export default async function (fastify) {
             const filePath = path.join(mediaDir, filename);
 
             await pipeline(data.file, fs.createWriteStream(filePath));
-
             const localMediaUrl = `chat-media/${filename}`;
 
-            // Solo WhatsApp soporta media; SMS se ignora silenciosamente
             let externalId = null;
             if (channel !== 'sms') {
-                const phone = client.phone.startsWith('34') ? client.phone : `34${client.phone}`;
+                const waPhone = phone.startsWith('34') ? phone : `34${phone}`;
                 const waMediaId = await uploadMediaToWhatsApp(filePath, mimeType);
-                const waRes = await sendMediaMessage(phone, mediaType, waMediaId, caption || undefined, mediaType === 'document' ? originalName : undefined);
+                const waRes = await sendMediaMessage(waPhone, mediaType, waMediaId, caption || undefined, mediaType === 'document' ? originalName : undefined);
                 externalId = waRes?.messages?.[0]?.id || null;
             }
 
-            // Guardar en BD
             const message = await prisma.message.create({
                 data: {
                     externalId,
                     channel: channel || 'whatsapp',
                     direction: 'outbound',
-                    clientId: Number(clientId),
-                    phone: client.phone,
+                    clientId: conversation.clientId || null,
+                    phone,
                     content: caption || `[${mediaType}]`,
                     mediaUrl: localMediaUrl,
                     mediaType,
                     status: 'sent',
-                }
+                    conversationId: conversation.id,
+                },
             });
+
+            await touchConversation(prisma, conversation.id);
 
             return reply.send({ ok: true, message });
         } catch (err) {
             console.error('[Messages] Error enviando media:', err);
             return reply.code(500).send({ error: err.message || 'Error enviando media' });
+        }
+    });
+
+    /* ─────────────────────────────────────────────
+     *  POST /conversations/:id/link-client — Vincular número desconocido a cliente
+     * ───────────────────────────────────────────── */
+    fastify.post('/conversations/:id/link-client', async (req, reply) => {
+        const convId = Number(req.params.id);
+        const { clientId } = req.body;
+
+        if (isNaN(convId) || !clientId) {
+            return reply.code(400).send({ error: 'conversationId y clientId obligatorios' });
+        }
+
+        try {
+            const conversation = await prisma.conversation.findUnique({ where: { id: convId } });
+            if (!conversation) return reply.code(404).send({ error: 'Conversación no encontrada' });
+            if (conversation.clientId) return reply.code(400).send({ error: 'La conversación ya tiene un cliente vinculado' });
+
+            const [updatedConv] = await prisma.$transaction([
+                prisma.conversation.update({
+                    where: { id: convId },
+                    data: { clientId: Number(clientId) },
+                }),
+                prisma.message.updateMany({
+                    where: { conversationId: convId },
+                    data: { clientId: Number(clientId) },
+                }),
+            ]);
+
+            return reply.send({ ok: true, conversation: updatedConv });
+        } catch (err) {
+            console.error('[Messages] Error vinculando cliente:', err);
+            return reply.code(500).send({ error: 'Error vinculando cliente' });
         }
     });
 }

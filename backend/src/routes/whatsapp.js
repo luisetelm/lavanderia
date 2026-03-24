@@ -3,10 +3,14 @@ import {
     sendTextMessage,
     parseWebhookPayload,
     fetchTemplates,
+    fetchAllTemplates,
+    createTemplate,
+    deleteTemplate,
     uploadMediaToWhatsApp,
     sendMediaMessage,
     downloadMedia
 } from '../services/whatsapp.js';
+import { findOrCreateConversation, touchConversation } from '../services/conversation.js';
 
 /**
  * Rutas autenticadas de WhatsApp (admin/cashier).
@@ -34,6 +38,12 @@ export default async function (fastify) {
 
             const waMessageId = waResponse?.messages?.[0]?.id || null;
 
+            // Buscar/crear conversación
+            const conversation = await findOrCreateConversation(prisma, {
+                clientId: clientId ? Number(clientId) : null,
+                phone,
+            });
+
             // Guardar en la tabla Message
             const message = await prisma.message.create({
                 data: {
@@ -46,8 +56,11 @@ export default async function (fastify) {
                     templateName: templateName || null,
                     status: 'sent',
                     orderId: orderId ? Number(orderId) : null,
+                    conversationId: conversation.id,
                 }
             });
+
+            await touchConversation(prisma, conversation.id);
 
             return reply.send({ ok: true, messageId: message.id, waMessageId });
         } catch (e) {
@@ -86,6 +99,89 @@ export default async function (fastify) {
         });
 
         return reply.send(messages);
+    });
+
+    // ─── Gestión de plantillas (solo admin) ───
+
+    // Listar TODAS las plantillas (cualquier estado)
+    fastify.get('/templates/all', async (req, reply) => {
+        if (req.user?.role !== 'admin') return reply.code(403).send({ error: 'Solo admin' });
+        try {
+            const templates = await fetchAllTemplates();
+            return reply.send(templates);
+        } catch (e) {
+            return reply.code(500).send({ error: e.message });
+        }
+    });
+
+    // Crear una plantilla
+    fastify.post('/templates', async (req, reply) => {
+        if (req.user?.role !== 'admin') return reply.code(403).send({ error: 'Solo admin' });
+        const { name, category, language, components } = req.body;
+        if (!name || !category || !components) {
+            return reply.code(400).send({ error: 'name, category y components son obligatorios' });
+        }
+        try {
+            const result = await createTemplate(name, category, language || 'es', components);
+            return reply.send({ ok: true, ...result });
+        } catch (e) {
+            return reply.code(500).send({ error: e.message });
+        }
+    });
+
+    // Eliminar una plantilla
+    fastify.delete('/templates/:name', async (req, reply) => {
+        if (req.user?.role !== 'admin') return reply.code(403).send({ error: 'Solo admin' });
+        try {
+            const result = await deleteTemplate(req.params.name);
+            return reply.send({ ok: true, ...result });
+        } catch (e) {
+            return reply.code(500).send({ error: e.message });
+        }
+    });
+
+    // Crear las plantillas estándar de la lavandería (conveniencia)
+    fastify.post('/templates/setup-defaults', async (req, reply) => {
+        if (req.user?.role !== 'admin') return reply.code(403).send({ error: 'Solo admin' });
+
+        const defaults = [
+            {
+                name: 'pedido_listo',
+                category: 'UTILITY',
+                language: 'es',
+                components: [
+                    {
+                        type: 'BODY',
+                        text: 'Hola {{1}}, tu pedido {{2}} está listo para recoger. 🧺\n\nConsulta nuestro horario de apertura: https://share.google/d4uMKGaiCaBywfRt2',
+                        example: { body_text: [['Laura', 'TPV/2025/0001']] },
+                    },
+                ],
+            },
+            {
+                name: 'pedido_recogido',
+                category: 'UTILITY',
+                language: 'es',
+                components: [
+                    {
+                        type: 'BODY',
+                        text: 'Hola {{1}}, esperamos que todo haya ido perfecto en Tinte y Burbuja. ✨\n\nSi puedes, déjanos una reseña: https://g.page/r/Cau9_6UCpQ8ZEBI/review',
+                        example: { body_text: [['Laura']] },
+                    },
+                ],
+            },
+        ];
+
+        const results = [];
+        for (const tpl of defaults) {
+            try {
+                const result = await createTemplate(tpl.name, tpl.category, tpl.language, tpl.components);
+                results.push({ name: tpl.name, status: 'created', id: result.id });
+            } catch (e) {
+                results.push({ name: tpl.name, status: 'error', error: e.message });
+            }
+        }
+
+        return reply.send({ ok: true, results });
     });
 }
 
@@ -154,6 +250,12 @@ export async function whatsappWebhookRoutes(fastify) {
                     content = JSON.stringify(msg.contacts);
                 }
 
+                // Buscar/crear conversación
+                const conversation = await findOrCreateConversation(prisma, {
+                    clientId: client?.id || null,
+                    phone: msg.from,
+                });
+
                 await prisma.message.create({
                     data: {
                         externalId: msg.waMessageId,
@@ -165,8 +267,11 @@ export async function whatsappWebhookRoutes(fastify) {
                         mediaUrl: localMediaUrl,
                         mediaType,
                         status: 'received',
+                        conversationId: conversation.id,
                     }
                 });
+
+                await touchConversation(prisma, conversation.id, { incrementUnread: true });
 
                 console.log(`[WhatsApp] Mensaje ${msg.type} recibido de ${msg.from}${mediaType ? ` (${mediaType})` : ''}`);
             }

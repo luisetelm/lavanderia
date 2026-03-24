@@ -168,12 +168,10 @@ export default function App() {
                         <li><NavLink to="/productos"><span uk-icon="icon: grid; ratio: 0.9"></span> Productos</NavLink></li>
                         <li><NavLink to="/tareas"><span uk-icon="icon: list; ratio: 0.9"></span> Tareas</NavLink></li>
                         <li><NavLink to="/usuarios"><span uk-icon="icon: users; ratio: 0.9"></span> Usuarios</NavLink></li>
-                        {(user.role === 'admin' || user.role === 'cashier') && (
-                            <li><NavLink to="/mensajes">
-                                <span uk-icon="icon: comment; ratio: 0.9"></span> Mensajes
-                                {unreadMsgCount > 0 && <span className="sidebar-badge">{unreadMsgCount}</span>}
-                            </NavLink></li>
-                        )}
+                        <li><NavLink to="/mensajes">
+                            <span uk-icon="icon: comment; ratio: 0.9"></span> Mensajes
+                            {unreadMsgCount > 0 && <span className="sidebar-badge">{unreadMsgCount}</span>}
+                        </NavLink></li>
                         {token && user.role === 'admin' && (<>
                             <li><NavLink to="/ventas"><span uk-icon="icon: credit-card; ratio: 0.9"></span> Ventas</NavLink></li>
                             <li><NavLink to="/resenas"><span uk-icon="icon: star; ratio: 0.9"></span> Reseñas</NavLink></li>

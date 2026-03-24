@@ -324,6 +324,88 @@ export function parseWebhookPayload(body) {
 }
 
 /**
+ * Crear una plantilla de mensaje en WhatsApp Business.
+ * La plantilla queda en estado PENDING hasta que Meta la aprueba.
+ *
+ * @param {string} name - Nombre de la plantilla (snake_case, sin espacios)
+ * @param {string} category - MARKETING | UTILITY | AUTHENTICATION
+ * @param {string} languageCode - Código de idioma (ej. 'es')
+ * @param {Array} components - Componentes (HEADER, BODY, FOOTER, BUTTONS)
+ * @returns {Promise<object>}
+ */
+export async function createTemplate(name, category, languageCode, components) {
+    const wabaId = process.env.WHATSAPP_BUSINESS_ACCOUNT_ID;
+    if (!wabaId) throw new Error('WHATSAPP_BUSINESS_ACCOUNT_ID no configurado');
+
+    const url = `https://graph.facebook.com/${API_VERSION}/${wabaId}/message_templates`;
+    const body = {
+        name,
+        category,
+        language: languageCode,
+        components,
+    };
+
+    const res = await fetch(url, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify(body),
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+        console.error('[WhatsApp] Error creando template:', data);
+        throw new Error(data.error?.message || 'Error creando plantilla');
+    }
+
+    return data;
+}
+
+/**
+ * Obtener TODAS las plantillas (cualquier estado) de la cuenta de WhatsApp Business.
+ */
+export async function fetchAllTemplates() {
+    const wabaId = process.env.WHATSAPP_BUSINESS_ACCOUNT_ID;
+    if (!wabaId) throw new Error('WHATSAPP_BUSINESS_ACCOUNT_ID no configurado');
+
+    const url = `https://graph.facebook.com/${API_VERSION}/${wabaId}/message_templates`;
+    const res = await fetch(url, { headers: getHeaders() });
+    const data = await res.json();
+
+    if (!res.ok) {
+        throw new Error(data.error?.message || 'Error obteniendo plantillas');
+    }
+
+    return (data.data || []).map(t => ({
+        id: t.id,
+        name: t.name,
+        language: t.language,
+        category: t.category,
+        status: t.status,
+        components: t.components,
+    }));
+}
+
+/**
+ * Eliminar una plantilla por nombre.
+ */
+export async function deleteTemplate(templateName) {
+    const wabaId = process.env.WHATSAPP_BUSINESS_ACCOUNT_ID;
+    if (!wabaId) throw new Error('WHATSAPP_BUSINESS_ACCOUNT_ID no configurado');
+
+    const url = `https://graph.facebook.com/${API_VERSION}/${wabaId}/message_templates?name=${templateName}`;
+    const res = await fetch(url, {
+        method: 'DELETE',
+        headers: getHeaders(),
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+        throw new Error(data.error?.message || 'Error eliminando plantilla');
+    }
+    return data;
+}
+
+/**
  * Obtener plantillas aprobadas de la cuenta de WhatsApp Business.
  */
 export async function fetchTemplates() {

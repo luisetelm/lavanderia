@@ -113,20 +113,23 @@ model User {
   clientPayments     Payment[]      @relation("client_payments")
   recorderPayments   Payment[]      @relation("recorder_payments")
   clientMessages     Message[]      @relation("client_messages")
+  conversations      Conversation[] @relation("client_conversations")
 }
 
 model Notification {
-  id            Int      @id @default(autoincrement())
-  type          String
-  recipient     String
-  content       String
-  status        String
-  sentAt        DateTime @default(now())
-  orderid       Int?
-  statusCode    Int?
-  subid         String?  @db.VarChar(64)
-  statusMessage String?  @db.VarChar(255)
-  order         Order?   @relation(fields: [orderid], references: [id], map: "Notification_taskId_fkey")
+  id              Int           @id @default(autoincrement())
+  type            String
+  recipient       String
+  content         String
+  status          String
+  sentAt          DateTime      @default(now())
+  orderid         Int?
+  statusCode      Int?
+  subid           String?       @db.VarChar(64)
+  statusMessage   String?       @db.VarChar(255)
+  conversationId  Int?
+  order           Order?        @relation(fields: [orderid], references: [id], map: "Notification_taskId_fkey")
+  conversation    Conversation? @relation(fields: [conversationId], references: [id])
 }
 
 model CashClosure {
@@ -221,23 +224,40 @@ model AppSettings {
   value String
 }
 
+model Conversation {
+  id             Int            @id @default(autoincrement())
+  clientId       Int?
+  phone          String
+  lastMessageAt  DateTime       @default(now()) @db.Timestamptz(6)
+  unreadCount    Int            @default(0)
+  createdAt      DateTime       @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime       @default(now()) @db.Timestamptz(6)
+  client         User?          @relation("client_conversations", fields: [clientId], references: [id])
+  messages       Message[]
+  notifications  Notification[]
+
+  @@unique([clientId, phone])
+}
+
 model Message {
-  id           Int       @id @default(autoincrement())
-  externalId   String?   @unique
-  channel      String    // 'sms', 'whatsapp'
-  direction    String    // 'inbound', 'outbound'
-  clientId     Int?
-  phone        String
-  content      String
-  mediaUrl     String?
-  mediaType    String?   // image, video, audio, document, sticker, location, contact
-  templateName String?
-  status       String    @default("pending") // pending, sent, delivered, read, failed
-  orderId      Int?
-  createdAt    DateTime  @default(now()) @db.Timestamptz(6)
-  updatedAt    DateTime  @default(now()) @db.Timestamptz(6)
-  client       User?     @relation("client_messages", fields: [clientId], references: [id])
-  order        Order?    @relation("order_messages", fields: [orderId], references: [id])
+  id              Int           @id @default(autoincrement())
+  externalId      String?       @unique
+  channel         String        // 'sms', 'whatsapp'
+  direction       String        // 'inbound', 'outbound'
+  clientId        Int?
+  phone           String
+  content         String
+  mediaUrl        String?
+  mediaType       String?       // image, video, audio, document, sticker, location, contact
+  templateName    String?
+  status          String        @default("pending") // pending, sent, delivered, read, failed
+  orderId         Int?
+  conversationId  Int?
+  createdAt       DateTime      @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime      @default(now()) @db.Timestamptz(6)
+  client          User?         @relation("client_messages", fields: [clientId], references: [id])
+  order           Order?        @relation("order_messages", fields: [orderId], references: [id])
+  conversation    Conversation? @relation(fields: [conversationId], references: [id])
 }
 
 model Payment {

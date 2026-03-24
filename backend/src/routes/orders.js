@@ -4,6 +4,7 @@ import {isValidSpanishPhone} from '../utils/validatePhone.js';
 import {sendSMScustomer} from "../services/twilio.js";
 import {sendTextMessage as sendWhatsApp, sendTemplateMessage as sendWhatsAppTemplate} from "../services/whatsapp.js";
 import {crearFactura} from "./invoices.js";
+import { findOrCreateConversation, touchConversation } from '../services/conversation.js';
 import fs from 'fs';
 import path from 'path';
 
@@ -179,7 +180,11 @@ export default async function (fastify, opts) {
             const photosDir = path.join(process.cwd(), 'uploads', 'line-photos');
             if (!fs.existsSync(photosDir)) fs.mkdirSync(photosDir, { recursive: true });
 
-            const userName = req.user ? `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim() || `user#${req.user.id}` : 'sistema';
+            let userName = 'sistema';
+            if (req.user?.userId) {
+                const u = await prisma.user.findUnique({ where: { id: req.user.userId }, select: { firstName: true, lastName: true } });
+                if (u) userName = `${u.firstName || ''} ${u.lastName || ''}`.trim() || `user#${req.user.userId}`;
+            }
             const now = new Date().toISOString();
 
             for (const pa of pendingAnnotations) {
@@ -319,41 +324,44 @@ export default async function (fastify, opts) {
             const channel = sendSMS === 'whatsapp' ? 'whatsapp' : 'sms';
             await prisma.user.update({ where: { id: client.id }, data: { notifyChannel: channel } });
 
+            // Buscar/crear conversación
+            const conversation = await findOrCreateConversation(prisma, { clientId: client.id, phone: client.phone });
+
             if (channel === 'whatsapp') {
                 try {
                     const phone = `34${client.phone}`;
-                    // Intentar enviar plantilla (funciona fuera de la ventana 24h)
                     try {
                         await sendWhatsAppTemplate(phone, 'pedido_listo', 'es', [
                             { type: 'body', parameters: [{ type: 'text', text: clientName }, { type: 'text', text: orderNum }] }
                         ]);
                     } catch (templateErr) {
-                        // Si la plantilla falla (no existe aún), intentar con texto libre (solo funciona en ventana 24h)
                         console.warn('[WhatsApp] Template pedido_listo falló, intentando texto libre:', templateErr.message);
                         await sendWhatsApp(phone, message);
                     }
                     await prisma.notification.create({
-                        data: { orderid: updated.id, type: 'whatsapp', recipient: client.phone, content: message, status: 'sent' },
+                        data: { orderid: updated.id, type: 'whatsapp', recipient: client.phone, content: message, status: 'sent', conversationId: conversation.id },
                     });
                 } catch (err) {
                     console.error('Error enviando WhatsApp ready:', err);
                     await prisma.notification.create({
-                        data: { orderid: updated.id, type: 'whatsapp', recipient: client.phone, content: message, status: 'failed', statusMessage: err.message?.slice(0, 255) },
+                        data: { orderid: updated.id, type: 'whatsapp', recipient: client.phone, content: message, status: 'failed', statusMessage: err.message?.slice(0, 255), conversationId: conversation.id },
                     });
                 }
             } else {
                 try {
                     const sms = await sendSMScustomer(client.phone, message);
                     await prisma.notification.create({
-                        data: { orderid: updated.id, type: 'sms', recipient: client.phone, content: message, status: 'sent', statusCode: parseInt(sms.code), subid: sms.subid, statusMessage: sms.message },
+                        data: { orderid: updated.id, type: 'sms', recipient: client.phone, content: message, status: 'sent', statusCode: parseInt(sms.code), subid: sms.subid, statusMessage: sms.message, conversationId: conversation.id },
                     });
                 } catch (err) {
                     console.error('Error enviando SMS ready:', err);
                     await prisma.notification.create({
-                        data: { orderid: updated.id, type: 'sms', recipient: client.phone, content: message, status: 'failed' },
+                        data: { orderid: updated.id, type: 'sms', recipient: client.phone, content: message, status: 'failed', conversationId: conversation.id },
                     });
                 }
             }
+
+            await touchConversation(prisma, conversation.id);
         }
 
         if (status === 'collected' && updated.client?.phone && sendSMS) {
@@ -361,9 +369,10 @@ export default async function (fastify, opts) {
             const clientName = `${client.firstName || ''} ${client.lastName || ''}`.trim();
             const message = `Hola ${clientName}, esperamos que todo haya ido perfecto en Tinte y Burbuja. Si puedes, déjanos una reseña: https://g.page/r/Cau9_6UCpQ8ZEBI/review`;
 
-            // Guardar preferencia de canal del cliente
             const channel = sendSMS === 'whatsapp' ? 'whatsapp' : 'sms';
             await prisma.user.update({ where: { id: client.id }, data: { notifyChannel: channel } });
+
+            const conversation = await findOrCreateConversation(prisma, { clientId: client.id, phone: client.phone });
 
             if (channel === 'whatsapp') {
                 try {
@@ -377,28 +386,29 @@ export default async function (fastify, opts) {
                         await sendWhatsApp(phone, message);
                     }
                     await prisma.notification.create({
-                        data: { orderid: updated.id, type: 'whatsapp', recipient: client.phone, content: message, status: 'sent' },
+                        data: { orderid: updated.id, type: 'whatsapp', recipient: client.phone, content: message, status: 'sent', conversationId: conversation.id },
                     });
                 } catch (err) {
                     console.error('Error enviando WhatsApp collected:', err);
                     await prisma.notification.create({
-                        data: { orderid: updated.id, type: 'whatsapp', recipient: client.phone, content: message, status: 'failed', statusMessage: err.message?.slice(0, 255) },
+                        data: { orderid: updated.id, type: 'whatsapp', recipient: client.phone, content: message, status: 'failed', statusMessage: err.message?.slice(0, 255), conversationId: conversation.id },
                     });
                 }
             } else {
                 try {
                     await sendSMScustomer(client.phone, message);
                     await prisma.notification.create({
-                        data: { orderid: updated.id, type: 'sms', recipient: client.phone, content: message, status: 'sent' },
+                        data: { orderid: updated.id, type: 'sms', recipient: client.phone, content: message, status: 'sent', conversationId: conversation.id },
                     });
                 } catch (err) {
                     console.error('Error enviando SMS collected:', err);
                     await prisma.notification.create({
-                        data: { orderid: updated.id, type: 'sms', recipient: client.phone, content: message, status: 'failed' },
+                        data: { orderid: updated.id, type: 'sms', recipient: client.phone, content: message, status: 'failed', conversationId: conversation.id },
                     });
                 }
             }
 
+            await touchConversation(prisma, conversation.id);
         }
 
         return reply.send(updated);
@@ -792,6 +802,13 @@ export default async function (fastify, opts) {
             const line = await prisma.orderLine.findUnique({ where: { id: lineId } });
             if (!line) return reply.status(404).send({ error: 'Línea no encontrada' });
 
+            // Obtener nombre del usuario actual
+            let userName = 'sistema';
+            if (req.user?.userId) {
+                const u = await prisma.user.findUnique({ where: { id: req.user.userId }, select: { firstName: true, lastName: true } });
+                if (u) userName = `${u.firstName || ''} ${u.lastName || ''}`.trim() || `user#${req.user.userId}`;
+            }
+
             // Parsear annotations existentes
             let annotations = [];
             try { annotations = line.annotations ? JSON.parse(line.annotations) : []; } catch { annotations = []; }
@@ -803,7 +820,7 @@ export default async function (fastify, opts) {
             const entry = {
                 type,
                 at: new Date().toISOString(),
-                by: req.user ? `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim() || `user#${req.user.id}` : 'sistema',
+                by: userName,
                 origin: 'internal',
             };
 
