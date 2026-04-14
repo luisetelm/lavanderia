@@ -140,6 +140,9 @@ export default function TrackingBoard({ token }) {
                 <span><span style={{ display: 'inline-block', width: 10, height: 10, background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 2, marginRight: 4 }}></span> Entrega hoy</span>
                 <span><span style={{ display: 'inline-block', width: 10, height: 10, background: '#dbeafe', border: '1px solid #93c5fd', borderRadius: 2, marginRight: 4 }}></span> En proceso</span>
                 <span><span style={{ display: 'inline-block', width: 10, height: 10, background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 2, marginRight: 4 }}></span> Lote (varias prendas)</span>
+                <span>🔴 Tiempo insuficiente</span>
+                <span>🟡 Plazo ajustado</span>
+                <span style={{ fontSize: '0.68rem', color: '#94a3b8' }}>⏱ Tiempo total pendiente</span>
             </div>
 
             {/* Board */}
@@ -189,7 +192,7 @@ export default function TrackingBoard({ token }) {
                             {column.resource && !isEmpty && (
                                 <div style={{ padding: '4px 14px', background: isBatch ? '#f0fdf4' : '#f0f9ff', fontSize: '0.68rem', color: isBatch ? '#15803d' : '#0369a1', borderBottom: '1px solid #e0f2fe' }}>
                                     {column.resource.label} ({column.resource.units}u)
-                                    {isBatch && <span> · Lote max. {column.resource.batchCapacity}</span>}
+                                    {isBatch && <span> · Lote max. {column.resource.batchCapacity} {(column.resource.capacityUnit || 'items') === 'kg' ? 'kg' : 'uds'}</span>}
                                 </div>
                             )}
 
@@ -239,6 +242,17 @@ export default function TrackingBoard({ token }) {
                                         else if (isPast(item.fechaLimite)) bgColor = '#fef2f2';
                                         else if (isToday(item.fechaLimite)) bgColor = '#fffbeb';
 
+                                        const urgencyIcon = item.urgency === 'critical' ? '🔴'
+                                            : item.urgency === 'tight' ? '🟡' : null;
+
+                                        const formatEstimate = (min) => {
+                                            if (!min || min <= 0) return null;
+                                            if (min < 60) return `~${min}min`;
+                                            const h = Math.floor(min / 60);
+                                            const m = min % 60;
+                                            return m > 0 ? `~${h}h${m}m` : `~${h}h`;
+                                        };
+
                                         return (
                                             <div key={item.stepId} style={{
                                                 padding: '8px 14px',
@@ -251,6 +265,7 @@ export default function TrackingBoard({ token }) {
                                                         onClick={() => navigate('/tareas', { state: { filterOrderId: item.orderId, orderNumber: item.orderNum } })}
                                                     >
                                                         <div style={{ fontSize: '0.8rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5 }}>
+                                                            {urgencyIcon && <span title={item.urgency === 'critical' ? 'Tiempo insuficiente' : 'Plazo ajustado'}>{urgencyIcon}</span>}
                                                             {item.color && COLOR_HEX[item.color] && (
                                                                 <span style={{
                                                                     width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
@@ -268,16 +283,34 @@ export default function TrackingBoard({ token }) {
                                                         <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: 2 }}>
                                                             #{item.orderNum} · {item.clientName}
                                                         </div>
-                                                        {item.fechaLimite && (
-                                                            <div style={{
-                                                                fontSize: '0.65rem', marginTop: 2,
-                                                                color: isPast(item.fechaLimite) ? '#ef4444' : '#94a3b8',
-                                                                fontWeight: isPast(item.fechaLimite) ? 600 : 400,
-                                                            }}>
-                                                                {isPast(item.fechaLimite) ? 'URGENTE · ' : ''}
-                                                                Entrega: {new Date(item.fechaLimite).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}
-                                                            </div>
-                                                        )}
+                                                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                                                            {item.fechaLimite && (
+                                                                <span style={{
+                                                                    fontSize: '0.65rem', marginTop: 2,
+                                                                    color: isPast(item.fechaLimite) ? '#ef4444' : '#94a3b8',
+                                                                    fontWeight: isPast(item.fechaLimite) ? 600 : 400,
+                                                                }}>
+                                                                    {isPast(item.fechaLimite) ? 'URGENTE · ' : ''}
+                                                                    Entrega: {new Date(item.fechaLimite).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}
+                                                                </span>
+                                                            )}
+                                                            {(item.totalRemainingMin > 0 || item.estimatedMin > 0) && (
+                                                                <span style={{
+                                                                    fontSize: '0.6rem', marginTop: 2, padding: '0 5px',
+                                                                    background: item.urgency === 'critical' ? '#fef2f2' : item.urgency === 'tight' ? '#fffbeb' : '#f0f9ff',
+                                                                    color: item.urgency === 'critical' ? '#dc2626' : item.urgency === 'tight' ? '#d97706' : '#0369a1',
+                                                                    borderRadius: 4, border: '1px solid',
+                                                                    borderColor: item.urgency === 'critical' ? '#fca5a5' : item.urgency === 'tight' ? '#fde68a' : '#bae6fd',
+                                                                }}
+                                                                    title={`Este paso: ${formatEstimate(item.estimatedMin) || '0min'} · Total pendiente: ${formatEstimate(item.totalRemainingMin) || '0min'}`}
+                                                                >
+                                                                    ⏱ {formatEstimate(item.totalRemainingMin || item.estimatedMin)}
+                                                                    {item.totalRemainingMin > 0 && item.estimatedMin > 0 && item.totalRemainingMin !== item.estimatedMin && (
+                                                                        <span style={{ opacity: 0.65 }}> (paso: {formatEstimate(item.estimatedMin)})</span>
+                                                                    )}
+                                                                </span>
+                                                            )}
+                                                        </div>
                                                     </div>
                                                     <div style={{ display: 'flex', gap: 3, flexShrink: 0 }}>
                                                         {/* Botón Iniciar: solo para pasos autoProgress que estén pending */}

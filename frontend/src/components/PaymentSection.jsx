@@ -786,15 +786,26 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
                         {isPrinting ? 'Imprimiendo...' : 'Imprimir etiquetas'}
                     </button>
 
-                    {order.status === 'pending' && (<button
-                        type="button"
-                        className="uk-button uk-button-default uk-width-1-1@l"
-                        onClick={() => showConfirmModal('ready')}
-                        aria-label="Marcar como listo"
-                        uk-icon="check"
-                    >
-                        Marcar como listo
-                    </button>)}
+                    {order.status === 'pending' && (() => {
+                        const allSteps = (order.lines || []).flatMap(l => l.steps || []);
+                        const hasTracking = allSteps.length > 0;
+                        const allDone = hasTracking ? allSteps.every(s => s.status === 'done') : true;
+                        const canMarkReady = !hasTracking || allDone;
+                        return (
+                            <button
+                                type="button"
+                                className="uk-button uk-button-default uk-width-1-1@l"
+                                onClick={() => showConfirmModal('ready')}
+                                aria-label="Marcar como listo"
+                                uk-icon="check"
+                                disabled={!canMarkReady}
+                                style={!canMarkReady ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
+                                title={!canMarkReady ? 'Completa todos los pasos del tracking primero' : ''}
+                            >
+                                {canMarkReady ? 'Marcar como listo' : '🔒 Tracking en curso'}
+                            </button>
+                        );
+                    })()}
 
                     {order.status === 'ready' && order.paid && (<button
                         type="button"

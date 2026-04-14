@@ -252,6 +252,11 @@ export default function Inventory({ token }) {
         direction: "ascending",
     });
 
+    // Inline editing
+    const [inlineEditId, setInlineEditId] = useState(null);
+    const [inlineValues, setInlineValues] = useState({});
+    const [inlineSaving, setInlineSaving] = useState(false);
+
     const load = async () => {
         setLoading(true);
         try {
@@ -330,6 +335,42 @@ export default function Inventory({ token }) {
                     ? "descending"
                     : "ascending",
         }));
+    };
+
+    const startInlineEdit = (product) => {
+        setInlineEditId(product.id);
+        setInlineValues({
+            name: product.name || '',
+            basePrice: product.basePrice ?? 0,
+            bigClientPrice: product.bigClientPrice ?? 0,
+            weight: product.weight ?? 0,
+            itineraryId: product.itineraryId || '',
+        });
+    };
+
+    const cancelInlineEdit = () => {
+        setInlineEditId(null);
+        setInlineValues({});
+    };
+
+    const saveInlineEdit = async (productId) => {
+        setInlineSaving(true);
+        try {
+            await updateProduct(token, productId, {
+                name: inlineValues.name,
+                basePrice: parseFloat(inlineValues.basePrice) || 0,
+                bigClientPrice: parseFloat(inlineValues.bigClientPrice) || 0,
+                weight: parseFloat(inlineValues.weight) || 0,
+                itineraryId: inlineValues.itineraryId ? Number(inlineValues.itineraryId) : null,
+            });
+            setInlineEditId(null);
+            setInlineValues({});
+            await load();
+        } catch (err) {
+            setError(err.error || 'Error al guardar');
+        } finally {
+            setInlineSaving(false);
+        }
     };
 
     const getSortDirectionIcon = (columnName) => {
@@ -464,7 +505,25 @@ export default function Inventory({ token }) {
                                 <tbody>
                                 {filteredAndSortedProducts.map((product) => (
                                     <tr key={product.id}>
-                                        <td>{product.name}</td>
+                                        <td>
+                                            {inlineEditId === product.id ? (
+                                                <input
+                                                    className="uk-input uk-form-small"
+                                                    value={inlineValues.name}
+                                                    onChange={e => setInlineValues(v => ({...v, name: e.target.value}))}
+                                                    style={{ minWidth: 120 }}
+                                                    autoFocus
+                                                    onKeyDown={e => {
+                                                        if (e.key === 'Enter') saveInlineEdit(product.id);
+                                                        if (e.key === 'Escape') cancelInlineEdit();
+                                                    }}
+                                                />
+                                            ) : (
+                                                <span style={{ cursor: 'pointer' }} onDoubleClick={() => startInlineEdit(product)}>
+                                                    {product.name}
+                                                </span>
+                                            )}
+                                        </td>
                                         <td>
                         <span
                             className={`uk-label ${
@@ -476,18 +535,125 @@ export default function Inventory({ token }) {
                           {product.type === "service" ? "Servicio" : "Ítem"}
                         </span>
                                         </td>
-                                        <td>{formatPriceWithTax(product.basePrice)}</td>
-                                        <td>{formatPriceWithTax(product.bigClientPrice)}</td>
-                                        <td>{product.sku || "-"}</td>
-                                        <td>{formatWeight(product.weight)}</td>
-                                        <td>{renderServiceOptions(product)}</td>
                                         <td>
-                                            <button
-                                                className="uk-button uk-button-primary uk-button-small"
-                                                onClick={() => handleEdit(product)}
-                                            >
-                                                <span uk-icon="pencil"></span> Editar
-                                            </button>
+                                            {inlineEditId === product.id ? (
+                                                <input
+                                                    className="uk-input uk-form-small"
+                                                    type="number"
+                                                    step="0.01"
+                                                    value={inlineValues.basePrice}
+                                                    onChange={e => setInlineValues(v => ({...v, basePrice: e.target.value}))}
+                                                    style={{ width: 80 }}
+                                                    onKeyDown={e => {
+                                                        if (e.key === 'Enter') saveInlineEdit(product.id);
+                                                        if (e.key === 'Escape') cancelInlineEdit();
+                                                    }}
+                                                />
+                                            ) : (
+                                                <span style={{ cursor: 'pointer' }} onDoubleClick={() => startInlineEdit(product)}>
+                                                    {formatPriceWithTax(product.basePrice)}
+                                                </span>
+                                            )}
+                                        </td>
+                                        <td>
+                                            {inlineEditId === product.id ? (
+                                                <input
+                                                    className="uk-input uk-form-small"
+                                                    type="number"
+                                                    step="0.01"
+                                                    value={inlineValues.bigClientPrice}
+                                                    onChange={e => setInlineValues(v => ({...v, bigClientPrice: e.target.value}))}
+                                                    style={{ width: 80 }}
+                                                    onKeyDown={e => {
+                                                        if (e.key === 'Enter') saveInlineEdit(product.id);
+                                                        if (e.key === 'Escape') cancelInlineEdit();
+                                                    }}
+                                                />
+                                            ) : (
+                                                <span style={{ cursor: 'pointer' }} onDoubleClick={() => startInlineEdit(product)}>
+                                                    {formatPriceWithTax(product.bigClientPrice)}
+                                                </span>
+                                            )}
+                                        </td>
+                                        <td>{product.sku || "-"}</td>
+                                        <td>
+                                            {inlineEditId === product.id ? (
+                                                <input
+                                                    className="uk-input uk-form-small"
+                                                    type="number"
+                                                    step="0.01"
+                                                    value={inlineValues.weight}
+                                                    onChange={e => setInlineValues(v => ({...v, weight: e.target.value}))}
+                                                    style={{ width: 65 }}
+                                                    onKeyDown={e => {
+                                                        if (e.key === 'Enter') saveInlineEdit(product.id);
+                                                        if (e.key === 'Escape') cancelInlineEdit();
+                                                    }}
+                                                />
+                                            ) : (
+                                                <span style={{ cursor: 'pointer' }} onDoubleClick={() => startInlineEdit(product)}>
+                                                    {formatWeight(product.weight)}
+                                                </span>
+                                            )}
+                                        </td>
+                                        <td>
+                                            {inlineEditId === product.id ? (
+                                                <select
+                                                    className="uk-select uk-form-small"
+                                                    value={inlineValues.itineraryId}
+                                                    onChange={e => setInlineValues(v => ({...v, itineraryId: e.target.value}))}
+                                                    style={{ minWidth: 120 }}
+                                                >
+                                                    <option value="">Sin itinerario</option>
+                                                    {itineraries.map(it => (
+                                                        <option key={it.id} value={it.id}>{it.name}</option>
+                                                    ))}
+                                                </select>
+                                            ) : (
+                                                <span style={{ cursor: 'pointer' }} onDoubleClick={() => startInlineEdit(product)}>
+                                                    {renderServiceOptions(product)}
+                                                </span>
+                                            )}
+                                        </td>
+                                        <td>
+                                            {inlineEditId === product.id ? (
+                                                <div style={{ display: 'flex', gap: 4 }}>
+                                                    <button
+                                                        className="uk-button uk-button-primary uk-button-small"
+                                                        onClick={() => saveInlineEdit(product.id)}
+                                                        disabled={inlineSaving}
+                                                        style={{ padding: '2px 8px' }}
+                                                    >
+                                                        {inlineSaving ? <span uk-spinner="ratio: 0.4"></span> : <span uk-icon="icon: check; ratio: 0.75"></span>}
+                                                    </button>
+                                                    <button
+                                                        className="uk-button uk-button-default uk-button-small"
+                                                        onClick={cancelInlineEdit}
+                                                        style={{ padding: '2px 8px' }}
+                                                    >
+                                                        <span uk-icon="icon: close; ratio: 0.75"></span>
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <div style={{ display: 'flex', gap: 4 }}>
+                                                    <button
+                                                        className="uk-button uk-button-default uk-button-small"
+                                                        onClick={() => startInlineEdit(product)}
+                                                        title="Edición rápida"
+                                                        style={{ padding: '2px 8px' }}
+                                                    >
+                                                        <span uk-icon="icon: pencil; ratio: 0.75"></span>
+                                                    </button>
+                                                    <button
+                                                        className="uk-button uk-button-primary uk-button-small"
+                                                        onClick={() => handleEdit(product)}
+                                                        title="Editar completo"
+                                                        style={{ padding: '2px 8px' }}
+                                                    >
+                                                        <span uk-icon="icon: settings; ratio: 0.75"></span>
+                                                    </button>
+                                                </div>
+                                            )}
                                         </td>
                                     </tr>
                                 ))}

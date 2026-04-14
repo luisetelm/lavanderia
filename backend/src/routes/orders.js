@@ -5,6 +5,7 @@ import {sendSMScustomer} from "../services/twilio.js";
 import {sendTextMessage as sendWhatsApp, sendTemplateMessage as sendWhatsAppTemplate} from "../services/whatsapp.js";
 import {crearFactura} from "./invoices.js";
 import { findOrCreateConversation, touchConversation } from '../services/conversation.js';
+import { sendReadyNotification } from '../services/notify.js';
 import fs from 'fs';
 import path from 'path';
 
@@ -422,53 +423,7 @@ export default async function (fastify, opts) {
 
         // Si se marca como ready, notificar al cliente
         if (status === 'ready' && updated.client?.phone && sendSMS) {
-            const client = updated.client;
-            const orderNum = updated.orderNum || '';
-            const clientName = client.firstName || '';
-            const message = `Hola ${clientName}, tu pedido ${orderNum} está listo para recoger. Consulta nuestro horario de apertura: https://share.google/d4uMKGaiCaBywfRt2`;
-
-            // Guardar preferencia de canal del cliente
-            const channel = sendSMS === 'whatsapp' ? 'whatsapp' : 'sms';
-            await prisma.user.update({ where: { id: client.id }, data: { notifyChannel: channel } });
-
-            // Buscar/crear conversación
-            const conversation = await findOrCreateConversation(prisma, { clientId: client.id, phone: client.phone });
-
-            if (channel === 'whatsapp') {
-                try {
-                    const phone = `34${client.phone}`;
-                    try {
-                        await sendWhatsAppTemplate(phone, 'pedido_listo', 'es', [
-                            { type: 'body', parameters: [{ type: 'text', text: clientName }, { type: 'text', text: orderNum }] }
-                        ]);
-                    } catch (templateErr) {
-                        console.warn('[WhatsApp] Template pedido_listo falló, intentando texto libre:', templateErr.message);
-                        await sendWhatsApp(phone, message);
-                    }
-                    await prisma.notification.create({
-                        data: { orderid: updated.id, type: 'whatsapp', recipient: client.phone, content: message, status: 'sent', conversationId: conversation.id },
-                    });
-                } catch (err) {
-                    console.error('Error enviando WhatsApp ready:', err);
-                    await prisma.notification.create({
-                        data: { orderid: updated.id, type: 'whatsapp', recipient: client.phone, content: message, status: 'failed', statusMessage: err.message?.slice(0, 255), conversationId: conversation.id },
-                    });
-                }
-            } else {
-                try {
-                    const sms = await sendSMScustomer(client.phone, message);
-                    await prisma.notification.create({
-                        data: { orderid: updated.id, type: 'sms', recipient: client.phone, content: message, status: 'sent', statusCode: parseInt(sms.code), subid: sms.subid, statusMessage: sms.message, conversationId: conversation.id },
-                    });
-                } catch (err) {
-                    console.error('Error enviando SMS ready:', err);
-                    await prisma.notification.create({
-                        data: { orderid: updated.id, type: 'sms', recipient: client.phone, content: message, status: 'failed', conversationId: conversation.id },
-                    });
-                }
-            }
-
-            await touchConversation(prisma, conversation.id);
+            await sendReadyNotification(prisma, updated.id, sendSMS);
         }
 
         if (status === 'collected' && updated.client?.phone && sendSMS) {

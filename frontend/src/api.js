@@ -480,6 +480,26 @@ export function fetchTrackingResources(token) {
     return request('/tracking/resources', token);
 }
 
+export function createTrackingResource(token, data) {
+    return request('/tracking/resources', token, {
+        method: 'POST', body: JSON.stringify(data),
+    });
+}
+
+export function updateTrackingResource(token, id, data) {
+    return request(`/tracking/resources/${id}`, token, {
+        method: 'PUT', body: JSON.stringify(data),
+    });
+}
+
+export function deleteTrackingResource(token, id) {
+    return request(`/tracking/resources/${id}`, token, { method: 'DELETE' });
+}
+
+export function fetchOrderEstimate(token, orderId) {
+    return request(`/tracking/estimate/${orderId}`, token);
+}
+
 export function fetchGoogleReviews(token) {
     return request('/google/reviews', token);
 }

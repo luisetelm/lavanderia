@@ -126,8 +126,9 @@ model ResourceConfig {
   label            String @db.VarChar(60)
   units            Int    @default(1)
   processingMode   String @default("individual") @map("processing_mode") @db.VarChar(12) // 'batch' o 'individual'
-  batchCapacity    Int    @default(1) @map("batch_capacity")    // Para batch: prendas por ciclo
+  batchCapacity    Int    @default(1) @map("batch_capacity")    // Para batch: capacidad por ciclo
   cycleDurationMin Int    @default(0) @map("cycle_duration_min") // batch: min/ciclo, individual: min/prenda
+  capacityUnit     String @default("items") @map("capacity_unit") @db.VarChar(15) // 'kg' o 'items'
 
   @@map("resource_config")
 }

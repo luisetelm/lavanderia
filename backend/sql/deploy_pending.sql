@@ -40,8 +40,8 @@ CREATE TABLE IF NOT EXISTS work_schedule (
     id              SERIAL PRIMARY KEY,
     day_of_week     INT          NOT NULL UNIQUE CHECK (day_of_week BETWEEN 0 AND 6),
     is_working      BOOLEAN      NOT NULL DEFAULT true,
-    start_time      TIME         NULL,
-    end_time        TIME         NULL,
+    start_time      VARCHAR(5)   NULL,
+    end_time        VARCHAR(5)   NULL,
     capacity_min    INT          NOT NULL DEFAULT 0
 );
 
@@ -49,8 +49,8 @@ CREATE TABLE IF NOT EXISTS work_schedule_exceptions (
     id              SERIAL PRIMARY KEY,
     date            DATE         NOT NULL UNIQUE,
     is_working      BOOLEAN      NOT NULL DEFAULT false,
-    start_time      TIME         NULL,
-    end_time        TIME         NULL,
+    start_time      VARCHAR(5)   NULL,
+    end_time        VARCHAR(5)   NULL,
     capacity_min    INT          NOT NULL DEFAULT 0,
     label           VARCHAR(60)  NULL
 );
@@ -312,6 +312,54 @@ ALTER TABLE "OrderLine" ADD COLUMN IF NOT EXISTS color VARCHAR(30) NULL;
 ALTER TABLE itinerary_step ADD COLUMN IF NOT EXISTS display_order INT DEFAULT 0;
 
 UPDATE itinerary_step SET display_order = position * 10 WHERE display_order = 0;
+
+
+-- ============================================================
+-- BLOQUE G: 007_capacity_unit.sql — Unidad de capacidad en recursos
+-- ============================================================
+
+ALTER TABLE resource_config ADD COLUMN IF NOT EXISTS capacity_unit VARCHAR(15) DEFAULT 'items';
+
+UPDATE resource_config SET capacity_unit = 'kg' WHERE resource_key = 'washer_wet' AND capacity_unit = 'items';
+
+
+-- ============================================================
+-- BLOQUE H: 008_fix_time_columns.sql — TIME → VARCHAR(5)
+-- ============================================================
+-- Si las tablas se crearon con TIME (deploy anterior), convierte a VARCHAR(5).
+-- Si ya son VARCHAR(5) (deploy limpio), no hace nada.
+
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'work_schedule' AND column_name = 'start_time'
+          AND data_type IN ('time without time zone', 'time with time zone')
+    ) THEN
+        ALTER TABLE work_schedule ALTER COLUMN start_time TYPE VARCHAR(5) USING TO_CHAR(start_time, 'HH24:MI');
+    END IF;
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'work_schedule' AND column_name = 'end_time'
+          AND data_type IN ('time without time zone', 'time with time zone')
+    ) THEN
+        ALTER TABLE work_schedule ALTER COLUMN end_time TYPE VARCHAR(5) USING TO_CHAR(end_time, 'HH24:MI');
+    END IF;
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'work_schedule_exceptions' AND column_name = 'start_time'
+          AND data_type IN ('time without time zone', 'time with time zone')
+    ) THEN
+        ALTER TABLE work_schedule_exceptions ALTER COLUMN start_time TYPE VARCHAR(5) USING TO_CHAR(start_time, 'HH24:MI');
+    END IF;
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'work_schedule_exceptions' AND column_name = 'end_time'
+          AND data_type IN ('time without time zone', 'time with time zone')
+    ) THEN
+        ALTER TABLE work_schedule_exceptions ALTER COLUMN end_time TYPE VARCHAR(5) USING TO_CHAR(end_time, 'HH24:MI');
+    END IF;
+END $$;
 
 
 COMMIT;

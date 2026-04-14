@@ -239,11 +239,15 @@ export default function Dashboard({ token, user }) {
                                     </div>
                                     <button
                                         className="uk-button uk-button-primary uk-button-small"
-                                        style={{ fontSize: '0.7rem', padding: '2px 10px', flexShrink: 0 }}
+                                        style={{
+                                            fontSize: '0.7rem', padding: '2px 10px', flexShrink: 0,
+                                            ...(o.hasTracking && !o.allStepsDone ? { opacity: 0.5, cursor: 'not-allowed' } : {}),
+                                        }}
                                         onClick={(e) => { e.stopPropagation(); askStatusChange(o.id, 'ready', o.client?.notifyChannel); }}
-                                        disabled={actionLoading === o.id}
+                                        disabled={actionLoading === o.id || (o.hasTracking && !o.allStepsDone)}
+                                        title={o.hasTracking && !o.allStepsDone ? 'Tracking en curso — completa todos los pasos primero' : ''}
                                     >
-                                        {actionLoading === o.id ? '...' : '✓ Listo'}
+                                        {actionLoading === o.id ? '...' : o.hasTracking && !o.allStepsDone ? '🔒 En proceso' : '✓ Listo'}
                                     </button>
                                 </div>
                             ))

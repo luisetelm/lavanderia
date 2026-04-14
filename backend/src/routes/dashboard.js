@@ -44,6 +44,7 @@ export default async function dashboardRoutes(fastify) {
                                 id: true,
                                 quantity: true,
                                 product: { select: { name: true } },
+                                 steps: { select: { status: true } },
                             },
                         },
                     },
@@ -138,17 +139,24 @@ export default async function dashboardRoutes(fastify) {
             return reply.send({
                 todayStats,
                 ordersByStatus,
-                pendingOrders: pendingOrders.map(o => ({
-                    id: o.id,
-                    orderNum: o.orderNum,
-                    total: o.total,
-                    fechaLimite: o.fechaLimite,
-                    createdAt: o.createdAt,
-                    status: o.status,
-                    client: o.client,
-                    linesSummary: o.lines.map(l => `${l.quantity}x ${l.product.name}`).join(', '),
-                    linesCount: o.lines.reduce((sum, l) => sum + l.quantity, 0),
-                })),
+                pendingOrders: pendingOrders.map(o => {
+                    const allSteps = o.lines.flatMap(l => l.steps || []);
+                    const hasTracking = allSteps.length > 0;
+                    const allStepsDone = hasTracking ? allSteps.every(s => s.status === 'done') : true;
+                    return {
+                        id: o.id,
+                        orderNum: o.orderNum,
+                        total: o.total,
+                        fechaLimite: o.fechaLimite,
+                        createdAt: o.createdAt,
+                        status: o.status,
+                        client: o.client,
+                        linesSummary: o.lines.map(l => `${l.quantity}x ${l.product.name}`).join(', '),
+                        linesCount: o.lines.reduce((sum, l) => sum + l.quantity, 0),
+                        hasTracking,
+                        allStepsDone,
+                    };
+                }),
                 readyOrders: readyOrders.map(o => ({
                     id: o.id,
                     orderNum: o.orderNum,
