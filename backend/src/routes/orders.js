@@ -978,6 +978,122 @@ export default async function (fastify, opts) {
         }
     });
 
+    // ─── POST /api/orders/:id/recalculate-tracking ── Recalcular pasos de tracking ──
+    fastify.post('/:id/recalculate-tracking', async (req, reply) => {
+        const orderId = Number(req.params.id);
+        if (isNaN(orderId)) return reply.status(400).send({ error: 'ID de pedido inválido' });
+
+        try {
+            const order = await prisma.order.findUnique({
+                where: { id: orderId },
+                include: {
+                    lines: {
+                        include: {
+                            product: { select: { id: true, name: true, serviceOptions: true, itineraryId: true } },
+                            steps: true,
+                        }
+                    }
+                }
+            });
+
+            if (!order) return reply.status(404).send({ error: 'Pedido no encontrado' });
+            if (order.status === 'collected' || order.status === 'cancelled') {
+                return reply.status(400).send({ error: 'No se puede recalcular un pedido finalizado o cancelado' });
+            }
+
+            let created = 0;
+            let skipped = 0;
+
+            for (const line of order.lines) {
+                const product = line.product;
+                const existingSteps = line.steps || [];
+
+                // Si la línea ya tiene pasos completados o en progreso, no los eliminamos
+                const hasProgress = existingSteps.some(s => s.status !== 'pending');
+
+                if (product?.itineraryId) {
+                    // ── NUEVO SISTEMA: Itinerario ──
+                    const itinerarySteps = await prisma.itineraryStep.findMany({
+                        where: { itineraryId: product.itineraryId },
+                        orderBy: { position: 'asc' }
+                    });
+
+                    if (itinerarySteps.length === 0) {
+                        skipped++;
+                        continue;
+                    }
+
+                    // Si no tiene pasos o no tiene progreso, reconstruir
+                    if (existingSteps.length === 0 || !hasProgress) {
+                        // Eliminar pasos pendientes existentes
+                        if (existingSteps.length > 0) {
+                            await prisma.orderLineStep.deleteMany({
+                                where: { orderLineId: line.id, status: 'pending' }
+                            });
+                        }
+
+                        // Obtener pasos opcionales seleccionados (del body si se envían)
+                        const selectedOptionalIds = req.body?.optionalStepIds || [];
+
+                        for (const iStep of itinerarySteps) {
+                            if (iStep.isOptional && !selectedOptionalIds.includes(iStep.id)) {
+                                continue;
+                            }
+
+                            // Verificar si ya existe un paso con este itineraryStepId para esta línea
+                            const exists = await prisma.orderLineStep.findFirst({
+                                where: { orderLineId: line.id, itineraryStepId: iStep.id }
+                            });
+                            if (exists) continue;
+
+                            await prisma.orderLineStep.create({
+                                data: {
+                                    orderLineId: line.id,
+                                    itineraryStepId: iStep.id,
+                                    status: 'pending',
+                                }
+                            }).catch(e => {
+                                if (!e.code || e.code !== 'P2002') console.error('Error creando step (recalc):', e);
+                            });
+                            created++;
+                        }
+                    } else {
+                        // Tiene progreso: solo añadir pasos nuevos que falten
+                        for (const iStep of itinerarySteps) {
+                            if (iStep.isOptional) continue;
+                            const exists = existingSteps.some(s => s.itineraryStepId === iStep.id);
+                            if (!exists) {
+                                await prisma.orderLineStep.create({
+                                    data: {
+                                        orderLineId: line.id,
+                                        itineraryStepId: iStep.id,
+                                        status: 'pending',
+                                    }
+                                }).catch(e => {
+                                    if (!e.code || e.code !== 'P2002') console.error('Error creando step (recalc):', e);
+                                });
+                                created++;
+                            }
+                        }
+                    }
+                } else {
+                    // Sin itinerario asignado al producto
+                    skipped++;
+                }
+            }
+
+            return reply.send({
+                ok: true,
+                message: `Recalculado: ${created} pasos creados, ${skipped} líneas sin itinerario`,
+                created,
+                skipped
+            });
+        } catch (err) {
+            console.error('Error en recalculate-tracking:', err);
+            return reply.status(500).send({ error: 'Error recalculando tracking' });
+        }
+    });
+
     fastify.get('/delivery-dates', async (req, reply) => {
         try {
             const {page = 0} = req.query;

@@ -496,6 +496,13 @@ export function deleteTrackingResource(token, id) {
     return request(`/tracking/resources/${id}`, token, { method: 'DELETE' });
 }
 
+export function recalculateTracking(token, orderId) {
+    return request(`/orders/${orderId}/recalculate-tracking`, token, {
+        method: 'POST',
+        body: JSON.stringify({}),
+    });
+}
+
 export function fetchOrderEstimate(token, orderId) {
     return request(`/tracking/estimate/${orderId}`, token);
 }

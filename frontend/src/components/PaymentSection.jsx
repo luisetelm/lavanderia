@@ -13,7 +13,8 @@ import {
     updateOrderLine,
     addLineAnnotation,
     createStripeCheckout,
-    updateStepStatus
+    updateStepStatus,
+    recalculateTracking
 } from '../api.js';
 import UIkit from 'uikit';
 import {printSaleTicket, printWashLabels} from '../utils/printUtils.js';
@@ -55,6 +56,13 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
 
     // Notas internas controladas
     const [internalNotes, setInternalNotes] = useState('');
+
+    // Edición fecha de entrega
+    const [editingDate, setEditingDate] = useState(false);
+    const [newDate, setNewDate] = useState('');
+
+    // Recalcular tracking
+    const [recalculating, setRecalculating] = useState(false);
 
     /* ── Comprimir foto a JPEG pequeño (reutilizable) ── */
     const compressPhoto = (file) => new Promise((resolve) => {
@@ -228,6 +236,42 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
                 message: 'Error al completar el paso',
                 status: 'danger', pos: 'top-right', timeout: 2000
             });
+        }
+    };
+
+    const handleDateChange = async () => {
+        if (!order || !newDate) return;
+        try {
+            await apiUpdateOrder(token, order.id, { fechaLimite: newDate });
+            setEditingDate(false);
+            await loadOrder();
+        } catch (e) {
+            console.error('Error actualizando fecha:', e);
+            UIkit.notification({
+                message: e.error || 'Error al actualizar la fecha de entrega',
+                status: 'danger', pos: 'top-right', timeout: 3000
+            });
+        }
+    };
+
+    const handleRecalculateTracking = async () => {
+        if (!order) return;
+        setRecalculating(true);
+        try {
+            const result = await recalculateTracking(token, order.id);
+            UIkit.notification({
+                message: result.message || 'Tracking recalculado',
+                status: 'success', pos: 'top-right', timeout: 3000
+            });
+            await loadOrder();
+        } catch (e) {
+            console.error('Error recalculando tracking:', e);
+            UIkit.notification({
+                message: e.error || 'Error al recalcular el tracking',
+                status: 'danger', pos: 'top-right', timeout: 3000
+            });
+        } finally {
+            setRecalculating(false);
         }
     };
 
@@ -406,7 +450,38 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
         <div className={'uk-badge uk-text-bolder'}>
             {createdDate}
             <span className="uk-icon" uk-icon="icon: arrow-right"></span>
-            {dueDate}
+            {editingDate ? (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    <input
+                        type="date"
+                        value={newDate}
+                        onChange={(e) => setNewDate(e.target.value)}
+                        style={{ fontSize: 'inherit', padding: '0 4px', border: '1px solid #ccc', borderRadius: 3, height: 22 }}
+                        autoFocus
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleDateChange();
+                            if (e.key === 'Escape') setEditingDate(false);
+                        }}
+                    />
+                    <span className="uk-icon" uk-icon="icon: check; ratio: 0.7" style={{ cursor: 'pointer', color: '#32d296' }} onClick={handleDateChange}></span>
+                    <span className="uk-icon" uk-icon="icon: close; ratio: 0.7" style={{ cursor: 'pointer', color: '#f0506e' }} onClick={() => setEditingDate(false)}></span>
+                </span>
+            ) : (
+                <span
+                    style={{ cursor: order.status !== 'collected' && order.status !== 'cancelled' ? 'pointer' : 'default' }}
+                    onClick={() => {
+                        if (order.status === 'collected' || order.status === 'cancelled') return;
+                        setNewDate(order.fechaLimite ? new Date(order.fechaLimite).toISOString().split('T')[0] : '');
+                        setEditingDate(true);
+                    }}
+                    title={order.status !== 'collected' && order.status !== 'cancelled' ? 'Clic para cambiar fecha de entrega' : ''}
+                >
+                    {dueDate}
+                    {order.status !== 'collected' && order.status !== 'cancelled' && (
+                        <span className="uk-icon" uk-icon="icon: pencil; ratio: 0.6" style={{ marginLeft: 4 }}></span>
+                    )}
+                </span>
+            )}
         </div>
 
         {order.status !== 'cancelled' && (<div className={'uk-grid uk-child-width-1-3@l uk-margin-top'}>
@@ -785,6 +860,25 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
                     >
                         {isPrinting ? 'Imprimiendo...' : 'Imprimir etiquetas'}
                     </button>
+
+                    {/* Recalcular tracking: visible si alguna línea no tiene pasos y el pedido está activo */}
+                    {order.status !== 'collected' && order.status !== 'cancelled' && (() => {
+                        const linesWithoutSteps = (order.lines || []).filter(l => !l.steps || l.steps.length === 0);
+                        return linesWithoutSteps.length > 0 ? (
+                            <button
+                                type="button"
+                                className="uk-button uk-button-default uk-width-1-1@l"
+                                onClick={handleRecalculateTracking}
+                                disabled={recalculating}
+                                style={{ borderColor: '#f0ad4e', color: '#f0ad4e' }}
+                            >
+                                {recalculating
+                                    ? 'Recalculando...'
+                                    : `Recalcular tracking (${linesWithoutSteps.length} sin itinerario)`
+                                }
+                            </button>
+                        ) : null;
+                    })()}
 
                     {order.status === 'pending' && (() => {
                         const allSteps = (order.lines || []).flatMap(l => l.steps || []);
