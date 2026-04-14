@@ -5,7 +5,7 @@ export default async function (fastify, opts) {
 
     fastify.get('/', async (req, reply) => {
         const products = await prisma.product.findMany({
-            include: { variants: true, category: true },
+            include: { variants: true, category: true, itinerary: { select: { id: true, name: true, steps: { where: { isOptional: true }, select: { id: true, stepKey: true, stepLabel: true, position: true }, orderBy: { position: 'asc' } } } } },
         });
         return products;
     });
@@ -14,14 +14,14 @@ export default async function (fastify, opts) {
         const { id } = req.params;
         const product = await prisma.product.findUnique({
             where: { id: Number(id) },
-            include: { variants: true, category: true },
+            include: { variants: true, category: true, itinerary: { include: { steps: { orderBy: { position: 'asc' } } } } },
         });
         if (!product) return reply.status(404).send({ error: 'Producto no encontrado' });
         return product;
     });
 
     fastify.post('/', async (req, reply) => {
-        let { name, sku, basePrice, categoryId, description, type, weight, bigClientPrice, serviceOptions } = req.body;
+        let { name, sku, basePrice, categoryId, description, type, weight, bigClientPrice, serviceOptions, itineraryId } = req.body;
         if (!name || basePrice == null) return reply.status(400).send({ error: 'Name and basePrice required' });
 
         if (!sku || sku.trim() === '') {
@@ -42,6 +42,7 @@ export default async function (fastify, opts) {
                 type: type || 'service',
                 weight: weight != null ? parseFloat(weight) : 0,
                 bigClientPrice: bigClientPrice != null ? parseFloat(bigClientPrice) : 0,
+                itineraryId: itineraryId ? Number(itineraryId) : null,
                 serviceOptions: serviceOptions || {
                     dryWash: false,
                     wetWash: false,
@@ -55,7 +56,7 @@ export default async function (fastify, opts) {
 
     fastify.put('/:id', async (req, reply) => {
         const { id } = req.params;
-        const { name, sku, basePrice, categoryId, description, type, weight, bigClientPrice, serviceOptions } = req.body;
+        const { name, sku, basePrice, categoryId, description, type, weight, bigClientPrice, serviceOptions, itineraryId } = req.body;
         try {
             const data = {};
             if (name !== undefined) data.name = name;
@@ -67,6 +68,7 @@ export default async function (fastify, opts) {
             if (weight !== undefined) data.weight = parseFloat(weight);
             if (bigClientPrice !== undefined) data.bigClientPrice = parseFloat(bigClientPrice);
             if (serviceOptions !== undefined) data.serviceOptions = serviceOptions;
+            if (itineraryId !== undefined) data.itineraryId = itineraryId ? Number(itineraryId) : null;
 
             const product = await prisma.product.update({
                 where: { id: Number(id) },

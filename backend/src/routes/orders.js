@@ -122,6 +122,7 @@ export default async function (fastify, opts) {
                 unitPrice,
                 discount: discountPct,
                 totalPrice,
+                color: l.color || null,
             });
             // Guardar notas y fotos temporalmente indexadas por posición de línea
             if (rawNotes || rawPhotos.length > 0) {
@@ -166,7 +167,7 @@ export default async function (fastify, opts) {
                 workerId: workerId
             }, include: {
                 lines: {
-                    include: {product: true},
+                    include: {product: { select: { id: true, name: true, serviceOptions: true, itineraryId: true } }},
                 }, client: {
                     select: {
                         id: true, firstName: true, lastName: true, email: true, phone: true,
@@ -224,6 +225,111 @@ export default async function (fastify, opts) {
             }
         }
 
+        // ─── Auto-crear pasos de tracking por cada línea ───
+        // Usa el itinerario del producto si existe; si no, fallback al sistema legacy de serviceOptions
+        try {
+            for (let li = 0; li < order.lines.length; li++) {
+                const line = order.lines[li];
+                const product = line.product;
+
+                // ── NUEVO SISTEMA: Itinerario ──
+                if (product?.itineraryId) {
+                    const itinerarySteps = await prisma.itineraryStep.findMany({
+                        where: { itineraryId: product.itineraryId },
+                        orderBy: { position: 'asc' }
+                    });
+
+                    // Obtener IDs de pasos opcionales seleccionados para esta línea
+                    const rawLine = lines[li];
+                    const selectedOptionalIds = rawLine?.optionalStepIds || [];
+
+                    for (const iStep of itinerarySteps) {
+                        // Saltar pasos opcionales no seleccionados
+                        if (iStep.isOptional && !selectedOptionalIds.includes(iStep.id)) {
+                            continue;
+                        }
+
+                        await prisma.orderLineStep.create({
+                            data: {
+                                orderLineId: line.id,
+                                itineraryStepId: iStep.id,
+                                status: 'pending',
+                            }
+                        }).catch(e => {
+                            if (!e.code || e.code !== 'P2002') console.error('Error creando step (itinerary):', e);
+                        });
+                    }
+                    continue; // Pasar a la siguiente línea
+                }
+
+                // ── LEGACY: serviceOptions + service_step_config ──
+                const allStepConfigs = await prisma.serviceStepConfig.findMany({
+                    orderBy: { position: 'asc' }
+                });
+
+                if (allStepConfigs.length === 0) continue;
+
+                const serviceOptions = product?.serviceOptions
+                    ? (typeof product.serviceOptions === 'string' ? JSON.parse(product.serviceOptions) : product.serviceOptions)
+                    : {};
+
+                const activeServices = Object.entries(serviceOptions)
+                    .filter(([_, active]) => active)
+                    .map(([svc]) => svc);
+
+                if (activeServices.length === 0) continue;
+
+                const GLOBAL_ORDER = {
+                    recepcion: 10,
+                    pretratamiento: 20,
+                    lavado: 30,
+                    limpieza_seco: 30,
+                    secado: 40,
+                    planchado: 50,
+                    doblado: 60,
+                    embolsado: 60,
+                    envio_externo: 30,
+                    recepcion_externo: 40,
+                };
+
+                const allRelevantSteps = [];
+                for (const serviceType of activeServices) {
+                    allRelevantSteps.push(...allStepConfigs.filter(sc => sc.serviceType === serviceType));
+                }
+
+                const seen = new Set();
+                let mergedSteps = [];
+                for (const step of allRelevantSteps) {
+                    if (!seen.has(step.stepKey)) {
+                        seen.add(step.stepKey);
+                        mergedSteps.push(step);
+                    }
+                }
+
+                if (seen.has('planchado') && seen.has('doblado')) {
+                    mergedSteps = mergedSteps.filter(s => s.stepKey !== 'doblado');
+                }
+
+                mergedSteps.sort((a, b) =>
+                    (GLOBAL_ORDER[a.stepKey] ?? 99) - (GLOBAL_ORDER[b.stepKey] ?? 99)
+                );
+
+                for (const stepConfig of mergedSteps) {
+                    await prisma.orderLineStep.create({
+                        data: {
+                            orderLineId: line.id,
+                            stepConfigId: stepConfig.id,
+                            status: 'pending',
+                        }
+                    }).catch(e => {
+                        if (!e.code || e.code !== 'P2002') console.error('Error creando step:', e);
+                    });
+                }
+            }
+        } catch (trackingErr) {
+            console.error('Error creando tracking steps:', trackingErr);
+        }
+
         // Serializar
         const serialized = {
             ...order, lines: order.lines.map((l) => ({
@@ -233,6 +339,7 @@ export default async function (fastify, opts) {
                 quantity: l.quantity,
                 unitPrice: l.unitPrice,
                 totalPrice: l.totalPrice,
+                color: l.color || null,
                 annotations: l.annotations ? (typeof l.annotations === 'string' ? JSON.parse(l.annotations) : l.annotations) : [],
                 productName: l.product?.name || '',
             })),
@@ -608,8 +715,26 @@ export default async function (fastify, opts) {
                             totalPrice: true,
                             annotations: true,
                             discount: true,
+                            color: true,
                             product: {
-                                select: {id: true, name: true, basePrice: true}
+                                select: {id: true, name: true, basePrice: true, serviceOptions: true,
+                                    itinerary: {
+                                        include: {
+                                            steps: {
+                                                orderBy: { position: 'asc' },
+                                                select: { id: true, stepKey: true, stepLabel: true, position: true, resourceKey: true, autoProgress: true, isOptional: true }
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            steps: {
+                                include: {
+                                    stepConfig: true,
+                                    itineraryStep: true,
+                                    completedByUser: { select: { id: true, firstName: true } }
+                                },
+                                orderBy: { id: 'asc' }
                             }
                         }
                     },
@@ -672,12 +797,51 @@ export default async function (fastify, opts) {
                     quantity: l.quantity,
                     unitPrice: l.unitPrice,
                     totalPrice: l.totalPrice,
+                    color: l.color || null,
                     annotations: l.annotations ? (typeof l.annotations === 'string' ? JSON.parse(l.annotations) : l.annotations) : [],
                     productName: l.product?.name || '',
                     product: {
                         id: l.product?.id, name: l.product?.name, basePrice: l.product?.basePrice,
                     },
                     discount: l.discount,
+                    steps: (l.steps || []).map((s, idx) => {
+                        // Resolver metadata: itineraryStep > stepConfig > fallback itinerario actual
+                        let stepKey = s.stepConfig?.stepKey || s.itineraryStep?.stepKey;
+                        let stepLabel = s.stepConfig?.stepLabel || s.itineraryStep?.stepLabel;
+                        let position = s.stepConfig?.position ?? s.itineraryStep?.position;
+                        let resourceKey = s.stepConfig?.resourceKey || s.itineraryStep?.resourceKey;
+                        const serviceType = s.stepConfig?.serviceType || null;
+
+                        // Fallback para pasos huérfanos: inferir del itinerario actual del producto
+                        if (!stepKey && !stepLabel) {
+                            const itinSteps = l.product?.itinerary?.steps;
+                            if (itinSteps) {
+                                const mandatory = itinSteps.filter(is => !is.isOptional);
+                                const matched = (idx < mandatory.length) ? mandatory[idx] : itinSteps[idx];
+                                if (matched) {
+                                    stepKey = matched.stepKey;
+                                    stepLabel = matched.stepLabel;
+                                    position = matched.position;
+                                    resourceKey = matched.resourceKey;
+                                }
+                            }
+                        }
+
+                        return {
+                            id: s.id,
+                            stepConfigId: s.stepConfigId,
+                            itineraryStepId: s.itineraryStepId,
+                            status: s.status,
+                            startedAt: s.startedAt,
+                            completedAt: s.completedAt,
+                            completedBy: s.completedByUser,
+                            stepKey: stepKey || '?',
+                            stepLabel: stepLabel || '?',
+                            serviceType,
+                            position: position ?? idx,
+                            resourceKey: resourceKey || null,
+                        };
+                    }),
                 };
             });
 

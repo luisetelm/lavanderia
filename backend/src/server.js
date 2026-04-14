@@ -17,6 +17,8 @@ import whatsappRoutes, { whatsappWebhookRoutes } from './routes/whatsapp.js';
 import messagesRoutes from './routes/messages.js';
 import googleRoutes from './routes/google.js';
 import dashboardRoutes from './routes/dashboard.js';
+import trackingRoutes from './routes/tracking.js';
+import itineraryRoutes from './routes/itineraries.js';
 import fastifyStatic from '@fastify/static';
 import multipart from '@fastify/multipart';
 import path from 'path';
@@ -84,6 +86,8 @@ app.register(whatsappWebhookRoutes, {prefix: '/api/whatsapp'});
 app.register(messagesRoutes, {prefix: '/api/messages'});
 app.register(googleRoutes, {prefix: '/api/google'});
 app.register(dashboardRoutes, {prefix: '/api/dashboard'});
+app.register(trackingRoutes, {prefix: '/api/tracking'});
+app.register(itineraryRoutes, {prefix: '/api/itineraries'});
 
 // Servir la carpeta de PDFs de facturas de forma pública
 app.register(fastifyStatic, {

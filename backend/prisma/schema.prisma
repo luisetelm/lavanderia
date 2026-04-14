@@ -29,9 +29,11 @@ model Product {
   weight         Decimal?         @default(0) @db.Decimal(12, 2)
   bigClientPrice Decimal?         @default(0) @db.Decimal(12, 2)
   serviceOptions Json?            @default("{\"dryWash\": false, \"ironing\": false, \"wetWash\": false, \"externalService\": false}")
+  itineraryId    Int?             @map("itinerary_id")
   orderLines     OrderLine[]
   category       ProductCategory? @relation(fields: [categoryId], references: [id])
   variants       ProductVariant[]
+  itinerary      Itinerary?       @relation(fields: [itineraryId], references: [id])
 }
 
 model ProductVariant {
@@ -76,10 +78,112 @@ model OrderLine {
   unitPrice  Float
   totalPrice Float
   annotations String?         // JSON array: [{"type":"note"|"photo","text?","file?","at","by","origin":"receipt"|"internal"}]
+  color       String?          @db.VarChar(30)
   discount    Float?          @default(0)
   order      Order           @relation(fields: [orderId], references: [id])
   product    Product         @relation(fields: [productId], references: [id])
   variant    ProductVariant? @relation(fields: [variantId], references: [id])
+  steps      OrderLineStep[]
+}
+
+model ServiceStepConfig {
+  id           Int             @id @default(autoincrement())
+  serviceType  String          @map("service_type") @db.VarChar(30)
+  stepKey      String          @map("step_key") @db.VarChar(30)
+  stepLabel    String          @map("step_label") @db.VarChar(60)
+  position     Int
+  durationMin  Int             @default(0) @map("duration_min")
+  resourceKey  String?         @map("resource_key") @db.VarChar(30)
+  lineSteps    OrderLineStep[]
+
+  @@unique([serviceType, stepKey])
+  @@map("service_step_config")
+}
+
+model OrderLineStep {
+  id              Int                @id @default(autoincrement())
+  orderLineId     Int                @map("order_line_id")
+  stepConfigId    Int?               @map("step_config_id")
+  itineraryStepId Int?               @map("itinerary_step_id")
+  status          String             @default("pending") @db.VarChar(15)  // pending, in_progress, done
+  startedAt       DateTime?          @map("started_at") @db.Timestamptz(6)
+  completedAt     DateTime?          @map("completed_at") @db.Timestamptz(6)
+  completedBy     Int?               @map("completed_by")
+  orderLine       OrderLine          @relation(fields: [orderLineId], references: [id], onDelete: Cascade)
+  stepConfig      ServiceStepConfig? @relation(fields: [stepConfigId], references: [id])
+  itineraryStep   ItineraryStep?     @relation(fields: [itineraryStepId], references: [id])
+  completedByUser User?              @relation("step_completed_by", fields: [completedBy], references: [id])
+
+  @@unique([orderLineId, stepConfigId])
+  @@index([orderLineId])
+  @@index([status])
+  @@map("order_line_steps")
+}
+
+model ResourceConfig {
+  id               Int    @id @default(autoincrement())
+  resourceKey      String @unique @map("resource_key") @db.VarChar(30)
+  label            String @db.VarChar(60)
+  units            Int    @default(1)
+  processingMode   String @default("individual") @map("processing_mode") @db.VarChar(12) // 'batch' o 'individual'
+  batchCapacity    Int    @default(1) @map("batch_capacity")    // Para batch: prendas por ciclo
+  cycleDurationMin Int    @default(0) @map("cycle_duration_min") // batch: min/ciclo, individual: min/prenda
+
+  @@map("resource_config")
+}
+
+model Itinerary {
+  id          Int             @id @default(autoincrement())
+  name        String          @unique @db.VarChar(80)
+  description String?         @db.VarChar(255)
+  isActive    Boolean         @default(true) @map("is_active")
+  createdAt   DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  steps       ItineraryStep[]
+  products    Product[]
+
+  @@map("itinerary")
+}
+
+model ItineraryStep {
+  id           Int             @id @default(autoincrement())
+  itineraryId  Int             @map("itinerary_id")
+  stepKey      String          @map("step_key") @db.VarChar(30)
+  stepLabel    String          @map("step_label") @db.VarChar(60)
+  position     Int
+  durationMin  Int             @default(0) @map("duration_min")
+  resourceKey  String?         @map("resource_key") @db.VarChar(30)
+  autoProgress Boolean         @default(false) @map("auto_progress")  // true = "Iniciar/Completar", false = solo "Completar"
+  isOptional   Boolean         @default(false) @map("is_optional")   // true = se activa manualmente al crear pedido
+  displayOrder Int             @default(0) @map("display_order")     // orden global en el tablero de tracking
+  itinerary    Itinerary       @relation(fields: [itineraryId], references: [id], onDelete: Cascade)
+  lineSteps    OrderLineStep[]
+
+  @@unique([itineraryId, position])
+  @@index([itineraryId])
+  @@map("itinerary_step")
+}
+
+model WorkSchedule {
+  id          Int      @id @default(autoincrement())
+  dayOfWeek   Int      @unique @map("day_of_week")  // 0=Dom, 1=Lun ... 6=Sáb
+  isWorking   Boolean  @default(true) @map("is_working")
+  startTime   String?  @map("start_time") @db.VarChar(5)  // "09:00"
+  endTime     String?  @map("end_time")   @db.VarChar(5)  // "20:00"
+  capacityMin Int      @default(0) @map("capacity_min")    // Minutos efectivos de trabajo
+
+  @@map("work_schedule")
+}
+
+model WorkScheduleException {
+  id          Int      @id @default(autoincrement())
+  date        DateTime @unique @db.Date
+  isWorking   Boolean  @default(false) @map("is_working")
+  startTime   String?  @map("start_time") @db.VarChar(5)
+  endTime     String?  @map("end_time")   @db.VarChar(5)
+  capacityMin Int      @default(0) @map("capacity_min")
+  label       String?  @db.VarChar(60)  // "Festivo", "Vacaciones"
+
+  @@map("work_schedule_exceptions")
 }
 
 model User {
@@ -114,6 +218,7 @@ model User {
   recorderPayments   Payment[]      @relation("recorder_payments")
   clientMessages     Message[]      @relation("client_messages")
   conversations      Conversation[] @relation("client_conversations")
+  completedSteps     OrderLineStep[] @relation("step_completed_by")
 }
 
 model Notification {

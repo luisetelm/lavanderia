@@ -5,12 +5,29 @@ import { createOrder, updateUser } from '../api.js';
 
 const isValidSpanishPhone = (phone) => /^[6789]\d{8}$/.test(phone);
 
+const GARMENT_COLORS = [
+    { key: 'negro',    label: 'Negro',     hex: '#1e1e1e' },
+    { key: 'blanco',   label: 'Blanco',    hex: '#f5f5f5' },
+    { key: 'gris',     label: 'Gris',      hex: '#9ca3af' },
+    { key: 'azul',     label: 'Azul',      hex: '#3b82f6' },
+    { key: 'marino',   label: 'Marino',    hex: '#1e3a5f' },
+    { key: 'rojo',     label: 'Rojo',      hex: '#ef4444' },
+    { key: 'verde',    label: 'Verde',     hex: '#22c55e' },
+    { key: 'marron',   label: 'Marrón',    hex: '#92400e' },
+    { key: 'beige',    label: 'Beige',     hex: '#d4b896' },
+    { key: 'rosa',     label: 'Rosa',      hex: '#f472b6' },
+    { key: 'amarillo', label: 'Amarillo',  hex: '#facc15' },
+    { key: 'morado',   label: 'Morado',    hex: '#a855f7' },
+    { key: 'burdeos',  label: 'Burdeos',   hex: '#7f1d1d' },
+    { key: 'naranja',  label: 'Naranja',   hex: '#f97316' },
+];
+
 export default function DraftOrderBanner({ token, worker }) {
     const draft = useDraftOrder();
     const navigate = useNavigate();
     const bannerRef = useRef(null);
 
-    const [expanded, setExpanded] = useState(false);
+    const [expanded, setExpanded] = useState(true);
     const [expandedLineId, setExpandedLineId] = useState(null);
     const [error, setError] = useState('');
     const [submitting, setSubmitting] = useState(false);
@@ -35,6 +52,7 @@ export default function DraftOrderBanner({ token, worker }) {
         cart, selectedUser, quickClient, fechaLimite, observaciones,
         updateQuantity, removeFromCart, getPriceForItem,
         updateLineNotes, addLinePhoto, removeLinePhoto, splitLine,
+        toggleOptionalStep, setLineColor,
         total, itemCount, clientName, discount, clearDraft, setSelectedUser,
     } = draft;
 
@@ -65,6 +83,8 @@ export default function DraftOrderBanner({ token, worker }) {
             unitPrice: getPriceForItem(c),
             notes: c.notes || '',
             photos: (c.photos || []),
+            optionalStepIds: (c.optionalStepIds || []),
+            color: c.color || null,
         }));
 
         const payload = {
@@ -294,32 +314,67 @@ export default function DraftOrderBanner({ token, worker }) {
                             const lineTotal = unitPrice * c.quantity;
                             const baseTotal = Number(c.basePrice) * c.quantity;
                             const hasLineDetail = c.notes || (c.photos && c.photos.length > 0);
+                            const hasOptionalSteps = (c.availableOptionalSteps || []).length > 0;
                             const isLineOpen = expandedLineId === c.lineId;
 
                             return (
                                 <div key={c.lineId} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                                     {/* Fila principal */}
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 0', fontSize: '0.82rem' }}>
-                                        {/* Nombre + indicadores */}
-                                        <div style={{ flex: 1, color: '#e2e8f0', display: 'flex', alignItems: 'center', gap: 6 }}>
-                                            <span>{c.name}</span>
+                                        {/* Nombre + indicadores — ancho fijo */}
+                                        <div style={{ width: 140, flexShrink: 0, color: '#e2e8f0', display: 'flex', alignItems: 'center', gap: 4, minWidth: 0, overflow: 'hidden' }}>
+                                            {/* Color dot (selected) */}
+                                            {c.color && (() => {
+                                                const col = GARMENT_COLORS.find(g => g.key === c.color);
+                                                return col ? (
+                                                    <span style={{
+                                                        width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
+                                                        background: col.hex,
+                                                        border: col.key === 'blanco' ? '1px solid #666' : '1px solid rgba(255,255,255,0.2)',
+                                                    }} title={col.label}></span>
+                                                ) : null;
+                                            })()}
+                                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</span>
                                             {hasLineDetail && (
-                                                <span style={{ color: '#fbbf24', fontSize: '0.7rem', display: 'flex', gap: 2 }}>
-                                                    {c.notes && <span uk-icon="icon: file-edit; ratio: 0.5"></span>}
-                                                    {c.photos?.length > 0 && <span uk-icon="icon: camera; ratio: 0.5"></span>}
+                                                <span style={{ color: '#fbbf24', fontSize: '0.7rem', display: 'flex', gap: 2, flexShrink: 0 }}>
+                                                    {c.notes && <span uk-icon="icon: file-edit; ratio: 0.45"></span>}
+                                                    {c.photos?.length > 0 && <span uk-icon="icon: camera; ratio: 0.45"></span>}
                                                 </span>
                                             )}
                                         </div>
 
+                                        {/* Color picker inline */}
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
+                                            {GARMENT_COLORS.map(gc => {
+                                                const selected = c.color === gc.key;
+                                                return (
+                                                    <button
+                                                        key={gc.key}
+                                                        type="button"
+                                                        title={gc.label}
+                                                        onClick={() => setLineColor(c.lineId, selected ? null : gc.key)}
+                                                        style={{
+                                                            width: 14, height: 14, borderRadius: '50%',
+                                                            background: gc.hex, cursor: 'pointer', padding: 0,
+                                                            border: selected ? '2px solid #fbbf24' : (gc.key === 'blanco' ? '1px solid #666' : '1px solid rgba(255,255,255,0.12)'),
+                                                            outline: selected ? '1px solid #fbbf24' : 'none',
+                                                            outlineOffset: 1,
+                                                            transition: 'all 0.1s',
+                                                        }}
+                                                    />
+                                                );
+                                            })}
+                                        </div>
+
                                         {/* Cantidad */}
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
                                             <button style={btnSmall()} onClick={() => updateQuantity(c.lineId, c.quantity - 1)}>-</button>
                                             <span style={{ minWidth: 18, textAlign: 'center' }}>{c.quantity}</span>
                                             <button style={btnSmall()} onClick={() => updateQuantity(c.lineId, c.quantity + 1)}>+</button>
                                         </div>
 
                                         {/* Precio */}
-                                        <div style={{ minWidth: 70, textAlign: 'right' }}>
+                                        <div style={{ width: 75, textAlign: 'right', flexShrink: 0 }}>
                                             {hasDiscount && (
                                                 <span style={{ textDecoration: 'line-through', color: '#64748b', fontSize: '0.72em', marginRight: 4 }}>
                                                     {baseTotal.toFixed(2)}
@@ -328,22 +383,25 @@ export default function DraftOrderBanner({ token, worker }) {
                                             <span style={{ color: '#e2e8f0' }}>{lineTotal.toFixed(2)} €</span>
                                         </div>
 
-                                        {/* Botón nota/foto */}
+                                        {/* Botón detalle (nota/foto) */}
                                         <button
                                             style={{
                                                 ...btnSmall(isLineOpen ? 'rgba(4,138,191,0.3)' : undefined),
-                                                padding: '2px 5px',
+                                                padding: '2px 5px', flexShrink: 0,
                                             }}
                                             title="Nota / Foto"
                                             onClick={() => setExpandedLineId(isLineOpen ? null : c.lineId)}
                                         >
-                                            <span uk-icon="icon: camera; ratio: 0.6"></span>
+                                            <span style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                                                <span uk-icon="icon: comment; ratio: 0.55"></span>
+                                                <span uk-icon="icon: camera; ratio: 0.55"></span>
+                                            </span>
                                         </button>
 
                                         {/* Desglosar */}
                                         {c.quantity > 1 && (
                                             <button
-                                                style={{ ...btnSmall(), padding: '2px 5px' }}
+                                                style={{ ...btnSmall(), padding: '2px 5px', flexShrink: 0 }}
                                                 title="Desglosar en prendas individuales"
                                                 onClick={() => splitLine(c.lineId)}
                                             >
@@ -353,10 +411,37 @@ export default function DraftOrderBanner({ token, worker }) {
 
                                         {/* Eliminar */}
                                         <button
-                                            style={{ ...btnSmall('rgba(220,38,38,0.15)', '#f87171'), padding: '2px 5px' }}
+                                            style={{ ...btnSmall('rgba(220,38,38,0.15)', '#f87171'), padding: '2px 5px', flexShrink: 0 }}
                                             onClick={() => removeFromCart(c.lineId)}
                                         >×</button>
                                     </div>
+
+                                    {/* Pasos opcionales (solo si existen) */}
+                                    {hasOptionalSteps && (
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap', padding: '0 0 4px 30px' }}>
+                                            <span style={{ fontSize: '0.65rem', color: '#64748b', marginRight: 2, whiteSpace: 'nowrap' }}>Extra:</span>
+                                            {(c.availableOptionalSteps || []).map(step => {
+                                                const selected = (c.optionalStepIds || []).includes(step.id);
+                                                return (
+                                                    <button
+                                                        key={step.id}
+                                                        type="button"
+                                                        onClick={() => toggleOptionalStep(c.lineId, step.id)}
+                                                        style={{
+                                                            fontSize: '0.68rem', padding: '1px 8px', borderRadius: 12,
+                                                            border: selected ? '1px solid #f59e0b' : '1px solid rgba(255,255,255,0.15)',
+                                                            background: selected ? 'rgba(245,158,11,0.2)' : 'rgba(255,255,255,0.06)',
+                                                            color: selected ? '#fbbf24' : '#94a3b8',
+                                                            cursor: 'pointer', transition: 'all 0.15s',
+                                                            fontWeight: selected ? 600 : 400,
+                                                        }}
+                                                    >
+                                                        {selected ? '✓ ' : ''}{step.stepLabel}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
 
                                     {/* Panel inline de detalle (nota + fotos) */}
                                     {isLineOpen && (

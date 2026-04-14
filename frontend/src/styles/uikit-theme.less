@@ -931,6 +931,69 @@ h1, h2, h3, h4, h5, h6 {
   margin-left: auto;
 }
 
+/* ── Sidebar admin submenu ── */
+.sidebar-admin-group {
+  margin-top: 4px;
+}
+
+.sidebar-admin-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 16px;
+  color: #94a3b8;
+  background: none;
+  border: none;
+  font-size: 0.875rem;
+  font-weight: 500;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: left;
+
+  &:hover {
+    color: #e2e8f0;
+    background: rgba(255,255,255,0.04);
+  }
+
+  &.open {
+    color: #e2e8f0;
+    background: rgba(255,255,255,0.04);
+  }
+}
+
+.sidebar-admin-submenu {
+  list-style: none;
+  margin: 2px 0 0;
+  padding: 0 0 0 12px;
+
+  li { margin-bottom: 1px; }
+
+  a {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    color: #94a3b8;
+    text-decoration: none;
+    font-size: 0.8rem;
+    font-weight: 500;
+    border-radius: 6px;
+    transition: all 0.15s ease;
+
+    &:hover {
+      color: #e2e8f0;
+      background: rgba(255,255,255,0.04);
+    }
+
+    &.active {
+      color: #ffffff;
+      background: @color-sidebar-active;
+    }
+  }
+}
+
 /* ── Media bubbles ── */
 .msg-bubble-media {
   margin: -3px -4px 2px;

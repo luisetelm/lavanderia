@@ -1,27 +1,25 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 
-export default function ProductList({products, searchProduct, setSearchProduct, onAdd}) {
+export default function ProductList({products, searchProduct, setSearchProduct, onAdd, itineraries = []}) {
     const [hoveredProduct, setHoveredProduct] = useState(null);
-    const [serviceFilter, setServiceFilter] = useState(null);
-    
+    const [itineraryFilter, setItineraryFilter] = useState(null); // null = todos
+
+    // Obtener la lista única de itinerarios usados por productos
+    const usedItineraries = useMemo(() => {
+        const ids = [...new Set(products.filter(p => p.itineraryId).map(p => p.itineraryId))];
+        return itineraries.filter(it => ids.includes(it.id));
+    }, [products, itineraries]);
+
     const filtered = products.filter((p) => {
-        // Filtro por texto de búsqueda
         const matchesSearch = p.name.toLowerCase().includes(searchProduct.toLowerCase());
-        
-        // Filtro por categoría de servicio (si no hay filtro seleccionado, mostrar todos)
-        const matchesService = serviceFilter === null || 
-            (p.serviceOptions && p.serviceOptions[serviceFilter] === true);
-            
-        return matchesSearch && matchesService;
+        const matchesItinerary = itineraryFilter === null || p.itineraryId === itineraryFilter;
+        return matchesSearch && matchesItinerary;
     });
 
-    const handleFilterClick = (filter) => {
-        // Si hacemos clic en el filtro actual o en "Todos" (null), volvemos a mostrar todos
-        if (serviceFilter === filter) {
-            setServiceFilter(null);
-        } else {
-            setServiceFilter(filter);
-        }
+    const getItineraryName = (product) => {
+        if (!product.itineraryId) return null;
+        const it = itineraries.find(i => i.id === product.itineraryId);
+        return it?.name || null;
     };
 
     return (
@@ -33,44 +31,21 @@ export default function ProductList({products, searchProduct, setSearchProduct, 
                 <div style={{display: 'flex', flexWrap: 'wrap', gap: 4}}>
                     <button
                         type="button"
-                        className={`uk-button uk-button-small ${serviceFilter === null ? 'uk-button-primary' : 'uk-button-default'}`}
-                        aria-pressed={serviceFilter === null}
-                        onClick={() => setServiceFilter(null)}
+                        className={`uk-button uk-button-small ${itineraryFilter === null ? 'uk-button-primary' : 'uk-button-default'}`}
+                        onClick={() => setItineraryFilter(null)}
                     >
                         Todos
                     </button>
-                    <button
-                        type="button"
-                        className={`uk-button uk-button-small ${serviceFilter === 'dryWash' ? 'uk-button-primary' : 'uk-button-default'}`}
-                        aria-pressed={serviceFilter === 'dryWash'}
-                        onClick={() => handleFilterClick('dryWash')}
-                    >
-                        Seco
-                    </button>
-                    <button
-                        type="button"
-                        className={`uk-button uk-button-small ${serviceFilter === 'wetWash' ? 'uk-button-primary' : 'uk-button-default'}`}
-                        aria-pressed={serviceFilter === 'wetWash'}
-                        onClick={() => handleFilterClick('wetWash')}
-                    >
-                        Mojado
-                    </button>
-                    <button
-                        type="button"
-                        className={`uk-button uk-button-small ${serviceFilter === 'ironing' ? 'uk-button-primary' : 'uk-button-default'}`}
-                        aria-pressed={serviceFilter === 'ironing'}
-                        onClick={() => handleFilterClick('ironing')}
-                    >
-                        Plancha
-                    </button>
-                    <button
-                        type="button"
-                        className={`uk-button uk-button-small ${serviceFilter === 'externalService' ? 'uk-button-primary' : 'uk-button-default'}`}
-                        aria-pressed={serviceFilter === 'externalService'}
-                        onClick={() => handleFilterClick('externalService')}
-                    >
-                        Externo
-                    </button>
+                    {usedItineraries.map(it => (
+                        <button
+                            key={it.id}
+                            type="button"
+                            className={`uk-button uk-button-small ${itineraryFilter === it.id ? 'uk-button-primary' : 'uk-button-default'}`}
+                            onClick={() => setItineraryFilter(itineraryFilter === it.id ? null : it.id)}
+                        >
+                            {it.name}
+                        </button>
+                    ))}
                 </div>
             </div>
 
@@ -90,34 +65,34 @@ export default function ProductList({products, searchProduct, setSearchProduct, 
             
 
             <div className="uk-child-width-1-2@s uk-child-width-1-4@m uk-grid-small" uk-grid="true" >
-                {filtered.map((p) => (
-                    <div key={p.id}>
-                        <div
-                            uk-tooltip={p.description}
-                            className={`uk-card uk-card-small uk-card-hover uk-card-default uk-card-body uk-padding-small ${
-                                hoveredProduct === p.id ? 'uk-box-shadow-medium' : ''
-                            }`}
-                            onClick={() => onAdd(p)}
-                            onMouseEnter={() => setHoveredProduct(p.id)}
-                            onMouseLeave={() => setHoveredProduct(null)}
-                        >
-                            <div className="uk-card-title uk-margin-remove-bottom uk-text-small">
-                                {p.name}
-                            </div>
-                            <div className={`uk-text-small ${hoveredProduct === p.id ? 'uk-text-primary' : 'uk-text-muted'}`}>
-                                {p.basePrice.toFixed(2)} €
-                            </div>
-                            {p.serviceOptions && (
-                                <div className="uk-flex uk-flex-wrap uk-margin-small-top">
-                                    {p.serviceOptions.dryWash && <span className="uk-label uk-label-warning uk-margin-small-right uk-margin-small-bottom" style={{fontSize: '0.6rem'}}>Seco</span>}
-                                    {p.serviceOptions.wetWash && <span className="uk-label uk-label-primary uk-margin-small-right uk-margin-small-bottom" style={{fontSize: '0.6rem'}}>Mojado</span>}
-                                    {p.serviceOptions.ironing && <span className="uk-label uk-label-success uk-margin-small-right uk-margin-small-bottom" style={{fontSize: '0.6rem'}}>Plancha</span>}
-                                    {p.serviceOptions.externalService && <span className="uk-label uk-label-danger uk-margin-small-right uk-margin-small-bottom" style={{fontSize: '0.6rem'}}>Externo</span>}
+                {filtered.map((p) => {
+                    const itinName = getItineraryName(p);
+                    return (
+                        <div key={p.id}>
+                            <div
+                                uk-tooltip={p.description}
+                                className={`uk-card uk-card-small uk-card-hover uk-card-default uk-card-body uk-padding-small ${
+                                    hoveredProduct === p.id ? 'uk-box-shadow-medium' : ''
+                                }`}
+                                onClick={() => onAdd(p)}
+                                onMouseEnter={() => setHoveredProduct(p.id)}
+                                onMouseLeave={() => setHoveredProduct(null)}
+                            >
+                                <div className="uk-card-title uk-margin-remove-bottom uk-text-small">
+                                    {p.name}
                                 </div>
-                            )}
+                                <div className={`uk-text-small ${hoveredProduct === p.id ? 'uk-text-primary' : 'uk-text-muted'}`}>
+                                    {p.basePrice.toFixed(2)} €
+                                </div>
+                                {itinName && (
+                                    <div className="uk-margin-small-top">
+                                        <span className="uk-label uk-margin-small-right" style={{fontSize: '0.6rem', background: '#3b82f6'}}>{itinName}</span>
+                                    </div>
+                                )}
+                            </div>
                         </div>
-                    </div>
-                ))}
+                    );
+                })}
             </div>
             
             {filtered.length === 0 && (

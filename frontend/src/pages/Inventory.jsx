@@ -1,8 +1,8 @@
 import React, {useEffect, useState, useMemo} from 'react';
-import {fetchProducts, updateProduct, createProduct} from '../api.js';
+import {fetchProducts, updateProduct, createProduct, fetchItineraries} from '../api.js';
 import PageToolbar from '../components/PageToolbar.jsx';
 
-function ProductModal({ onSave, initial, token, onClose, isOpen }) {
+function ProductModal({ onSave, initial, token, onClose, isOpen, itineraries }) {
     const [form, setForm] = useState({
         name: '',
         sku: '',
@@ -11,12 +11,7 @@ function ProductModal({ onSave, initial, token, onClose, isOpen }) {
         description: '',
         weight: 0,
         bigClientPrice: 0,
-        serviceOptions: {
-            dryWash: false,
-            wetWash: false,
-            ironing: false,
-            externalService: false,
-        }
+        itineraryId: null,
     });
     const [error, setError] = useState('');
 
@@ -32,14 +27,9 @@ function ProductModal({ onSave, initial, token, onClose, isOpen }) {
             description: src.description ?? '',
             weight: src.weight ?? 0,
             bigClientPrice: src.bigClientPrice ?? 0,
-            serviceOptions: {
-                dryWash: src.serviceOptions?.dryWash ?? false,
-                wetWash: src.serviceOptions?.wetWash ?? false,
-                ironing: src.serviceOptions?.ironing ?? false,
-                externalService: src.serviceOptions?.externalService ?? false,
-            }
+            itineraryId: src.itineraryId ?? null,
         });
-    }, [isOpen, initial?.id]); // evita re-ejecutar por cambios de referencia del objeto
+    }, [isOpen, initial?.id]);
 
     const submit = async (e) => {
         e.preventDefault();
@@ -48,7 +38,8 @@ function ProductModal({ onSave, initial, token, onClose, isOpen }) {
                 ...form,
                 basePrice: parseFloat(form.basePrice),
                 weight: parseFloat(form.weight),
-                bigClientPrice: parseFloat(form.bigClientPrice)
+                bigClientPrice: parseFloat(form.bigClientPrice),
+                itineraryId: form.itineraryId ? Number(form.itineraryId) : null,
             };
 
             if (initial && initial.id) {
@@ -62,15 +53,6 @@ function ProductModal({ onSave, initial, token, onClose, isOpen }) {
         }
     };
 
-    const handleServiceOptionChange = (option, value) => {
-        setForm(prev => ({
-            ...prev,
-            serviceOptions: {
-                ...prev.serviceOptions,
-                [option]: value
-            }
-        }));
-    };
 
     if (!isOpen) return null;
 
@@ -124,6 +106,11 @@ function ProductModal({ onSave, initial, token, onClose, isOpen }) {
                                     onChange={e => setForm(f => ({...f, basePrice: e.target.value}))}
                                     required
                                 />
+                                {parseFloat(form.basePrice) > 0 && (
+                                    <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: 4 }}>
+                                        IVA incl. · Base neta: {(Number(form.basePrice) / 1.21).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} + 21% = <strong style={{ color: '#1e293b' }}>{Number(form.basePrice).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €</strong>
+                                    </div>
+                                )}
                             </div>
                         </div>
                         <div className="uk-width-1-2@s">
@@ -136,6 +123,11 @@ function ProductModal({ onSave, initial, token, onClose, isOpen }) {
                                     value={form.bigClientPrice}
                                     onChange={e => setForm(f => ({...f, bigClientPrice: e.target.value}))}
                                 />
+                                {parseFloat(form.bigClientPrice) > 0 && (
+                                    <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: 4 }}>
+                                        IVA incl. · Base neta: {(Number(form.bigClientPrice) / 1.21).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} + 21% = <strong style={{ color: '#1e293b' }}>{Number(form.bigClientPrice).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €</strong>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -170,48 +162,29 @@ function ProductModal({ onSave, initial, token, onClose, isOpen }) {
                     
                     {form.type === 'service' && (
                         <div className="uk-margin">
-                            <label className="uk-form-label">Opciones de servicio</label>
-                            <div className="uk-form-controls uk-grid-small uk-child-width-1-2@s" uk-grid="true">
-                                <div>
-                                    <label>
-                                        <input 
-                                            className="uk-checkbox" 
-                                            type="checkbox" 
-                                            checked={form.serviceOptions.dryWash}
-                                            onChange={e => handleServiceOptionChange('dryWash', e.target.checked)}
-                                        /> Lavado seco
-                                    </label>
-                                </div>
-                                <div>
-                                    <label>
-                                        <input 
-                                            className="uk-checkbox" 
-                                            type="checkbox" 
-                                            checked={form.serviceOptions.wetWash}
-                                            onChange={e => handleServiceOptionChange('wetWash', e.target.checked)}
-                                        /> Lavado mojado
-                                    </label>
-                                </div>
-                                <div>
-                                    <label>
-                                        <input 
-                                            className="uk-checkbox" 
-                                            type="checkbox" 
-                                            checked={form.serviceOptions.ironing}
-                                            onChange={e => handleServiceOptionChange('ironing', e.target.checked)}
-                                        /> Plancha
-                                    </label>
-                                </div>
-                                <div>
-                                    <label>
-                                        <input 
-                                            className="uk-checkbox" 
-                                            type="checkbox" 
-                                            checked={form.serviceOptions.externalService}
-                                            onChange={e => handleServiceOptionChange('externalService', e.target.checked)}
-                                        /> Servicio externo
-                                    </label>
-                                </div>
+                            <label className="uk-form-label">Itinerario de servicio</label>
+                            <div className="uk-form-controls">
+                                <select
+                                    className="uk-select"
+                                    value={form.itineraryId || ''}
+                                    onChange={e => setForm(f => ({...f, itineraryId: e.target.value ? Number(e.target.value) : null}))}
+                                >
+                                    <option value="">Sin itinerario (sin tracking)</option>
+                                    {itineraries.map(it => (
+                                        <option key={it.id} value={it.id}>
+                                            {it.name} ({it.steps?.length || 0} pasos)
+                                        </option>
+                                    ))}
+                                </select>
+                                {form.itineraryId && (() => {
+                                    const sel = itineraries.find(it => it.id === Number(form.itineraryId));
+                                    if (!sel?.steps?.length) return null;
+                                    return (
+                                        <div style={{ marginTop: 8, fontSize: '0.75rem', color: '#64748b' }}>
+                                            Pasos: {sel.steps.map(s => s.stepLabel).join(' → ')}
+                                        </div>
+                                    );
+                                })()}
                             </div>
                         </div>
                     )}
@@ -247,6 +220,20 @@ function formatPrice(val) {
     return `${Number(val).toFixed(2)} €`;
 }
 
+function formatPriceWithTax(val, taxPct = 21) {
+    if (val === null || val === undefined || Number.isNaN(Number(val))) return "-";
+    const priceWithTax = Number(val);
+    if (priceWithTax === 0) return "0,00 €";
+    const netBase = priceWithTax / (1 + taxPct / 100);
+    const fmtNet = netBase.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const fmtTotal = priceWithTax.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return (
+        <span>
+            <strong>{fmtTotal} €</strong> <span style={{ color: '#94a3b8', fontSize: '0.75em' }}>({fmtNet} + {taxPct}%)</span>
+        </span>
+    );
+}
+
 function formatWeight(val) {
     if (val === null || val === undefined || Number.isNaN(Number(val))) return "-";
     return `${Number(val)} kg`;
@@ -259,6 +246,7 @@ export default function Inventory({ token }) {
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
     const [searchTerm, setSearchTerm] = useState("");
+    const [itineraries, setItineraries] = useState([]);
     const [sortConfig, setSortConfig] = useState({
         key: "name",
         direction: "ascending",
@@ -267,8 +255,12 @@ export default function Inventory({ token }) {
     const load = async () => {
         setLoading(true);
         try {
-            const prods = await fetchProducts(token);
+            const [prods, itins] = await Promise.all([
+                fetchProducts(token),
+                fetchItineraries(token),
+            ]);
             setProducts(Array.isArray(prods) ? prods : []);
+            setItineraries(Array.isArray(itins) ? itins : []);
             setError("");
         } catch (e) {
             setError("No se pudo cargar el inventario");
@@ -349,37 +341,31 @@ export default function Inventory({ token }) {
         );
     };
 
-    // Función para renderizar los servicios como badges
+    // Función para renderizar el itinerario asignado
     const renderServiceOptions = (product) => {
-        if (!product?.serviceOptions) return null;
-
+        if (product?.itineraryId) {
+            const itin = itineraries.find(i => i.id === product.itineraryId);
+            if (itin) {
+                return (
+                    <span className="uk-badge" style={{ background: '#3b82f6', fontSize: '0.7rem' }}>
+                        {itin.name}
+                    </span>
+                );
+            }
+            return <span style={{ color: '#94a3b8', fontSize: '0.75rem' }}>ID: {product.itineraryId}</span>;
+        }
+        // Legacy: mostrar serviceOptions si aún no tiene itinerario
+        if (!product?.serviceOptions) return <span style={{ color: '#94a3b8', fontSize: '0.75rem' }}>—</span>;
         const badges = [];
         if (product.serviceOptions.dryWash)
-            badges.push(
-                <span key="dry" className="uk-badge uk-margin-small-right">
-          Lavado seco
-        </span>
-            );
+            badges.push(<span key="dry" className="uk-badge uk-margin-small-right" style={{ fontSize: '0.65rem' }}>Seco</span>);
         if (product.serviceOptions.wetWash)
-            badges.push(
-                <span key="wet" className="uk-badge uk-margin-small-right">
-          Lavado mojado
-        </span>
-            );
+            badges.push(<span key="wet" className="uk-badge uk-margin-small-right" style={{ fontSize: '0.65rem' }}>Mojado</span>);
         if (product.serviceOptions.ironing)
-            badges.push(
-                <span key="iron" className="uk-badge uk-margin-small-right">
-          Plancha
-        </span>
-            );
+            badges.push(<span key="iron" className="uk-badge uk-margin-small-right" style={{ fontSize: '0.65rem' }}>Plancha</span>);
         if (product.serviceOptions.externalService)
-            badges.push(
-                <span key="ext" className="uk-badge uk-margin-small-right">
-          Servicio externo
-        </span>
-            );
-
-        return badges.length ? <div>{badges}</div> : null;
+            badges.push(<span key="ext" className="uk-badge uk-margin-small-right" style={{ fontSize: '0.65rem' }}>Externo</span>);
+        return badges.length ? <div>{badges}</div> : <span style={{ color: '#94a3b8', fontSize: '0.75rem' }}>—</span>;
     };
 
     return (
@@ -403,6 +389,7 @@ export default function Inventory({ token }) {
                 token={token}
                 initial={editing || {}}
                 isOpen={!!editing}
+                itineraries={itineraries}
                 onSave={() => {
                     load();
                     setEditing(null);
@@ -413,6 +400,7 @@ export default function Inventory({ token }) {
             <ProductModal
                 token={token}
                 isOpen={showNew}
+                itineraries={itineraries}
                 onSave={() => {
                     load();
                     setShowNew(false);
@@ -469,7 +457,7 @@ export default function Inventory({ token }) {
                                     <th onClick={() => handleSort("weight")} style={{ cursor: "pointer" }}>
                                         Peso (kg) {getSortDirectionIcon("weight")}
                                     </th>
-                                    <th>Servicios</th>
+                                    <th>Itinerario</th>
                                     <th>Acciones</th>
                                 </tr>
                                 </thead>
@@ -488,8 +476,8 @@ export default function Inventory({ token }) {
                           {product.type === "service" ? "Servicio" : "Ítem"}
                         </span>
                                         </td>
-                                        <td>{formatPrice(product.basePrice)}</td>
-                                        <td>{formatPrice(product.bigClientPrice)}</td>
+                                        <td>{formatPriceWithTax(product.basePrice)}</td>
+                                        <td>{formatPriceWithTax(product.bigClientPrice)}</td>
                                         <td>{product.sku || "-"}</td>
                                         <td>{formatWeight(product.weight)}</td>
                                         <td>{renderServiceOptions(product)}</td>

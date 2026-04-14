@@ -387,6 +387,99 @@ export function fetchDashboard(token) {
     return request('/dashboard', token);
 }
 
+// --- Tracking ---
+export function fetchTrackingBoard(token) {
+    return request('/tracking/board', token);
+}
+
+export function fetchOrderTracking(token, orderId) {
+    return request(`/tracking/order/${orderId}`, token);
+}
+
+export function updateStepStatus(token, stepId, data) {
+    return request(`/tracking/steps/${stepId}`, token, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+    });
+}
+
+export function undoStep(token, stepId) {
+    return request(`/tracking/steps/${stepId}/undo`, token, {
+        method: 'PATCH',
+        body: JSON.stringify({}),
+    });
+}
+
+export function batchCompleteSteps(token, stepIds, action = 'complete') {
+    return request('/tracking/steps/batch-complete', token, {
+        method: 'POST',
+        body: JSON.stringify({ stepIds, action }),
+    });
+}
+
+// --- Itinerarios ---
+export function fetchItineraries(token) {
+    return request('/itineraries', token);
+}
+
+export function fetchItinerary(token, id) {
+    return request(`/itineraries/${id}`, token);
+}
+
+export function createItinerary(token, data) {
+    return request('/itineraries', token, {
+        method: 'POST',
+        body: JSON.stringify(data),
+    });
+}
+
+export function updateItinerary(token, id, data) {
+    return request(`/itineraries/${id}`, token, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+    });
+}
+
+export function deleteItinerary(token, id) {
+    return request(`/itineraries/${id}`, token, {
+        method: 'DELETE',
+        body: JSON.stringify({}),
+    });
+}
+
+export function fetchItineraryResources(token) {
+    return request('/itineraries/resources/list', token);
+}
+
+export function fetchWorkSchedule(token) {
+    return request('/tracking/schedule', token);
+}
+
+export function updateWorkSchedule(token, weekly) {
+    return request('/tracking/schedule', token, {
+        method: 'PUT',
+        body: JSON.stringify({ weekly }),
+    });
+}
+
+export function addScheduleException(token, data) {
+    return request('/tracking/schedule/exceptions', token, {
+        method: 'POST',
+        body: JSON.stringify(data),
+    });
+}
+
+export function deleteScheduleException(token, id) {
+    return request(`/tracking/schedule/exceptions/${id}`, token, {
+        method: 'DELETE',
+        body: JSON.stringify({}),
+    });
+}
+
+export function fetchTrackingResources(token) {
+    return request('/tracking/resources', token);
+}
+
 export function fetchGoogleReviews(token) {
     return request('/google/reviews', token);
 }

@@ -1,0 +1,435 @@
+import React, { useEffect, useState, useCallback } from 'react';
+import { fetchTrackingBoard, updateStepStatus, batchCompleteSteps, undoStep } from '../api.js';
+import { useNavigate } from 'react-router-dom';
+import UIkit from 'uikit';
+import PageToolbar from '../components/PageToolbar.jsx';
+
+const COLOR_HEX = {
+    negro: '#1e1e1e', blanco: '#f5f5f5', gris: '#9ca3af', azul: '#3b82f6',
+    marino: '#1e3a5f', rojo: '#ef4444', verde: '#22c55e', marron: '#92400e',
+    beige: '#d4b896', rosa: '#f472b6', amarillo: '#facc15', morado: '#a855f7',
+    burdeos: '#7f1d1d', naranja: '#f97316',
+};
+
+function isPast(date) {
+    if (!date) return false;
+    return new Date(date) < new Date();
+}
+
+function isToday(date) {
+    if (!date) return false;
+    const d = new Date(date);
+    const today = new Date();
+    return d.getFullYear() === today.getFullYear() &&
+        d.getMonth() === today.getMonth() &&
+        d.getDate() === today.getDate();
+}
+
+export default function TrackingBoard({ token }) {
+    const [data, setData] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [actionLoading, setActionLoading] = useState(null);
+    const [batchModal, setBatchModal] = useState(null);
+    const navigate = useNavigate();
+
+    const loadBoard = useCallback(async () => {
+        try {
+            const result = await fetchTrackingBoard(token);
+            setData(result);
+        } catch (err) {
+            console.error('Error cargando tracking:', err);
+        } finally {
+            setLoading(false);
+        }
+    }, [token]);
+
+    useEffect(() => {
+        loadBoard();
+        const interval = setInterval(loadBoard, 30000);
+        return () => clearInterval(interval);
+    }, [loadBoard]);
+
+    const handleComplete = async (stepId) => {
+        setActionLoading(stepId);
+        try {
+            await updateStepStatus(token, stepId, { action: 'complete' });
+            await loadBoard();
+            UIkit.notification({ message: 'Paso completado', status: 'success', pos: 'top-right', timeout: 1500 });
+        } catch (e) {
+            console.error('Error completando paso:', e);
+            UIkit.notification({ message: 'Error al completar', status: 'danger', pos: 'top-right', timeout: 2000 });
+        } finally {
+            setActionLoading(null);
+        }
+    };
+
+    const handleStart = async (stepId) => {
+        setActionLoading(stepId);
+        try {
+            await updateStepStatus(token, stepId, { action: 'start' });
+            await loadBoard();
+            UIkit.notification({ message: 'Proceso iniciado', status: 'primary', pos: 'top-right', timeout: 1500 });
+        } catch (e) {
+            console.error('Error iniciando paso:', e);
+            UIkit.notification({ message: 'Error al iniciar', status: 'danger', pos: 'top-right', timeout: 2000 });
+        } finally {
+            setActionLoading(null);
+        }
+    };
+
+    const handleUndo = async (stepId) => {
+        setActionLoading(stepId);
+        try {
+            await undoStep(token, stepId);
+            await loadBoard();
+            UIkit.notification({ message: 'Paso deshecho', status: 'warning', pos: 'top-right', timeout: 1500 });
+        } catch (e) {
+            console.error('Error deshaciendo paso:', e);
+            const msg = e?.error || 'Error al deshacer';
+            UIkit.notification({ message: msg, status: 'danger', pos: 'top-right', timeout: 3000 });
+        } finally {
+            setActionLoading(null);
+        }
+    };
+
+    const handleBatchComplete = async (stepIds) => {
+        try {
+            await batchCompleteSteps(token, stepIds);
+            setBatchModal(null);
+            await loadBoard();
+            UIkit.notification({ message: `${stepIds.length} prendas completadas`, status: 'success', pos: 'top-right', timeout: 2000 });
+        } catch (e) {
+            console.error('Error batch:', e);
+        }
+    };
+
+    if (loading && !data) {
+        return (
+            <div style={{ padding: 40, textAlign: 'center' }}>
+                <div uk-spinner="ratio: 1"></div>
+                <p style={{ color: '#64748b' }}>Cargando tablero...</p>
+            </div>
+        );
+    }
+
+    if (!data) return null;
+
+    const { board } = data;
+    const totalItems = board.reduce((sum, col) => sum + col.items.length, 0);
+
+    return (
+        <div>
+            <PageToolbar
+                title="Tracking"
+                filters={[]}
+                actions={
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                            {totalItems} prendas en proceso
+                        </span>
+                        <button className="uk-button uk-button-default uk-button-small" onClick={loadBoard} style={{ fontSize: '0.78rem' }}>
+                            ↻
+                        </button>
+                    </div>
+                }
+            />
+
+            {/* Leyenda */}
+            <div style={{ display: 'flex', gap: 16, marginBottom: 12, fontSize: '0.72rem', color: '#64748b', flexWrap: 'wrap' }}>
+                <span><span style={{ display: 'inline-block', width: 10, height: 10, background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 2, marginRight: 4 }}></span> Entrega pasada</span>
+                <span><span style={{ display: 'inline-block', width: 10, height: 10, background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 2, marginRight: 4 }}></span> Entrega hoy</span>
+                <span><span style={{ display: 'inline-block', width: 10, height: 10, background: '#dbeafe', border: '1px solid #93c5fd', borderRadius: 2, marginRight: 4 }}></span> En proceso</span>
+                <span><span style={{ display: 'inline-block', width: 10, height: 10, background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 2, marginRight: 4 }}></span> Lote (varias prendas)</span>
+            </div>
+
+            {/* Board */}
+            <div style={{
+                overflowX: 'auto',
+                WebkitOverflowScrolling: 'touch',
+                paddingBottom: 16,
+                margin: '0 -16px',
+                padding: '0 16px 16px',
+            }}>
+                <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: `repeat(${board.length}, minmax(220px, 280px))`,
+                    gap: 12,
+                    minWidth: board.length * 232,
+                }}>
+                {board.map(column => {
+                    const isBatch = column.resource?.processingMode === 'batch';
+                    const hasAutoProgress = column.autoProgress;
+                    const isEmpty = column.items.length === 0;
+
+                    return (
+                        <div key={column.stepKey} className="uk-card uk-card-default" style={{
+                            overflow: 'hidden', minWidth: 200,
+                            opacity: isEmpty ? 0.55 : 1,
+                            transition: 'opacity 0.3s ease',
+                        }}>
+                            {/* Column header */}
+                            <div style={{
+                                padding: '12px 14px',
+                                borderBottom: '1px solid #e5e7eb',
+                                display: 'flex', alignItems: 'center', gap: 8,
+                                background: isEmpty ? '#f1f5f9' : '#f8fafc',
+                            }}>
+                                <strong style={{ fontSize: '0.85rem', flex: 1, color: isEmpty ? '#94a3b8' : 'inherit' }}>
+                                    {column.stepLabel}
+                                </strong>
+                                <span className="uk-badge" style={{
+                                    background: isEmpty ? '#cbd5e1' : '#3b82f6',
+                                    minWidth: 22, textAlign: 'center',
+                                }}>
+                                    {column.items.length}
+                                </span>
+                            </div>
+
+                            {/* Resource info */}
+                            {column.resource && !isEmpty && (
+                                <div style={{ padding: '4px 14px', background: isBatch ? '#f0fdf4' : '#f0f9ff', fontSize: '0.68rem', color: isBatch ? '#15803d' : '#0369a1', borderBottom: '1px solid #e0f2fe' }}>
+                                    {column.resource.label} ({column.resource.units}u)
+                                    {isBatch && <span> · Lote max. {column.resource.batchCapacity}</span>}
+                                </div>
+                            )}
+
+                            {/* Batch action */}
+                            {isBatch && column.items.length > 1 && (
+                                <div style={{ padding: '6px 14px', borderBottom: '1px solid #e5e7eb', display: 'flex', gap: 4 }}>
+                                    {hasAutoProgress && column.items.some(i => i.status === 'pending') && (
+                                        <button
+                                            className="uk-button uk-button-default uk-button-small"
+                                            style={{ fontSize: '0.7rem', padding: '4px 8px', flex: 1 }}
+                                            onClick={() => setBatchModal({
+                                                ...column, action: 'start',
+                                                items: column.items.filter(i => i.status === 'pending'),
+                                            })}
+                                        >
+                                            Iniciar lote ({column.items.filter(i => i.status === 'pending').length})
+                                        </button>
+                                    )}
+                                    <button
+                                        className="uk-button uk-button-primary uk-button-small"
+                                        style={{ fontSize: '0.7rem', padding: '4px 8px', flex: 1 }}
+                                        onClick={() => setBatchModal({
+                                            ...column, action: 'complete',
+                                            items: hasAutoProgress
+                                                ? column.items.filter(i => i.status === 'in_progress')
+                                                : column.items,
+                                        })}
+                                    >
+                                        Completar ({hasAutoProgress
+                                            ? column.items.filter(i => i.status === 'in_progress').length
+                                            : column.items.length})
+                                    </button>
+                                </div>
+                            )}
+
+                            {/* Items */}
+                            <div style={{ maxHeight: 500, overflowY: 'auto' }}>
+                                {isEmpty ? (
+                                    <div style={{ padding: '28px 14px', textAlign: 'center', color: '#cbd5e1', fontSize: '0.78rem' }}>
+                                        —
+                                    </div>
+                                ) : (
+                                    column.items.map(item => {
+                                        const isInProgress = item.status === 'in_progress';
+                                        let bgColor = 'transparent';
+                                        if (isInProgress) bgColor = '#dbeafe';
+                                        else if (isPast(item.fechaLimite)) bgColor = '#fef2f2';
+                                        else if (isToday(item.fechaLimite)) bgColor = '#fffbeb';
+
+                                        return (
+                                            <div key={item.stepId} style={{
+                                                padding: '8px 14px',
+                                                borderBottom: '1px solid #f1f5f9',
+                                                background: bgColor,
+                                            }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 6 }}>
+                                                    <div
+                                                        style={{ flex: 1, minWidth: 0, cursor: 'pointer' }}
+                                                        onClick={() => navigate('/tareas', { state: { filterOrderId: item.orderId, orderNumber: item.orderNum } })}
+                                                    >
+                                                        <div style={{ fontSize: '0.8rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5 }}>
+                                                            {item.color && COLOR_HEX[item.color] && (
+                                                                <span style={{
+                                                                    width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
+                                                                    background: COLOR_HEX[item.color],
+                                                                    border: item.color === 'blanco' ? '1px solid #ccc' : '1px solid rgba(0,0,0,0.1)',
+                                                                }}></span>
+                                                            )}
+                                                            {item.quantity > 1 ? `${item.quantity}x ` : ''}{item.productName}
+                                                            {isInProgress && (
+                                                                <span style={{ fontSize: '0.65rem', color: '#2563eb', marginLeft: 6, fontWeight: 400 }}>
+                                                                    EN PROCESO
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: 2 }}>
+                                                            #{item.orderNum} · {item.clientName}
+                                                        </div>
+                                                        {item.fechaLimite && (
+                                                            <div style={{
+                                                                fontSize: '0.65rem', marginTop: 2,
+                                                                color: isPast(item.fechaLimite) ? '#ef4444' : '#94a3b8',
+                                                                fontWeight: isPast(item.fechaLimite) ? 600 : 400,
+                                                            }}>
+                                                                {isPast(item.fechaLimite) ? 'URGENTE · ' : ''}
+                                                                Entrega: {new Date(item.fechaLimite).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    <div style={{ display: 'flex', gap: 3, flexShrink: 0 }}>
+                                                        {/* Botón Iniciar: solo para pasos autoProgress que estén pending */}
+                                                        {item.autoProgress && item.status === 'pending' && (
+                                                            <button
+                                                                className="uk-button uk-button-default uk-button-small"
+                                                                style={{ fontSize: '0.65rem', padding: '2px 8px', color: '#2563eb', borderColor: '#93c5fd' }}
+                                                                onClick={() => handleStart(item.stepId)}
+                                                                disabled={actionLoading === item.stepId}
+                                                                title="Iniciar proceso"
+                                                            >
+                                                                {actionLoading === item.stepId ? '...' : '▶'}
+                                                            </button>
+                                                        )}
+                                                        {/* Botón Completar */}
+                                                        {(!item.autoProgress || item.status === 'in_progress') && (
+                                                            <button
+                                                                className="uk-button uk-button-primary uk-button-small"
+                                                                style={{ fontSize: '0.65rem', padding: '2px 10px' }}
+                                                                onClick={() => handleComplete(item.stepId)}
+                                                                disabled={actionLoading === item.stepId}
+                                                                title="Marcar como completado"
+                                                            >
+                                                                {actionLoading === item.stepId ? '...' : '✓'}
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })
+                                )}
+                            </div>
+                        </div>
+                    );
+                })}
+                </div>
+            </div>
+
+            {board.length === 0 && (
+                <div className="uk-alert uk-alert-primary uk-text-center" style={{ marginTop: 20 }}>
+                    No hay itinerarios configurados. Configura itinerarios y asígnalos a productos para ver el tablero.
+                </div>
+            )}
+
+            {board.length > 0 && totalItems === 0 && (
+                <div className="uk-alert uk-alert-primary uk-text-center" style={{ marginTop: 20 }}>
+                    No hay prendas en proceso. Los pedidos nuevos aparecerán aquí automáticamente.
+                </div>
+            )}
+
+            {/* Batch Complete Modal */}
+            {batchModal && (
+                <BatchCompleteModal
+                    data={batchModal}
+                    onComplete={(stepIds) => {
+                        const action = batchModal.action || 'complete';
+                        batchCompleteSteps(token, stepIds, action).then(() => {
+                            setBatchModal(null);
+                            loadBoard();
+                            UIkit.notification({
+                                message: action === 'start'
+                                    ? `${stepIds.length} prendas en proceso`
+                                    : `${stepIds.length} prendas completadas`,
+                                status: 'success', pos: 'top-right', timeout: 2000
+                            });
+                        }).catch(e => console.error('Error batch:', e));
+                    }}
+                    onClose={() => setBatchModal(null)}
+                />
+            )}
+        </div>
+    );
+}
+
+function BatchCompleteModal({ data, onComplete, onClose }) {
+    const [selected, setSelected] = useState(data.items.map(i => i.stepId));
+
+    const toggleItem = (stepId) => {
+        setSelected(prev =>
+            prev.includes(stepId) ? prev.filter(id => id !== stepId) : [...prev, stepId]
+        );
+    };
+
+    return (
+        <div style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.4)', zIndex: 1100,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 20,
+        }} onClick={onClose}>
+            <div style={{
+                background: '#fff', borderRadius: 12, padding: 24, maxWidth: 420, width: '100%',
+                maxHeight: '80vh', overflowY: 'auto',
+            }} onClick={e => e.stopPropagation()}>
+                <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: '0 0 4px' }}>
+                    Completar: {data.stepLabel}
+                </h3>
+                <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '0 0 16px' }}>
+                    Selecciona las prendas completadas
+                    {data.resource && (
+                        <span style={{ display: 'block', marginTop: 4, fontSize: '0.72rem' }}>
+                            Capacidad del lote: {data.resource.batchCapacity} prendas · {data.resource.cycleDurationMin} min/ciclo
+                        </span>
+                    )}
+                </p>
+
+                <div style={{ marginBottom: 16 }}>
+                    {data.items.map(item => (
+                        <label key={item.stepId} style={{
+                            display: 'flex', alignItems: 'center', gap: 8,
+                            padding: '8px 0', borderBottom: '1px solid #f1f5f9',
+                            cursor: 'pointer', fontSize: '0.85rem',
+                        }}>
+                            <input
+                                type="checkbox"
+                                className="uk-checkbox"
+                                checked={selected.includes(item.stepId)}
+                                onChange={() => toggleItem(item.stepId)}
+                            />
+                            <div>
+                                <strong>
+                                    {item.color && COLOR_HEX[item.color] && (
+                                        <span style={{
+                                            display: 'inline-block', width: 10, height: 10, borderRadius: '50%',
+                                            background: COLOR_HEX[item.color], marginRight: 6, verticalAlign: 'middle',
+                                            border: item.color === 'blanco' ? '1px solid #ccc' : 'none',
+                                        }}></span>
+                                    )}
+                                    {item.quantity > 1 ? `${item.quantity}x ` : ''}{item.productName}
+                                </strong>
+                                <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                                    #{item.orderNum} · {item.clientName}
+                                </div>
+                            </div>
+                        </label>
+                    ))}
+                </div>
+
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                    <button className="uk-button uk-button-default uk-button-small" onClick={onClose}>
+                        Cancelar
+                    </button>
+                    <button
+                        className="uk-button uk-button-primary uk-button-small"
+                        onClick={() => onComplete(selected)}
+                        disabled={selected.length === 0}
+                    >
+                        Completar ({selected.length})
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}

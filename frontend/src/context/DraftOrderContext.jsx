@@ -41,6 +41,7 @@ function loadFromStorage() {
             lineId: c.lineId || `${c.productId}_restored_${i}`,
             notes: c.notes || '',
             photos: c.photos || [],
+            optionalStepIds: c.optionalStepIds || [],
         }));
         result.quickClient = qc;
         return result;
@@ -60,7 +61,7 @@ export function DraftOrderProvider({ children }) {
         if (hasData) {
             const stripped = {
                 ...state,
-                cart: state.cart.map(c => ({ ...c, photos: [] })),
+                cart: state.cart.map(c => ({ ...c, photos: [], availableOptionalSteps: undefined })),
                 _v: STORAGE_VERSION,
             };
             sessionStorage.setItem(STORAGE_KEY, JSON.stringify(stripped));
@@ -72,19 +73,12 @@ export function DraftOrderProvider({ children }) {
     /* ── Acciones del carrito ── */
 
     const addToCart = useCallback((product) => {
+        // Determinar pasos opcionales del itinerario del producto
+        const optionalSteps = product.itinerary?.steps?.filter(s => s.isOptional) || [];
+
         setState(prev => {
-            // Buscar línea existente del mismo producto SIN notas ni fotos (para fusionar)
-            const mergeable = prev.cart.find(c =>
-                c.productId === product.id && !c.notes && (!c.photos || c.photos.length === 0)
-            );
-            if (mergeable) {
-                return {
-                    ...prev,
-                    cart: prev.cart.map(c =>
-                        c.lineId === mergeable.lineId ? { ...c, quantity: c.quantity + 1 } : c
-                    ),
-                };
-            }
+            // Nunca fusionar: cada prenda siempre crea una línea individual
+            // para que pueda tener su propio color, notas y fotos
             return {
                 ...prev,
                 cart: [...prev.cart, {
@@ -92,10 +86,14 @@ export function DraftOrderProvider({ children }) {
                     productId: product.id,
                     quantity: 1,
                     name: product.name,
+                    type: product.type || 'service',
                     basePrice: Number(product.basePrice),
                     bigClientPrice: product.bigClientPrice ? Number(product.bigClientPrice) : 0,
                     notes: '',
-                    photos: [],  // dataUrls — NO se persisten en sessionStorage
+                    photos: [],
+                    color: null,
+                    optionalStepIds: [],
+                    availableOptionalSteps: optionalSteps,
                 }],
             };
         });
@@ -176,6 +174,27 @@ export function DraftOrderProvider({ children }) {
         }));
     }, []);
 
+    // Toggle un paso opcional para una línea
+    const toggleOptionalStep = useCallback((lineId, stepId) => {
+        setState(prev => ({
+            ...prev,
+            cart: prev.cart.map(c => {
+                if (c.lineId !== lineId) return c;
+                const ids = c.optionalStepIds || [];
+                const has = ids.includes(stepId);
+                return { ...c, optionalStepIds: has ? ids.filter(id => id !== stepId) : [...ids, stepId] };
+            }),
+        }));
+    }, []);
+
+    // Establecer color de prenda
+    const setLineColor = useCallback((lineId, color) => {
+        setState(prev => ({
+            ...prev,
+            cart: prev.cart.map(c => c.lineId === lineId ? { ...c, color } : c),
+        }));
+    }, []);
+
     // Desglosar una línea con qty > 1 en líneas individuales
     const splitLine = useCallback((lineId) => {
         setState(prev => {
@@ -190,6 +209,8 @@ export function DraftOrderProvider({ children }) {
                     quantity: 1,
                     notes: i === 0 ? line.notes : '',
                     photos: i === 0 ? (line.photos || []) : [],
+                    optionalStepIds: [...(line.optionalStepIds || [])],
+                    availableOptionalSteps: line.availableOptionalSteps || [],
                 });
             }
             return {
@@ -252,12 +273,14 @@ export function DraftOrderProvider({ children }) {
         setFechaLimite, setObservaciones,
         clearDraft,
         updateLineNotes, addLinePhoto, removeLinePhoto, splitLine,
+        toggleOptionalStep, setLineColor,
         getPriceForItem,
         total, itemCount, clientName, discount, isActive,
         bannerHeight, setBannerHeight,
     }), [state, addToCart, updateQuantity, removeFromCart, setSelectedUser, setQuickClient,
         setFechaLimite, setObservaciones, clearDraft,
         updateLineNotes, addLinePhoto, removeLinePhoto, splitLine,
+        toggleOptionalStep, setLineColor,
         getPriceForItem, total, itemCount, clientName, discount, isActive, bannerHeight]);
 
     return (

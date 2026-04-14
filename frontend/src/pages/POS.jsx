@@ -2,6 +2,7 @@ import React, {useEffect, useMemo, useState} from 'react';
 import {
     fetchProducts,
     fetchUsers,
+    fetchItineraries,
     // Caja API:
     fetchUnclosedCashMovements,
     fetchLastClosure,
@@ -31,6 +32,7 @@ export default function POS({token, user}) {
     const draft = useDraftOrder();
 
     const [products, setProducts] = useState([]);
+    const [itineraries, setItineraries] = useState([]);
     const [searchUser, setSearchUser] = useState('');
     const [searchProduct, setSearchProduct] = useState('');
     const [error, setError] = useState('');
@@ -64,7 +66,13 @@ export default function POS({token, user}) {
 
     // Carga de catálogo
     useEffect(() => {
-        fetchProducts(token).then(setProducts).catch(() => setError('No se pudieron cargar productos'));
+        Promise.all([
+            fetchProducts(token),
+            fetchItineraries(token),
+        ]).then(([prods, itins]) => {
+            setProducts(prods);
+            setItineraries(itins);
+        }).catch(() => setError('No se pudieron cargar productos'));
     }, [token]);
 
     // Cargar trabajos / carga por día
@@ -347,7 +355,8 @@ export default function POS({token, user}) {
                 <div className="uk-width-1-2@m">
                     <div className="uk-card uk-card-default uk-card-body">
                         <ProductList products={products} searchProduct={searchProduct}
-                                     setSearchProduct={setSearchProduct} onAdd={add}/>
+                                     setSearchProduct={setSearchProduct} onAdd={add}
+                                     itineraries={itineraries}/>
                     </div>
                 </div>
             </div>

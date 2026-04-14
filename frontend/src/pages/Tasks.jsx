@@ -11,7 +11,7 @@ export default function Tasks({token, user}) {
     const [error, setError] = useState('');
     const [query, setQuery] = useState('');
     const [filterStatus, setFilterStatus] = useState('all');
-    const [filterWorker, setFilterWorker] = useState(user.id); // Nuevo estado
+    const [filterWorker, setFilterWorker] = useState(''); // Todas las tareas por defecto
     const [sortBy, setSortBy] = useState('createdAt');
     const [sortOrder, setSortOrder] = useState('desc');
     const debounceRef = useRef(null);

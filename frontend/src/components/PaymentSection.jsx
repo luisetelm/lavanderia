@@ -12,12 +12,21 @@ import {
     downloadInvoicePDF,
     updateOrderLine,
     addLineAnnotation,
-    createStripeCheckout
+    createStripeCheckout,
+    updateStepStatus
 } from '../api.js';
 import UIkit from 'uikit';
 import {printSaleTicket, printWashLabels} from '../utils/printUtils.js';
 import {formatEUR} from '../utils/format.js';
 import StatusChangeModal from './StatusChangeModal.jsx';
+import StepProgress from './StepProgress.jsx';
+
+const COLOR_HEX = {
+    negro: '#1e1e1e', blanco: '#f5f5f5', gris: '#9ca3af', azul: '#3b82f6',
+    marino: '#1e3a5f', rojo: '#ef4444', verde: '#22c55e', marron: '#92400e',
+    beige: '#d4b896', rosa: '#f472b6', amarillo: '#facc15', morado: '#a855f7',
+    burdeos: '#7f1d1d', naranja: '#f97316',
+};
 
 // En tu componente, donde tengas el token y el ID de la factura
 
@@ -204,10 +213,21 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
         if (!order) return;
         try {
             await updateOrder(token, order.id, {observacionesInternas: internalNotes});
-            // opcional: recarga para reflejar cambios de backend (si hay normalizaciones)
-            // await loadOrder();
         } catch (e) {
             console.error('Error guardando notas internas:', e);
+        }
+    };
+
+    const handleCompleteStep = async (stepId) => {
+        try {
+            await updateStepStatus(token, stepId, {});
+            await loadOrder();
+        } catch (e) {
+            console.error('Error completando paso:', e);
+            UIkit.notification({
+                message: 'Error al completar el paso',
+                status: 'danger', pos: 'top-right', timeout: 2000
+            });
         }
     };
 
@@ -470,7 +490,14 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
                         }}
                     >
                         <div style={{display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4}}>
-                            <div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                {l.color && COLOR_HEX[l.color] && (
+                                    <span style={{
+                                        width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
+                                        background: COLOR_HEX[l.color],
+                                        border: l.color === 'blanco' ? '1px solid #ccc' : '1px solid rgba(0,0,0,0.1)',
+                                    }}></span>
+                                )}
                                 {l.quantity}x {name}
                             </div>
                             <div>{formatEUR(lineTotal)}</div>
@@ -535,6 +562,14 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
                                     Descuento ({l.discount}%): -{formatEUR(discountAmount)}
                                 </div>
                             )
+                        )}
+
+                        {/* Tracking de pasos */}
+                        {l.steps && l.steps.length > 0 && (
+                            <StepProgress
+                                steps={l.steps}
+                                onComplete={order.status !== 'cancelled' ? handleCompleteStep : undefined}
+                            />
                         )}
 
                         {/* Anotaciones de la línea (notas + fotos unificadas) */}

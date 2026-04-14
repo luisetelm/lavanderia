@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { fetchDashboard, updateOrder } from '../api.js';
+import { fetchDashboard, updateOrder, fetchTrackingBoard } from '../api.js';
 import { formatEUR } from '../utils/format.js';
 import { useNavigate } from 'react-router-dom';
 import StatusChangeModal from '../components/StatusChangeModal.jsx';
@@ -38,6 +38,7 @@ function isPast(fechaLimite) {
 
 export default function Dashboard({ token, user }) {
     const [data, setData] = useState(null);
+    const [trackingData, setTrackingData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [actionLoading, setActionLoading] = useState(null);
@@ -49,8 +50,12 @@ export default function Dashboard({ token, user }) {
     const loadData = useCallback(async () => {
         try {
             setError(null);
-            const result = await fetchDashboard(token);
+            const [result, tracking] = await Promise.all([
+                fetchDashboard(token),
+                fetchTrackingBoard(token).catch(() => null),
+            ]);
             setData(result);
+            setTrackingData(tracking);
         } catch (err) {
             console.error('Error cargando dashboard:', err);
             setError(err?.error || err?.message || 'No se pudo conectar con el servidor');
@@ -137,6 +142,48 @@ export default function Dashboard({ token, user }) {
                 <StatusPill label="Listos" count={ordersByStatus.ready} color={STATUS_COLORS.ready} onClick={() => navigate('/tareas')} />
                 <StatusPill label="Recogidos hoy" count={ordersByStatus.collectedToday} color={STATUS_COLORS.collected} />
             </div>
+
+            {/* Tracking resumen */}
+            {trackingData?.board && trackingData.board.length > 0 && (
+                <div style={{ marginBottom: 20 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                        <strong style={{ fontSize: '0.9rem' }}>Proceso de prendas</strong>
+                        <button
+                            className="uk-button uk-button-text"
+                            style={{ fontSize: '0.75rem' }}
+                            onClick={() => navigate('/tracking')}
+                        >
+                            Ver tablero →
+                        </button>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        {trackingData.board.map(col => (
+                            <div
+                                key={col.stepKey}
+                                onClick={() => navigate('/tracking')}
+                                style={{
+                                    padding: '8px 14px', borderRadius: 10,
+                                    background: col.items.some(i => i.status === 'in_progress') ? '#fef3c7' : '#f1f5f9',
+                                    border: `1px solid ${col.items.some(i => i.status === 'in_progress') ? '#f59e0b40' : '#e2e8f0'}`,
+                                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8,
+                                }}
+                            >
+                                <span style={{
+                                    width: 24, height: 24, borderRadius: '50%',
+                                    background: col.items.some(i => i.status === 'in_progress') ? '#f59e0b' : '#3b82f6',
+                                    color: '#fff', fontWeight: 700, fontSize: '0.75rem',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                }}>
+                                    {col.items.length}
+                                </span>
+                                <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#374151' }}>
+                                    {col.stepLabel}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {/* Dos columnas: Pendientes y Listos */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 16, marginBottom: 20 }}>
