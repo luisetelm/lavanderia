@@ -301,6 +301,14 @@ export default async function (fastify, opts) {
             discountValue = d;
         }
 
+        // Comprobar si ya existe un usuario con ese teléfono
+        if (normalizedPhone) {
+            const existing = await prisma.user.findUnique({ where: { phone: normalizedPhone } });
+            if (existing) {
+                return reply.status(400).send({ error: `Ya existe un usuario con el teléfono ${normalizedPhone}` });
+            }
+        }
+
         const hashed = password ? await hash(password, 10) : null;
         const user = await prisma.user.create({
             data: {
@@ -391,6 +399,14 @@ export default async function (fastify, opts) {
         // Validar datos fiscales si se activa auto-facturación
         if (autoMonthlyInvoice && !canInvoice({ email, firstName, lastName, denominacionsocial, direccion, codigopostal, localidad })) {
             return reply.status(400).send({error: 'Para activar la facturación automática se requiere: email, dirección, C.P. y localidad'});
+        }
+
+        // Comprobar duplicado de teléfono (excluyendo el usuario actual)
+        if (normalizedPhone) {
+            const existing = await prisma.user.findUnique({ where: { phone: normalizedPhone } });
+            if (existing && existing.id !== Number(id)) {
+                return reply.status(400).send({ error: `Ya existe un usuario con el teléfono ${normalizedPhone}` });
+            }
         }
 
         const data = {
