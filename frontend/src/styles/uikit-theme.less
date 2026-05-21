@@ -824,6 +824,83 @@ h1, h2, h3, h4, h5, h6 {
   font-size: 11px;
 }
 
+/* Separador de día en el hilo */
+.msg-day-separator {
+  display: flex;
+  justify-content: center;
+  margin: 12px 0 8px;
+
+  span {
+    background: rgba(0, 0, 0, 0.06);
+    color: #64748b;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 10px;
+    text-transform: capitalize;
+  }
+}
+
+/* Notificaciones automáticas (distintas de mensajes de usuario) */
+.msg-notification {
+  display: flex;
+  justify-content: center;
+  margin: 6px 0;
+}
+
+.msg-notification-bubble {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  max-width: 85%;
+  background: #fff8e1;
+  border: 1px dashed #f0c674;
+  color: #6b5b2e;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.msg-notification-icon {
+  font-size: 14px;
+  line-height: 1.2;
+  flex-shrink: 0;
+}
+
+.msg-notification-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.msg-notification-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: #a07a1a;
+  margin-bottom: 2px;
+}
+
+.msg-notification-channel {
+  margin-left: 4px;
+  font-weight: 600;
+  opacity: 0.8;
+}
+
+.msg-notification-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #4b3e1a;
+}
+
+.msg-notification-time {
+  margin-top: 3px;
+  font-size: 10px;
+  color: #a07a1a;
+  text-align: right;
+}
+
 /* Templates panel */
 .msg-templates-panel {
   border-top: 1px solid @color-border;

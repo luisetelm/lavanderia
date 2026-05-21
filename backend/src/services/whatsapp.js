@@ -9,8 +9,32 @@
 
 import fs from 'fs';
 import path from 'path';
+import { normalizePhone } from '../utils/validatePhone.js';
 
 const API_VERSION = 'v21.0';
+
+export function formatWhatsAppPhone(phone) {
+    const raw = `${phone || ''}`.trim();
+    if (!raw) {
+        throw new Error('Teléfono de WhatsApp vacío');
+    }
+
+    const normalizedSpanish = normalizePhone(raw);
+    if (/^[6789]\d{8}$/.test(normalizedSpanish)) {
+        return `34${normalizedSpanish}`;
+    }
+
+    const digits = raw.replace(/\D/g, '');
+    if (!digits) {
+        throw new Error('Teléfono de WhatsApp inválido');
+    }
+
+    if (digits.startsWith('00')) {
+        return digits.slice(2);
+    }
+
+    return digits;
+}
 
 function getBaseUrl() {
     return `https://graph.facebook.com/${API_VERSION}/${process.env.WHATSAPP_PHONE_NUMBER_ID}`;
@@ -29,9 +53,10 @@ function getHeaders() {
  */
 export async function sendTemplateMessage(phone, templateName, languageCode = 'es', components = []) {
     const url = `${getBaseUrl()}/messages`;
+    const recipient = formatWhatsAppPhone(phone);
     const body = {
         messaging_product: 'whatsapp',
-        to: phone.replace(/\D/g, ''),
+        to: recipient,
         type: 'template',
         template: {
             name: templateName,
@@ -65,9 +90,10 @@ export async function sendTemplateMessage(phone, templateName, languageCode = 'e
  */
 export async function sendTextMessage(phone, text) {
     const url = `${getBaseUrl()}/messages`;
+    const recipient = formatWhatsAppPhone(phone);
     const body = {
         messaging_product: 'whatsapp',
-        to: phone.replace(/\D/g, ''),
+        to: recipient,
         type: 'text',
         text: { body: text },
     };
@@ -93,11 +119,10 @@ export async function sendTextMessage(phone, text) {
  */
 export async function uploadMediaToWhatsApp(filePath, mimeType) {
     const url = `${getBaseUrl()}/media`;
-    const fileStream = fs.createReadStream(filePath);
     const fileName = path.basename(filePath);
 
     // WhatsApp Cloud API expects multipart/form-data
-    const { FormData, File } = await import('undici');
+    const { FormData } = await import('undici');
     // Use Node 18+ native fetch with FormData from undici or built-in
     const formData = new (globalThis.FormData || FormData)();
 
@@ -132,6 +157,7 @@ export async function uploadMediaToWhatsApp(filePath, mimeType) {
  */
 export async function sendMediaMessage(phone, mediaType, mediaId, caption, filename) {
     const url = `${getBaseUrl()}/messages`;
+    const recipient = formatWhatsAppPhone(phone);
 
     const mediaObj = { id: mediaId };
     if (caption && ['image', 'video', 'document'].includes(mediaType)) {
@@ -143,7 +169,7 @@ export async function sendMediaMessage(phone, mediaType, mediaId, caption, filen
 
     const body = {
         messaging_product: 'whatsapp',
-        to: phone.replace(/\D/g, ''),
+        to: recipient,
         type: mediaType,
         [mediaType]: mediaObj,
     };
@@ -204,7 +230,6 @@ export async function downloadMedia(mediaId) {
         'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'pptx',
         'application/vnd.ms-powerpoint': 'ppt',
         'text/plain': 'txt',
-        'image/webp': 'webp',
     };
     const ext = extMap[mimeType] || 'bin';
     const filename = `wa_${mediaId}_${Date.now()}.${ext}`;

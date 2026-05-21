@@ -237,7 +237,20 @@ export default function Messages({ token, onUnreadCount }) {
     const loadConversations = useCallback(async () => {
         try {
             const data = await fetchConversations(token);
-            setConversations(data);
+            setConversations(prev => {
+                // Evitar re-render si nada cambió (timestamps + unread idénticos)
+                if (prev.length === data.length) {
+                    const same = prev.every((p, i) => {
+                        const n = data[i];
+                        return n && p.id === n.id
+                            && p.unreadCount === n.unreadCount
+                            && new Date(p.lastMessageAt).getTime() === new Date(n.lastMessageAt).getTime()
+                            && p.lastMessage === n.lastMessage;
+                    });
+                    if (same) return prev;
+                }
+                return data;
+            });
         } catch (err) {
             console.error('Error cargando conversaciones:', err);
         } finally {
@@ -251,29 +264,45 @@ export default function Messages({ token, onUnreadCount }) {
         return () => clearInterval(interval);
     }, [loadConversations]);
 
-    const loadMessages = useCallback(async (convId) => {
+    const loadMessages = useCallback(async (convId, { silent = false } = {}) => {
         if (!convId) return;
-        setMsgLoading(true);
+        if (!silent) setMsgLoading(true);
         try {
             const data = await fetchMessages(token, { conversationId: convId });
-            setMessages(data);
+            setMessages(prev => {
+                // Evitar re-render si no hay cambios (evita parpadeos/scroll raro)
+                if (prev.length === data.length) {
+                    const lastA = prev[prev.length - 1];
+                    const lastB = data[data.length - 1];
+                    if (lastA && lastB && lastA.id === lastB.id && lastA.status === lastB.status) {
+                        return prev;
+                    }
+                }
+                return data;
+            });
         } catch (err) {
             console.error('Error cargando mensajes:', err);
         } finally {
-            setMsgLoading(false);
+            if (!silent) setMsgLoading(false);
         }
     }, [token]);
 
     useEffect(() => {
         if (selectedConvId) {
             loadMessages(selectedConvId);
-            const interval = setInterval(() => loadMessages(selectedConvId), 15000);
+            const interval = setInterval(() => loadMessages(selectedConvId, { silent: true }), 15000);
             return () => clearInterval(interval);
         }
     }, [selectedConvId, loadMessages]);
 
+    // Scroll al fondo solo cuando aparecen mensajes nuevos (no en cada refresco)
+    const prevMessagesCountRef = useRef(0);
     useEffect(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        if (messages.length !== prevMessagesCountRef.current) {
+            const behavior = prevMessagesCountRef.current === 0 ? 'auto' : 'smooth';
+            messagesEndRef.current?.scrollIntoView({ behavior });
+            prevMessagesCountRef.current = messages.length;
+        }
     }, [messages]);
 
     const handleSelectConversation = async (convId) => {
@@ -437,10 +466,45 @@ export default function Messages({ token, onUnreadCount }) {
         const yesterday = new Date(now);
         yesterday.setDate(yesterday.getDate() - 1);
         const isYesterday = d.toDateString() === yesterday.toDateString();
+        const hhmm = d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
 
-        if (isToday) return d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+        if (isToday) return hhmm;
+        if (isYesterday) return `Ayer ${hhmm}`;
+        const sameYear = d.getFullYear() === now.getFullYear();
+        const datePart = d.toLocaleDateString('es-ES', sameYear
+            ? { day: '2-digit', month: '2-digit' }
+            : { day: '2-digit', month: '2-digit', year: '2-digit' });
+        return `${datePart} ${hhmm}`;
+    };
+
+    // Etiqueta para separador de día en el hilo
+    const formatDaySeparator = (date) => {
+        const d = new Date(date);
+        const now = new Date();
+        const isToday = d.toDateString() === now.toDateString();
+        const yesterday = new Date(now);
+        yesterday.setDate(yesterday.getDate() - 1);
+        const isYesterday = d.toDateString() === yesterday.toDateString();
+        if (isToday) return 'Hoy';
         if (isYesterday) return 'Ayer';
-        return d.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' });
+        const sameYear = d.getFullYear() === now.getFullYear();
+        return d.toLocaleDateString('es-ES', sameYear
+            ? { weekday: 'long', day: '2-digit', month: 'long' }
+            : { day: '2-digit', month: 'long', year: 'numeric' });
+    };
+
+    // Formato fecha+hora completo para meta de burbuja
+    const formatMsgMeta = (date) => {
+        const d = new Date(date);
+        const now = new Date();
+        const sameYear = d.getFullYear() === now.getFullYear();
+        const hhmm = d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+        const isToday = d.toDateString() === now.toDateString();
+        if (isToday) return hhmm;
+        const datePart = d.toLocaleDateString('es-ES', sameYear
+            ? { day: '2-digit', month: '2-digit' }
+            : { day: '2-digit', month: '2-digit', year: '2-digit' });
+        return `${datePart} ${hhmm}`;
     };
 
     return (
@@ -569,49 +633,85 @@ export default function Messages({ token, onUnreadCount }) {
                             ) : messages.length === 0 ? (
                                 <div className="msg-empty" style={{ paddingTop: 40 }}>Sin mensajes</div>
                             ) : (
-                                messages.map(m => {
-                                    const effectiveMediaType = m.mediaType || detectMediaFromContent(m.content);
-                                    const hasMedia = !!effectiveMediaType;
-                                    const hasMediaUrl = !!m.mediaUrl;
-                                    const isSticker = effectiveMediaType === 'sticker';
+                                (() => {
+                                    let lastDay = null;
+                                    return messages.map(m => {
+                                        const effectiveMediaType = m.mediaType || detectMediaFromContent(m.content);
+                                        const hasMedia = !!effectiveMediaType;
+                                        const hasMediaUrl = !!m.mediaUrl;
+                                        const isSticker = effectiveMediaType === 'sticker';
+                                        const isNotification = m.source === 'notification';
 
-                                    return (
-                                    <div key={m.id} className={`msg-bubble-row ${m.direction === 'outbound' ? 'outbound' : 'inbound'}`}>
-                                        <div className={`msg-bubble ${m.direction === 'outbound' ? 'outbound' : 'inbound'} ${isSticker ? 'msg-bubble-sticker' : ''}`}>
-                                            {/* Contenido multimedia */}
-                                            {hasMedia && hasMediaUrl ? (
-                                                <MediaBubble
-                                                    mediaType={effectiveMediaType}
-                                                    mediaUrl={m.mediaUrl}
-                                                    content={m.content}
-                                                    onImageClick={setLightboxSrc}
-                                                />
-                                            ) : hasMedia && !hasMediaUrl ? (
-                                                <MediaUnavailable mediaType={effectiveMediaType} />
-                                            ) : (
-                                                <div className="msg-bubble-text">{m.content}</div>
+                                        const dayKey = new Date(m.createdAt).toDateString();
+                                        const showDaySep = dayKey !== lastDay;
+                                        lastDay = dayKey;
+
+                                        if (isNotification) {
+                                            return (
+                                                <React.Fragment key={m.id}>
+                                                    {showDaySep && (
+                                                        <div className="msg-day-separator"><span>{formatDaySeparator(m.createdAt)}</span></div>
+                                                    )}
+                                                    <div className="msg-notification">
+                                                        <div className="msg-notification-bubble">
+                                                            <span className="msg-notification-icon">🔔</span>
+                                                            <div className="msg-notification-body">
+                                                                <div className="msg-notification-label">
+                                                                    Notificación automática
+                                                                    {m.channel && <span className="msg-notification-channel">· {m.channel === 'whatsapp' ? 'WA' : (m.channel || 'sms').toUpperCase()}</span>}
+                                                                </div>
+                                                                <div className="msg-notification-text">{m.content}</div>
+                                                                <div className="msg-notification-time">{formatMsgMeta(m.createdAt)}</div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </React.Fragment>
+                                            );
+                                        }
+
+                                        return (
+                                        <React.Fragment key={m.id}>
+                                            {showDaySep && (
+                                                <div className="msg-day-separator"><span>{formatDaySeparator(m.createdAt)}</span></div>
                                             )}
+                                            <div className={`msg-bubble-row ${m.direction === 'outbound' ? 'outbound' : 'inbound'}`}>
+                                                <div className={`msg-bubble ${m.direction === 'outbound' ? 'outbound' : 'inbound'} ${isSticker ? 'msg-bubble-sticker' : ''}`}>
+                                                    {/* Contenido multimedia */}
+                                                    {hasMedia && hasMediaUrl ? (
+                                                        <MediaBubble
+                                                            mediaType={effectiveMediaType}
+                                                            mediaUrl={m.mediaUrl}
+                                                            content={m.content}
+                                                            onImageClick={setLightboxSrc}
+                                                        />
+                                                    ) : hasMedia && !hasMediaUrl ? (
+                                                        <MediaUnavailable mediaType={effectiveMediaType} />
+                                                    ) : (
+                                                        <div className="msg-bubble-text">{m.content}</div>
+                                                    )}
 
-                                            <div className="msg-bubble-meta">
-                                                <span className="msg-bubble-channel">
-                                                    {m.channel === 'whatsapp' ? 'WA' : 'SMS'}
-                                                </span>
-                                                <span>{new Date(m.createdAt).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}</span>
-                                                {m.direction === 'outbound' && (
-                                                    <span className="msg-bubble-status">
-                                                        {m.status === 'read' ? (
-                                                            <span style={{ color: '#53bdeb' }}>✓✓</span>
-                                                        ) : m.status === 'delivered' ? '✓✓'
-                                                            : m.status === 'sent' ? '✓'
-                                                            : m.status === 'failed' ? <span style={{ color: '#ef4444' }}>✗</span>
-                                                            : '○'}
-                                                    </span>
-                                                )}
+                                                    <div className="msg-bubble-meta">
+                                                        <span className="msg-bubble-channel">
+                                                            {m.channel === 'whatsapp' ? 'WA' : 'SMS'}
+                                                        </span>
+                                                        <span>{formatMsgMeta(m.createdAt)}</span>
+                                                        {m.direction === 'outbound' && (
+                                                            <span className="msg-bubble-status">
+                                                                {m.status === 'read' ? (
+                                                                    <span style={{ color: '#53bdeb' }}>✓✓</span>
+                                                                ) : m.status === 'delivered' ? '✓✓'
+                                                                    : m.status === 'sent' ? '✓'
+                                                                    : m.status === 'failed' ? <span style={{ color: '#ef4444' }}>✗</span>
+                                                                    : '○'}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
                                             </div>
-                                        </div>
-                                    </div>
-                                    );
-                                })
+                                        </React.Fragment>
+                                        );
+                                    });
+                                })()
                             )}
                             <div ref={messagesEndRef} />
                         </div>

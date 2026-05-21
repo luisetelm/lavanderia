@@ -387,6 +387,16 @@ export function fetchDashboard(token) {
     return request('/dashboard', token);
 }
 
+export function fetchTopProducts(token, { from, to, limit, groupBy } = {}) {
+    const params = new URLSearchParams();
+    if (from) params.set('from', from);
+    if (to) params.set('to', to);
+    if (limit) params.set('limit', limit);
+    if (groupBy) params.set('groupBy', groupBy);
+    const qs = params.toString();
+    return request(`/dashboard/top-products${qs ? `?${qs}` : ''}`, token);
+}
+
 // --- Tracking ---
 export function fetchTrackingBoard(token) {
     return request('/tracking/board', token);

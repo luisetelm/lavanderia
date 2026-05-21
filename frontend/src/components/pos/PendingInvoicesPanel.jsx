@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { fetchUnpaidInvoices, collectInvoice } from '../../api.js';
+import { fetchUnpaidInvoices, collectInvoice, downloadInvoicePDF } from '../../api.js';
 import { formatEUR } from '../../utils/format.js';
 
 const METHODS = [
@@ -16,6 +16,7 @@ export default function PendingInvoicesPanel({ show, onClose, token, onCollected
     // Id de la factura cuyo selector de método está abierto
     const [selectingId, setSelectingId] = useState(null);
     const [collectingId, setCollectingId] = useState(null);
+    const [downloadingId, setDownloadingId] = useState(null);
 
     const loadInvoices = useCallback(async () => {
         setLoading(true);
@@ -57,6 +58,19 @@ export default function PendingInvoicesPanel({ show, onClose, token, onCollected
             console.error('Error cobrando factura:', e);
             setError(e.error || e.message || 'Error al cobrar la factura');
             setCollectingId(null);
+        }
+    };
+
+    const handleDownload = async (invoice) => {
+        setDownloadingId(invoice.id);
+        setError('');
+        try {
+            await downloadInvoicePDF(token, invoice.id);
+        } catch (e) {
+            console.error('Error descargando factura:', e);
+            setError(e.message || 'Error al descargar la factura');
+        } finally {
+            setDownloadingId(null);
         }
     };
 
@@ -153,14 +167,26 @@ export default function PendingInvoicesPanel({ show, onClose, token, onCollected
                                                 {formatEUR(Number(inv.totalGross))}
                                             </div>
                                             {!isSelecting ? (
-                                                <button
-                                                    className="uk-button uk-button-primary uk-button-small"
-                                                    onClick={() => setSelectingId(inv.id)}
-                                                    disabled={isCollecting}
-                                                    type="button"
-                                                >
-                                                    Cobrar
-                                                </button>
+                                                <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
+                                                    <button
+                                                        className="uk-button uk-button-default uk-button-small"
+                                                        onClick={() => handleDownload(inv)}
+                                                        disabled={downloadingId === inv.id || isCollecting}
+                                                        type="button"
+                                                        title="Descargar PDF"
+                                                        style={{ padding: '0 8px', fontSize: '0.75rem' }}
+                                                    >
+                                                        {downloadingId === inv.id ? '...' : '⬇ PDF'}
+                                                    </button>
+                                                    <button
+                                                        className="uk-button uk-button-primary uk-button-small"
+                                                        onClick={() => setSelectingId(inv.id)}
+                                                        disabled={isCollecting}
+                                                        type="button"
+                                                    >
+                                                        Cobrar
+                                                    </button>
+                                                </div>
                                             ) : (
                                                 <button
                                                     className="uk-button uk-button-default uk-button-small"

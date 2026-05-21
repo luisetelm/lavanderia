@@ -1,3 +1,18 @@
+import { normalizePhone } from '../utils/validatePhone.js';
+
+function buildPhoneCandidates(phone) {
+    const raw = `${phone || ''}`.trim();
+    const digits = raw.replace(/\D/g, '');
+    const normalized = normalizePhone(raw);
+
+    return [...new Set([
+        raw,
+        digits,
+        normalized,
+        normalized ? `34${normalized}` : null,
+    ].filter(Boolean))];
+}
+
 /**
  * Busca o crea una conversación para un contacto.
  *
@@ -7,6 +22,8 @@
  */
 export async function findOrCreateConversation(prisma, { clientId, phone }) {
     if (!phone) throw new Error('phone es obligatorio para findOrCreateConversation');
+    const phoneCandidates = buildPhoneCandidates(phone);
+    const storedPhone = normalizePhone(phone) || phoneCandidates[0];
 
     // 1. Buscar por clientId (si se conoce)
     if (clientId) {
@@ -18,7 +35,7 @@ export async function findOrCreateConversation(prisma, { clientId, phone }) {
 
     // 2. Buscar por phone (números desconocidos o fallback)
     const byPhone = await prisma.conversation.findFirst({
-        where: { phone },
+        where: { phone: { in: phoneCandidates } },
     });
     if (byPhone) {
         // Si ahora conocemos el clientId y la conversación no lo tenía, vincular
@@ -35,7 +52,7 @@ export async function findOrCreateConversation(prisma, { clientId, phone }) {
     return prisma.conversation.create({
         data: {
             clientId: clientId || null,
-            phone,
+            phone: storedPhone,
             lastMessageAt: new Date(),
             unreadCount: 0,
         },

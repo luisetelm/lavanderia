@@ -1,4 +1,4 @@
-import React, {useState, useEffect, useCallback} from 'react';
+import React, {useState, useEffect, useCallback, useRef} from 'react';
 import {Routes, Route, NavLink, Navigate, useLocation} from 'react-router-dom';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
@@ -16,6 +16,7 @@ import TrackingBoard from './pages/TrackingBoard.jsx';
 import ItineraryConfig from './pages/ItineraryConfig.jsx';
 import ResourceConfig from './pages/ResourceConfig.jsx';
 import WorkSchedule from './pages/WorkSchedule.jsx';
+import Stats from './pages/Stats.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
 import DraftOrderBanner from './components/DraftOrderBanner.jsx';
 import { DraftOrderProvider } from './context/DraftOrderContext.jsx';
@@ -121,7 +122,7 @@ export default function App() {
     const [adminMenuOpen, setAdminMenuOpen] = useState(false);
 
     // Mantener menú admin abierto si la ruta actual es de administración
-    const adminPaths = ['/ventas', '/resenas', '/caja', '/horario', '/itinerarios', '/recursos'];
+    const adminPaths = ['/ventas', '/estadisticas', '/resenas', '/caja', '/horario', '/itinerarios', '/recursos'];
     useEffect(() => {
         if (adminPaths.some(p => location.pathname.startsWith(p))) {
             setAdminMenuOpen(true);
@@ -134,18 +135,115 @@ export default function App() {
     }, [location.pathname]);
 
     // Polling de mensajes no leídos para el badge del sidebar
+    // Además: detecta mensajes entrantes nuevos para emitir sonido + notificación persistente.
+    const prevConvStateRef = useRef(null); // Map<convId, {unread, lastAt}>
+    const initialLoadDoneRef = useRef(false);
+    const audioCtxRef = useRef(null);
+
+    // Pedir permiso de notificaciones del navegador una vez
+    useEffect(() => {
+        if (!token || !user || (user.role !== 'admin' && user.role !== 'cashier')) return;
+        if (typeof window === 'undefined' || !('Notification' in window)) return;
+        if (Notification.permission === 'default') {
+            Notification.requestPermission().catch(() => {});
+        }
+    }, [token, user]);
+
+    // Beep sintetizado con Web Audio API (sin necesidad de ficheros)
+    const playBeep = useCallback(() => {
+        try {
+            const Ctx = window.AudioContext || window.webkitAudioContext;
+            if (!Ctx) return;
+            if (!audioCtxRef.current) audioCtxRef.current = new Ctx();
+            const ctx = audioCtxRef.current;
+            if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+
+            const playTone = (freq, start, dur) => {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.value = freq;
+                gain.gain.setValueAtTime(0.0001, ctx.currentTime + start);
+                gain.gain.exponentialRampToValueAtTime(0.25, ctx.currentTime + start + 0.02);
+                gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + start + dur);
+                osc.connect(gain).connect(ctx.destination);
+                osc.start(ctx.currentTime + start);
+                osc.stop(ctx.currentTime + start + dur + 0.02);
+            };
+            // Doble tono tipo "ding-dong" tipo WhatsApp
+            playTone(880, 0, 0.18);
+            playTone(660, 0.20, 0.22);
+        } catch (e) { /* silenciar */ }
+    }, []);
+
+    const showWhatsAppNotification = useCallback((conv) => {
+        try {
+            if (!('Notification' in window) || Notification.permission !== 'granted') return;
+            const name = (conv.firstName || conv.lastName)
+                ? `${conv.firstName || ''} ${conv.lastName || ''}`.trim()
+                : `+${conv.phone || 'Desconocido'}`;
+            const body = conv.lastMessage || 'Nuevo mensaje';
+            const isWa = conv.lastChannel === 'whatsapp';
+            const n = new Notification(`${isWa ? '💬 WhatsApp' : '📩 SMS'} · ${name}`, {
+                body: body.length > 140 ? body.slice(0, 137) + '…' : body,
+                icon: '/logo.png',
+                tag: `conv-${conv.id}`,
+                requireInteraction: true, // No se cierra hasta que el usuario la cierra/click
+                renotify: true,
+            });
+            n.onclick = () => {
+                try {
+                    window.focus();
+                    window.location.hash = '';
+                    // Navegar a /mensajes
+                    if (!window.location.pathname.startsWith('/mensajes')) {
+                        window.history.pushState({}, '', '/mensajes');
+                        window.dispatchEvent(new PopStateEvent('popstate'));
+                    }
+                } catch { /* noop */ }
+                n.close();
+            };
+        } catch (e) { /* silenciar */ }
+    }, []);
+
     const loadUnreadCount = useCallback(async () => {
         if (!token || !user || (user.role !== 'admin' && user.role !== 'cashier')) return;
         try {
             const convs = await fetchConversations(token);
             const total = convs.reduce((sum, c) => sum + (c.unreadCount || 0), 0);
             setUnreadMsgCount(total);
+
+            // Detectar incrementos de unread / nuevos mensajes inbound
+            const prev = prevConvStateRef.current;
+            const next = new Map();
+            const newOnes = [];
+            for (const c of convs) {
+                const lastAt = c.lastMessageAt ? new Date(c.lastMessageAt).getTime() : 0;
+                next.set(c.id, { unread: c.unreadCount || 0, lastAt });
+                if (initialLoadDoneRef.current && prev) {
+                    const p = prev.get(c.id);
+                    const isNewer = !p || lastAt > p.lastAt;
+                    const unreadIncreased = (c.unreadCount || 0) > (p?.unread || 0);
+                    // Solo si hay un mensaje entrante nuevo (unread sube) y es más reciente
+                    if (unreadIncreased && isNewer && c.lastDirection === 'inbound') {
+                        newOnes.push(c);
+                    }
+                }
+            }
+            prevConvStateRef.current = next;
+            initialLoadDoneRef.current = true;
+
+            if (newOnes.length > 0) {
+                playBeep();
+                // Mostrar una notificación por conversación (máx 3 para evitar spam)
+                newOnes.slice(0, 3).forEach(showWhatsAppNotification);
+            }
         } catch (e) { /* silenciar */ }
-    }, [token, user]);
+    }, [token, user, playBeep, showWhatsAppNotification]);
 
     useEffect(() => {
         loadUnreadCount();
-        const interval = setInterval(loadUnreadCount, 60000);
+        const interval = setInterval(loadUnreadCount, 15000);
         return () => clearInterval(interval);
     }, [loadUnreadCount]);
 
@@ -203,6 +301,7 @@ export default function App() {
                                 {adminMenuOpen && (
                                     <ul className="sidebar-admin-submenu">
                                         <li><NavLink to="/ventas"><span uk-icon="icon: credit-card; ratio: 0.8"></span> Ventas</NavLink></li>
+                                        <li><NavLink to="/estadisticas"><span uk-icon="icon: bolt; ratio: 0.8"></span> Estadísticas</NavLink></li>
                                         <li><NavLink to="/resenas"><span uk-icon="icon: star; ratio: 0.8"></span> Reseñas</NavLink></li>
                                         <li><NavLink to="/caja"><span uk-icon="icon: database; ratio: 0.8"></span> Caja</NavLink></li>
                                         <li><NavLink to="/horario"><span uk-icon="icon: calendar; ratio: 0.8"></span> Horario</NavLink></li>
@@ -237,6 +336,7 @@ export default function App() {
                     <Route path="/usuarios/:id" element={<UserEdit token={token} user={user}/>}/>
                     <Route path="/mensajes" element={<Messages token={token} onUnreadCount={setUnreadMsgCount}/>}/>
                     <Route path="/ventas" element={<Ventas token={token}/>}/>
+                    <Route path="/estadisticas" element={<Stats token={token}/>}/>
                     <Route path="/resenas" element={<Reviews token={token}/>}/>
                     <Route path="/caja" element={<CashAudit token={token}/>}/>
                     <Route path="/horario" element={<WorkSchedule token={token}/>}/>

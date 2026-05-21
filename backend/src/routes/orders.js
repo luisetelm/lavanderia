@@ -1,11 +1,8 @@
 // backend/src/routes/orders.js
 //import nextOrderNum from '../utils/generateOrderNum.js';
 import {isValidSpanishPhone} from '../utils/validatePhone.js';
-import {sendSMScustomer} from "../services/twilio.js";
-import {sendTextMessage as sendWhatsApp, sendTemplateMessage as sendWhatsAppTemplate} from "../services/whatsapp.js";
 import {crearFactura} from "./invoices.js";
-import { findOrCreateConversation, touchConversation } from '../services/conversation.js';
-import { sendReadyNotification } from '../services/notify.js';
+import { sendCollectedNotification, sendReadyNotification } from '../services/notify.js';
 import fs from 'fs';
 import path from 'path';
 
@@ -427,50 +424,7 @@ export default async function (fastify, opts) {
         }
 
         if (status === 'collected' && updated.client?.phone && sendSMS) {
-            const client = updated.client;
-            const clientName = `${client.firstName || ''} ${client.lastName || ''}`.trim();
-            const message = `Hola ${clientName}, esperamos que todo haya ido perfecto en Tinte y Burbuja. Si puedes, déjanos una reseña: https://g.page/r/Cau9_6UCpQ8ZEBI/review`;
-
-            const channel = sendSMS === 'whatsapp' ? 'whatsapp' : 'sms';
-            await prisma.user.update({ where: { id: client.id }, data: { notifyChannel: channel } });
-
-            const conversation = await findOrCreateConversation(prisma, { clientId: client.id, phone: client.phone });
-
-            if (channel === 'whatsapp') {
-                try {
-                    const phone = `34${client.phone}`;
-                    try {
-                        await sendWhatsAppTemplate(phone, 'pedido_recogido', 'es', [
-                            { type: 'body', parameters: [{ type: 'text', text: clientName }] }
-                        ]);
-                    } catch (templateErr) {
-                        console.warn('[WhatsApp] Template pedido_recogido falló, intentando texto libre:', templateErr.message);
-                        await sendWhatsApp(phone, message);
-                    }
-                    await prisma.notification.create({
-                        data: { orderid: updated.id, type: 'whatsapp', recipient: client.phone, content: message, status: 'sent', conversationId: conversation.id },
-                    });
-                } catch (err) {
-                    console.error('Error enviando WhatsApp collected:', err);
-                    await prisma.notification.create({
-                        data: { orderid: updated.id, type: 'whatsapp', recipient: client.phone, content: message, status: 'failed', statusMessage: err.message?.slice(0, 255), conversationId: conversation.id },
-                    });
-                }
-            } else {
-                try {
-                    await sendSMScustomer(client.phone, message);
-                    await prisma.notification.create({
-                        data: { orderid: updated.id, type: 'sms', recipient: client.phone, content: message, status: 'sent', conversationId: conversation.id },
-                    });
-                } catch (err) {
-                    console.error('Error enviando SMS collected:', err);
-                    await prisma.notification.create({
-                        data: { orderid: updated.id, type: 'sms', recipient: client.phone, content: message, status: 'failed', conversationId: conversation.id },
-                    });
-                }
-            }
-
-            await touchConversation(prisma, conversation.id);
+            await sendCollectedNotification(prisma, updated.id, sendSMS);
         }
 
         return reply.send(updated);
@@ -795,6 +749,8 @@ export default async function (fastify, opts) {
                             serviceType,
                             position: position ?? idx,
                             resourceKey: resourceKey || null,
+                            // Duración estimada (minutos) del paso, desde itinerario o legacy stepConfig
+                            durationMin: s.itineraryStep?.durationMin ?? s.stepConfig?.durationMin ?? 0,
                         };
                     }),
                 };

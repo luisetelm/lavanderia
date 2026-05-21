@@ -30,7 +30,14 @@ export default function TrackingBoard({ token }) {
     const [loading, setLoading] = useState(true);
     const [actionLoading, setActionLoading] = useState(null);
     const [batchModal, setBatchModal] = useState(null);
+    const [now, setNow] = useState(Date.now());
     const navigate = useNavigate();
+
+    // Reloj para refrescar cronómetros de pasos en curso (1s)
+    useEffect(() => {
+        const t = setInterval(() => setNow(Date.now()), 1000);
+        return () => clearInterval(t);
+    }, []);
 
     const loadBoard = useCallback(async () => {
         try {
@@ -253,6 +260,35 @@ export default function TrackingBoard({ token }) {
                                             return m > 0 ? `~${h}h${m}m` : `~${h}h`;
                                         };
 
+                                        // ── Helpers de tiempos reales (en vivo) ──
+                                        const formatHHMM = (iso) => {
+                                            if (!iso) return null;
+                                            const d = new Date(iso);
+                                            const today = new Date();
+                                            const sameDay = d.toDateString() === today.toDateString();
+                                            const hhmm = d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+                                            if (sameDay) return hhmm;
+                                            return `${d.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' })} ${hhmm}`;
+                                        };
+                                        const formatDurationMs = (ms) => {
+                                            if (!ms || ms <= 0) return '0s';
+                                            const s = Math.floor(ms / 1000);
+                                            const h = Math.floor(s / 3600);
+                                            const m = Math.floor((s % 3600) / 60);
+                                            const sec = s % 60;
+                                            if (h > 0) return `${h}h ${m}m`;
+                                            if (m > 0) return `${m}m ${sec}s`;
+                                            return `${sec}s`;
+                                        };
+
+                                        // Tiempo del paso actual (si está iniciado o en curso)
+                                        const currentStepStartedMs = item.startedAt ? new Date(item.startedAt).getTime() : null;
+                                        const currentStepElapsedMs = (isInProgress && currentStepStartedMs)
+                                            ? Math.max(0, now - currentStepStartedMs)
+                                            : 0;
+                                        // Tiempo total acumulado en la prenda = pasos ya completados + paso actual en curso
+                                        const totalElapsedMs = (item.lineElapsedMsCompleted || 0) + currentStepElapsedMs;
+
                                         return (
                                             <div key={item.stepId} style={{
                                                 padding: '8px 14px',
@@ -308,6 +344,40 @@ export default function TrackingBoard({ token }) {
                                                                     {item.totalRemainingMin > 0 && item.estimatedMin > 0 && item.totalRemainingMin !== item.estimatedMin && (
                                                                         <span style={{ opacity: 0.65 }}> (paso: {formatEstimate(item.estimatedMin)})</span>
                                                                     )}
+                                                                </span>
+                                                            )}
+                                                            {/* Inicio del paso actual + cronómetro en curso */}
+                                                            {currentStepStartedMs && (
+                                                                <span style={{
+                                                                    fontSize: '0.6rem', marginTop: 2, padding: '0 5px',
+                                                                    background: isInProgress ? '#eff6ff' : '#f1f5f9',
+                                                                    color: isInProgress ? '#1d4ed8' : '#475569',
+                                                                    borderRadius: 4,
+                                                                    border: '1px solid',
+                                                                    borderColor: isInProgress ? '#bfdbfe' : '#e2e8f0',
+                                                                    fontVariantNumeric: 'tabular-nums',
+                                                                }}
+                                                                    title={`Paso iniciado a las ${formatHHMM(item.startedAt)}`}
+                                                                >
+                                                                    ▶ {formatHHMM(item.startedAt)}
+                                                                    {isInProgress && (
+                                                                        <span style={{ marginLeft: 4, fontWeight: 600 }}>
+                                                                            · {formatDurationMs(currentStepElapsedMs)}
+                                                                        </span>
+                                                                    )}
+                                                                </span>
+                                                            )}
+                                                            {/* Tiempo total acumulado en la prenda (todos los pasos) */}
+                                                            {totalElapsedMs > 0 && (
+                                                                <span style={{
+                                                                    fontSize: '0.6rem', marginTop: 2, padding: '0 5px',
+                                                                    background: '#f8fafc', color: '#475569',
+                                                                    borderRadius: 4, border: '1px solid #e2e8f0',
+                                                                    fontVariantNumeric: 'tabular-nums',
+                                                                }}
+                                                                    title={`Tiempo total acumulado de ejecución de esta prenda${item.lineFirstStartedAt ? ` (desde ${formatHHMM(item.lineFirstStartedAt)})` : ''}`}
+                                                                >
+                                                                    Σ {formatDurationMs(totalElapsedMs)}
                                                                 </span>
                                                             )}
                                                         </div>

@@ -181,5 +181,127 @@ export default async function dashboardRoutes(fastify) {
             return reply.status(500).send({ error: 'Error al obtener datos del dashboard' });
         }
     });
-}
 
+    /**
+     * GET /api/dashboard/top-products
+     * Query: ?from=YYYY-MM-DD&to=YYYY-MM-DD&limit=10&groupBy=month|range
+     *
+     * Devuelve productos más pedidos agrupados por mes (groupBy=month) o totalizados
+     * en el rango completo (groupBy=range).
+     *
+     * Estructura de respuesta:
+     *   {
+     *     range: { from, to, groupBy },
+     *     months: [
+     *       { month: '2026-03', label: 'Marzo 2026', totalQty, totalRevenue, items: [{productId, productName, qty, revenue}] }
+     *     ]
+     *   }
+     */
+    fastify.get('/top-products', async (req, reply) => {
+        try {
+            const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 10, 1), 50);
+            const groupBy = req.query.groupBy === 'range' ? 'range' : 'month';
+
+            const now = new Date();
+            // Por defecto: últimos 6 meses naturales
+            const defaultFrom = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+            const defaultTo = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+
+            const from = req.query.from ? new Date(req.query.from) : defaultFrom;
+            const to = req.query.to ? new Date(`${req.query.to}T23:59:59.999`) : defaultTo;
+
+            if (isNaN(from.getTime()) || isNaN(to.getTime()) || from > to) {
+                return reply.status(400).send({ error: 'Rango de fechas inválido' });
+            }
+
+            // Excluimos pedidos cancelados
+            const lines = await prisma.orderLine.findMany({
+                where: {
+                    order: {
+                        createdAt: { gte: from, lte: to },
+                        status: { not: 'cancelled' },
+                    },
+                },
+                select: {
+                    quantity: true,
+                    unitPrice: true,
+                    discount: true,
+                    productId: true,
+                    product: { select: { id: true, name: true } },
+                    order: { select: { createdAt: true } },
+                },
+            });
+
+            // Agrupar por (mes, producto) o (rango, producto)
+            const bucketMap = new Map(); // key = bucketKey -> Map<productId, {qty, revenue, name}>
+
+            const monthKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+            const monthLabel = (key) => {
+                const [y, m] = key.split('-').map(Number);
+                const date = new Date(y, m - 1, 1);
+                return date.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+            };
+
+            for (const l of lines) {
+                const created = l.order?.createdAt ? new Date(l.order.createdAt) : null;
+                if (!created) continue;
+                const key = groupBy === 'month' ? monthKey(created) : 'all';
+                if (!bucketMap.has(key)) bucketMap.set(key, new Map());
+                const productAcc = bucketMap.get(key);
+
+                const pid = l.productId;
+                if (!pid) continue;
+                const qty = Number(l.quantity) || 0;
+                const unit = Number(l.unitPrice) || 0;
+                const disc = Number(l.discount) || 0;
+                const revenue = qty * unit * (1 - disc / 100);
+
+                const entry = productAcc.get(pid) || {
+                    productId: pid,
+                    productName: l.product?.name || `#${pid}`,
+                    qty: 0,
+                    revenue: 0,
+                };
+                entry.qty += qty;
+                entry.revenue += revenue;
+                productAcc.set(pid, entry);
+            }
+
+            // Construir array ordenado por mes ascendente
+            const buckets = Array.from(bucketMap.entries())
+                .sort(([a], [b]) => a.localeCompare(b))
+                .map(([key, productAcc]) => {
+                    const items = Array.from(productAcc.values())
+                        .sort((a, b) => b.qty - a.qty)
+                        .slice(0, limit)
+                        .map(it => ({
+                            ...it,
+                            qty: Math.round(it.qty),
+                            revenue: Number(it.revenue.toFixed(2)),
+                        }));
+                    const totalQty = items.reduce((s, it) => s + it.qty, 0);
+                    const totalRevenue = Number(items.reduce((s, it) => s + it.revenue, 0).toFixed(2));
+                    return {
+                        month: key,
+                        label: groupBy === 'month' ? monthLabel(key) : 'Rango completo',
+                        totalQty,
+                        totalRevenue,
+                        items,
+                    };
+                });
+
+            return reply.send({
+                range: {
+                    from: from.toISOString().slice(0, 10),
+                    to: to.toISOString().slice(0, 10),
+                    groupBy,
+                    limit,
+                },
+                months: buckets,
+            });
+        } catch (err) {
+            console.error('Error en GET /api/dashboard/top-products:', err);
+            return reply.status(500).send({ error: 'Error obteniendo top productos' });
+        }
+    });
+}

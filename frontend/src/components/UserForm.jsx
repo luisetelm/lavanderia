@@ -39,6 +39,7 @@ export default function UserForm({ initial = {}, onSave, token, onCancel, logged
     codigopostal: initial.codigopostal || '',
     pais: initial.pais || '',
     discount: typeof initial.discount === 'number' ? initial.discount : 0,
+    notifyChannel: initial.notifyChannel || 'whatsapp',
   });
 
   const [error, setError] = useState('');
@@ -173,6 +174,22 @@ export default function UserForm({ initial = {}, onSave, token, onCancel, logged
             <input type="number" min={0} max={100} step={1} className="uk-input"
               value={form.discount}
               onChange={e => set('discount', e.target.value)} />
+          </div>
+
+          <div className="uk-width-1-2@m">
+            <label className="uk-form-label">Canal de notificación</label>
+            <select
+              className="uk-select"
+              value={form.notifyChannel}
+              onChange={e => set('notifyChannel', e.target.value)}
+            >
+              <option value="whatsapp">WhatsApp (recomendado)</option>
+              <option value="sms">SMS</option>
+              <option value="none">No notificar</option>
+            </select>
+            <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: 2 }}>
+              Canal preferido para avisos de pedido listo/recogido. Si WhatsApp falla, se reintenta por SMS automáticamente.
+            </div>
           </div>
 
           <div className="uk-width-1-1">

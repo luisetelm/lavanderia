@@ -230,7 +230,7 @@ export default async function (fastify, opts) {
                                 }
                             },
                             steps: {
-                                select: { id: true },
+                                select: { id: true, status: true, startedAt: true, completedAt: true },
                                 orderBy: { id: 'asc' }
                             }
                         }
@@ -312,6 +312,22 @@ export default async function (fastify, opts) {
                     clientName: step.orderLine.order.client
                         ? `${step.orderLine.order.client.firstName} ${step.orderLine.order.client.lastName || ''}`.trim()
                         : '—',
+                    // Tiempos reales de ejecución (en ms para precisión, el frontend formatea):
+                    //  - lineFirstStartedAt: cuándo se inició la primera operación sobre esa prenda
+                    //  - lineElapsedMsCompleted: ms acumulados de pasos ya completados (no incluye paso actual)
+                    //  - El paso actual se calcula en vivo en el frontend desde startedAt
+                    lineFirstStartedAt: (() => {
+                        const starts = (step.orderLine.steps || [])
+                            .map(s => s.startedAt ? new Date(s.startedAt).getTime() : null)
+                            .filter(Boolean);
+                        return starts.length ? new Date(Math.min(...starts)).toISOString() : null;
+                    })(),
+                    lineElapsedMsCompleted: (step.orderLine.steps || []).reduce((acc, s) => {
+                        if (s.status === 'done' && s.startedAt && s.completedAt) {
+                            return acc + (new Date(s.completedAt).getTime() - new Date(s.startedAt).getTime());
+                        }
+                        return acc;
+                    }, 0),
                 });
             }
 
