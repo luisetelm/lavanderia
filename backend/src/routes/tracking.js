@@ -230,7 +230,10 @@ export default async function (fastify, opts) {
                                 }
                             },
                             steps: {
-                                select: { id: true, status: true, startedAt: true, completedAt: true },
+                                include: {
+                                    itineraryStep: { select: { stepKey: true, stepLabel: true, position: true, displayOrder: true } },
+                                    stepConfig:    { select: { stepKey: true, stepLabel: true, position: true } },
+                                },
                                 orderBy: { id: 'asc' }
                             }
                         }
@@ -328,6 +331,43 @@ export default async function (fastify, opts) {
                         }
                         return acc;
                     }, 0),
+                    // Cronología detallada de los pasos de la línea (para vista expandida)
+                    lineStepsTiming: (() => {
+                        const itinSteps = step.orderLine.product?.itinerary?.steps || [];
+                        const mandatoryItin = itinSteps.filter(x => !x.isOptional);
+                        return (step.orderLine.steps || []).map((s, idx) => {
+                            // Resolver metadata (itineraryStep > stepConfig > fallback por posición en itinerario)
+                            let stepKey = s.itineraryStep?.stepKey || s.stepConfig?.stepKey || null;
+                            let stepLabel = s.itineraryStep?.stepLabel || s.stepConfig?.stepLabel || null;
+                            let position = s.itineraryStep?.position ?? s.stepConfig?.position ?? idx;
+                            const displayOrder = s.itineraryStep?.displayOrder ?? (position * 10);
+                            if (!stepKey && mandatoryItin[idx]) {
+                                stepKey = mandatoryItin[idx].stepKey;
+                                stepLabel = mandatoryItin[idx].stepLabel;
+                                position = mandatoryItin[idx].position;
+                            } else if (!stepKey && itinSteps[idx]) {
+                                stepKey = itinSteps[idx].stepKey;
+                                stepLabel = itinSteps[idx].stepLabel;
+                                position = itinSteps[idx].position;
+                            }
+                            const startedAtMs = s.startedAt ? new Date(s.startedAt).getTime() : null;
+                            const completedAtMs = s.completedAt ? new Date(s.completedAt).getTime() : null;
+                            const elapsedMs = (s.status === 'done' && startedAtMs && completedAtMs)
+                                ? Math.max(0, completedAtMs - startedAtMs)
+                                : null;
+                            return {
+                                id: s.id,
+                                stepKey: stepKey || '?',
+                                stepLabel: stepLabel || '?',
+                                position,
+                                displayOrder,
+                                status: s.status,
+                                startedAt: s.startedAt,
+                                completedAt: s.completedAt,
+                                elapsedMs,
+                            };
+                        }).sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0) || a.position - b.position);
+                    })(),
                 });
             }
 

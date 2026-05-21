@@ -45,8 +45,10 @@ function computeStepTimes(steps, now) {
     let firstStartedAt = null;
     let lastCompletedAt = null;
     const perStepElapsedMs = {};
+    const perStepInferred = {}; // true si el tiempo se infirió por wall-clock (no había start explícito)
     let allDone = steps.length > 0;
 
+    // Paso 1: tiempos explícitos (startedAt presente y > 1s antes de completedAt)
     for (const s of steps) {
         if (s.status !== 'done') allDone = false;
 
@@ -55,7 +57,8 @@ function computeStepTimes(steps, now) {
             if (!firstStartedAt || startMs < firstStartedAt) firstStartedAt = startMs;
 
             if (s.status === 'done' && s.completedAt) {
-                perStepElapsedMs[s.id] = new Date(s.completedAt).getTime() - startMs;
+                const real = new Date(s.completedAt).getTime() - startMs;
+                if (real > 1000) perStepElapsedMs[s.id] = real;
             } else if (s.status === 'in_progress') {
                 perStepElapsedMs[s.id] = Math.max(0, now - startMs);
             }
@@ -66,17 +69,47 @@ function computeStepTimes(steps, now) {
         }
     }
 
+    // Paso 2: inferir tiempo "de permanencia" para pasos done sin start explícito,
+    // usando el completedAt del paso done inmediatamente anterior (por posición).
+    // Esto da el tiempo wall-clock que la prenda pasó esperando en esa fase
+    // antes de avanzar, que es la métrica útil cuando no se usa el botón Iniciar.
+    const orderedDone = steps
+        .filter(s => s.status === 'done' && s.completedAt)
+        .sort((a, b) => {
+            const pa = a.position ?? 0;
+            const pb = b.position ?? 0;
+            if (pa !== pb) return pa - pb;
+            return new Date(a.completedAt).getTime() - new Date(b.completedAt).getTime();
+        });
+
+    for (let i = 0; i < orderedDone.length; i++) {
+        const s = orderedDone[i];
+        if (perStepElapsedMs[s.id]) continue; // ya tiene tiempo explícito
+        const completedMs = new Date(s.completedAt).getTime();
+        const prev = orderedDone[i - 1];
+        if (prev) {
+            const prevCompletedMs = new Date(prev.completedAt).getTime();
+            const gap = completedMs - prevCompletedMs;
+            if (gap > 0) {
+                perStepElapsedMs[s.id] = gap;
+                perStepInferred[s.id] = true;
+            }
+        }
+        // Primer paso sin start: no podemos saber cuánto estuvo, lo dejamos sin valor.
+    }
+
     const isFinished = allDone;
     const startMs = firstStartedAt;
     const endMs = isFinished && lastCompletedAt ? lastCompletedAt : (startMs ? now : null);
     const totalElapsedMs = (startMs && endMs && endMs > startMs) ? (endMs - startMs) : 0;
 
-    return { startMs, endMs, totalElapsedMs, perStepElapsedMs, isFinished };
+    return { startMs, endMs, totalElapsedMs, perStepElapsedMs, perStepInferred, isFinished };
 }
 
 export default function StepProgress({ steps, onComplete, compact = false }) {
     // Reloj para refrescar pasos en curso cada segundo
     const [now, setNow] = useState(Date.now());
+    const [showTimeline, setShowTimeline] = useState(false);
     useEffect(() => {
         const allDone = (steps || []).every(s => s.status === 'done');
         if (allDone) return; // si está finalizado no hace falta tick
@@ -90,7 +123,7 @@ export default function StepProgress({ steps, onComplete, compact = false }) {
     const pct = Math.round((doneCount / steps.length) * 100);
     const nextStep = steps.find(s => s.status !== 'done');
 
-    const { startMs, endMs, totalElapsedMs, perStepElapsedMs, isFinished } = computeStepTimes(steps, now);
+    const { startMs, endMs, totalElapsedMs, perStepElapsedMs, perStepInferred, isFinished } = computeStepTimes(steps, now);
     const totalEstimateMin = steps.reduce((acc, s) => acc + (s.durationMin || 0), 0);
 
     return (
@@ -164,9 +197,10 @@ export default function StepProgress({ steps, onComplete, compact = false }) {
                                 }
                                 {step.stepLabel}
                                 {/* Tiempo inline en la chip: real si ya empezó, estimado si aún no */}
-                                {(isDone && elapsedMs) ? (
-                                    <span style={{ marginLeft: 3, opacity: 0.75, fontWeight: 400, fontVariantNumeric: 'tabular-nums' }}>
-                                        · {formatDurationMs(elapsedMs)}
+                                {(isDone && elapsedMs != null) ? (
+                                    <span style={{ marginLeft: 3, opacity: 0.75, fontWeight: 400, fontVariantNumeric: 'tabular-nums' }}
+                                          title={perStepInferred[step.id] ? 'Tiempo de permanencia (inferido entre pasos)' : 'Duración real medida'}>
+                                        · {perStepInferred[step.id] ? '~' : ''}{formatDurationMs(elapsedMs)}
                                     </span>
                                 ) : isInProgress && elapsedMs ? (
                                     <span style={{ marginLeft: 3, fontVariantNumeric: 'tabular-nums' }}>
@@ -212,6 +246,83 @@ export default function StepProgress({ steps, onComplete, compact = false }) {
                             ⏱ Trabajo estimado: <strong style={{ color: '#334155' }}>{formatEstimateMin(totalEstimateMin)}</strong>
                         </span>
                     )}
+                    <button
+                        type="button"
+                        onClick={() => setShowTimeline(v => !v)}
+                        style={{
+                            marginLeft: 'auto', padding: '1px 8px', borderRadius: 10,
+                            border: '1px solid #cbd5e1', background: showTimeline ? '#e2e8f0' : '#fff',
+                            color: '#475569', cursor: 'pointer', fontSize: '0.65rem',
+                        }}
+                        title="Ver tiempos detallados de cada paso"
+                    >
+                        {showTimeline ? '▴ Ocultar cronología' : '▾ Ver cronología'}
+                    </button>
+                </div>
+            )}
+
+            {/* Panel desplegable: cronología paso a paso */}
+            {!compact && showTimeline && (
+                <div style={{
+                    marginTop: 6, padding: '8px 10px',
+                    background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6,
+                    fontSize: '0.7rem',
+                }}>
+                    <div style={{
+                        fontWeight: 600, color: '#475569', marginBottom: 6,
+                        fontSize: '0.62rem', textTransform: 'uppercase', letterSpacing: '0.03em',
+                    }}>
+                        Cronología de pasos
+                    </div>
+                    {steps.map(s => {
+                        const isDone = s.status === 'done';
+                        const isInProgress = s.status === 'in_progress';
+                        let liveMs = perStepElapsedMs[s.id];
+                        if (isInProgress && s.startedAt) {
+                            liveMs = Math.max(0, now - new Date(s.startedAt).getTime());
+                        }
+                        const statusIcon = isDone ? '✓' : isInProgress ? '▶' : '○';
+                        const statusColor = isDone ? '#16a34a' : isInProgress ? '#2563eb' : '#94a3b8';
+                        const estimate = formatEstimateMin(s.durationMin);
+                        return (
+                            <div key={s.id} style={{
+                                display: 'grid',
+                                gridTemplateColumns: 'auto 1fr auto',
+                                gap: 8, alignItems: 'center',
+                                padding: '3px 0',
+                                borderTop: '1px dashed #e2e8f0',
+                            }}>
+                                <span style={{ color: statusColor, width: 14, textAlign: 'center', fontWeight: 700 }}>{statusIcon}</span>
+                                <span style={{ color: s.status === 'pending' ? '#94a3b8' : '#1e293b', minWidth: 0 }}>
+                                    <strong style={{ fontWeight: 600 }}>{s.stepLabel}</strong>
+                                    {s.startedAt && (
+                                        <span style={{ marginLeft: 6, color: '#64748b', fontWeight: 400 }}>
+                                            {formatHHMM(s.startedAt)}
+                                            {s.completedAt ? ` → ${formatHHMM(s.completedAt)}` : isInProgress ? ' → en curso' : ''}
+                                        </span>
+                                    )}
+                                    {isDone && s.completedBy?.firstName && (
+                                        <span style={{ marginLeft: 6, color: '#94a3b8', fontWeight: 400, fontSize: '0.62rem' }}>
+                                            · {s.completedBy.firstName}
+                                        </span>
+                                    )}
+                                </span>
+                                <span style={{
+                                    fontVariantNumeric: 'tabular-nums', color: statusColor,
+                                    minWidth: 60, textAlign: 'right', fontWeight: 600,
+                                }}
+                                title={perStepInferred[s.id]
+                                    ? 'Tiempo de permanencia (entre el paso anterior y este)'
+                                    : (liveMs != null ? 'Duración real medida' : (estimate ? 'Tiempo estimado' : ''))}>
+                                    {liveMs != null
+                                        ? <>{perStepInferred[s.id] ? '~' : ''}{formatDurationMs(liveMs)}</>
+                                        : estimate
+                                            ? <span style={{ opacity: 0.6, fontWeight: 400 }}>{estimate}</span>
+                                            : '—'}
+                                </span>
+                            </div>
+                        );
+                    })}
                 </div>
             )}
         </div>

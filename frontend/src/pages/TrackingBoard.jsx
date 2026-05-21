@@ -31,6 +31,7 @@ export default function TrackingBoard({ token }) {
     const [actionLoading, setActionLoading] = useState(null);
     const [batchModal, setBatchModal] = useState(null);
     const [now, setNow] = useState(Date.now());
+    const [expandedSteps, setExpandedSteps] = useState({}); // { [stepId]: true }
     const navigate = useNavigate();
 
     // Reloj para refrescar cronómetros de pasos en curso (1s)
@@ -383,6 +384,17 @@ export default function TrackingBoard({ token }) {
                                                         </div>
                                                     </div>
                                                     <div style={{ display: 'flex', gap: 3, flexShrink: 0 }}>
+                                                        {/* Botón expandir tiempos por paso */}
+                                                        {Array.isArray(item.lineStepsTiming) && item.lineStepsTiming.length > 0 && (
+                                                            <button
+                                                                className="uk-button uk-button-default uk-button-small"
+                                                                style={{ fontSize: '0.65rem', padding: '2px 6px', color: '#475569', borderColor: '#cbd5e1' }}
+                                                                onClick={() => setExpandedSteps(prev => ({ ...prev, [item.stepId]: !prev[item.stepId] }))}
+                                                                title="Ver tiempos de cada paso"
+                                                            >
+                                                                {expandedSteps[item.stepId] ? '▴' : '▾'}
+                                                            </button>
+                                                        )}
                                                         {/* Botón Iniciar: solo para pasos autoProgress que estén pending */}
                                                         {item.autoProgress && item.status === 'pending' && (
                                                             <button
@@ -409,6 +421,59 @@ export default function TrackingBoard({ token }) {
                                                         )}
                                                     </div>
                                                 </div>
+                                                {/* Panel expandido: tiempos de cada paso */}
+                                                {expandedSteps[item.stepId] && Array.isArray(item.lineStepsTiming) && item.lineStepsTiming.length > 0 && (
+                                                    <div style={{
+                                                        marginTop: 6, padding: '6px 8px',
+                                                        background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 4,
+                                                        fontSize: '0.68rem',
+                                                    }}>
+                                                        <div style={{ fontWeight: 600, color: '#475569', marginBottom: 4, fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.02em' }}>
+                                                            Cronología de pasos
+                                                        </div>
+                                                        {item.lineStepsTiming.map(s => {
+                                                            const isCurr = s.id === item.stepId;
+                                                            // Calcular tiempo vivo si está en curso
+                                                            let liveMs = s.elapsedMs;
+                                                            if (s.status === 'in_progress' && s.startedAt) {
+                                                                liveMs = Math.max(0, now - new Date(s.startedAt).getTime());
+                                                            }
+                                                            const statusIcon = s.status === 'done' ? '✓'
+                                                                : s.status === 'in_progress' ? '▶'
+                                                                : '○';
+                                                            const statusColor = s.status === 'done' ? '#16a34a'
+                                                                : s.status === 'in_progress' ? '#2563eb'
+                                                                : '#94a3b8';
+                                                            return (
+                                                                <div key={s.id} style={{
+                                                                    display: 'grid',
+                                                                    gridTemplateColumns: 'auto 1fr auto',
+                                                                    gap: 6, alignItems: 'center',
+                                                                    padding: '2px 0',
+                                                                    fontWeight: isCurr ? 600 : 400,
+                                                                }}>
+                                                                    <span style={{ color: statusColor, width: 12, textAlign: 'center' }}>{statusIcon}</span>
+                                                                    <span style={{ color: s.status === 'pending' ? '#94a3b8' : '#1e293b' }}>
+                                                                        {s.stepLabel}
+                                                                        {s.startedAt && (
+                                                                            <span style={{ marginLeft: 6, color: '#94a3b8', fontWeight: 400 }}>
+                                                                                {formatHHMM(s.startedAt)}
+                                                                                {s.completedAt && ` → ${formatHHMM(s.completedAt)}`}
+                                                                            </span>
+                                                                        )}
+                                                                    </span>
+                                                                    <span style={{
+                                                                        fontVariantNumeric: 'tabular-nums',
+                                                                        color: statusColor,
+                                                                        minWidth: 50, textAlign: 'right',
+                                                                    }}>
+                                                                        {liveMs != null ? formatDurationMs(liveMs) : '—'}
+                                                                    </span>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                )}
                                             </div>
                                         );
                                     })
