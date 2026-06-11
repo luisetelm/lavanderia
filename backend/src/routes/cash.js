@@ -240,8 +240,8 @@ export default async function cashRoutes(fastify) {
         const where = {};
         if (from || to) {
             where.closedat = {};
-            if (from) where.closedat.gte = new Date(from);
-            if (to) where.closedat.lte = new Date(to);
+            if (from) where.closedat.gte = new Date(`${from}T00:00:00.000`);
+            if (to)   where.closedat.lte = new Date(`${to}T23:59:59.999`);
         }
         return prisma.cashClosure.findMany({
             where,

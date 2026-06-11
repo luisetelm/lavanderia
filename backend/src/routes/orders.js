@@ -532,8 +532,15 @@ export default async function (fastify, opts) {
         }
 
         if (startDate && endDate) {
-            const startDateObj = new Date(startDate);
-            const endDateObj = new Date(endDate);
+            // Acepta tanto 'YYYY-MM-DD' como ISO completo. Si viene solo la fecha, normalizamos
+            // al inicio/fin del día para que rangos como hoy/ayer (mismo día) devuelvan resultados.
+            const onlyDate = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s);
+            const startDateObj = onlyDate(startDate)
+                ? new Date(`${startDate}T00:00:00.000`)
+                : new Date(startDate);
+            const endDateObj = onlyDate(endDate)
+                ? new Date(`${endDate}T23:59:59.999`)
+                : new Date(endDate);
             where.createdAt = {
                 gte: startDateObj, lte: endDateObj,
             };

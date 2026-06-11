@@ -207,7 +207,7 @@ export default async function dashboardRoutes(fastify) {
             const defaultFrom = new Date(now.getFullYear(), now.getMonth() - 5, 1);
             const defaultTo = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
 
-            const from = req.query.from ? new Date(req.query.from) : defaultFrom;
+            const from = req.query.from ? new Date(`${req.query.from}T00:00:00.000`) : defaultFrom;
             const to = req.query.to ? new Date(`${req.query.to}T23:59:59.999`) : defaultTo;
 
             if (isNaN(from.getTime()) || isNaN(to.getTime()) || from > to) {
