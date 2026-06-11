@@ -1,6 +1,5 @@
 import React, {useState, useEffect, useCallback} from 'react';
 import {
-    createCashMovement,
     createInvoice,
     fetchOrder,
     fetchUsers,
@@ -21,6 +20,7 @@ import {printSaleTicket, printWashLabels} from '../utils/printUtils.js';
 import {formatEUR} from '../utils/format.js';
 import StatusChangeModal from './StatusChangeModal.jsx';
 import StepProgress from './StepProgress.jsx';
+import PaymentModal from './PaymentModal.jsx';
 
 const COLOR_HEX = {
     negro: '#1e1e1e', blanco: '#f5f5f5', gris: '#9ca3af', azul: '#3b82f6',
@@ -29,16 +29,35 @@ const COLOR_HEX = {
     burdeos: '#7f1d1d', naranja: '#f97316',
 };
 
-// En tu componente, donde tengas el token y el ID de la factura
+// Etiquetas y colores semánticos por estado del pedido
+const STATUS_META = {
+    pending:   { label: 'Pendiente', bg: '#fef3c7', color: '#92400e' },
+    ready:     { label: 'Listo',     bg: '#dcfce7', color: '#166534' },
+    collected: { label: 'Recogido',  bg: '#e5e7eb', color: '#374151' },
+    cancelled: { label: 'Cancelado', bg: '#fee2e2', color: '#991b1b' },
+};
 
+// Feedback unificado (sustituye a alert/confirm nativos y errores inline dispersos)
+const notify = (message, status = 'primary', timeout = 3000) =>
+    UIkit.notification({ message, status, pos: 'top-right', timeout });
 
-export default function PaymentSection({token, orderId, onPaid, user}) {
-    const [order, setOrder] = useState(null);
-    const [workers, setWorkers] = useState([]);
-    const [loading, setLoading] = useState(!!orderId);
+const confirmModal = async (message) => {
+    try {
+        await UIkit.modal.confirm(message, { labels: { ok: 'Confirmar', cancel: 'Cancelar' } });
+        return true;
+    } catch {
+        return false;
+    }
+};
+
+export default function PaymentSection({token, orderId, onPaid, initialOrder = null, workers: workersProp = null}) {
+    const [order, setOrder] = useState(initialOrder);
+    const [workers, setWorkers] = useState(workersProp || []);
+    const [loading, setLoading] = useState(!!orderId && !initialOrder);
     const [error, setError] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
-    const [receivedAmount, setReceivedAmount] = useState('');
+    const [showPaymentModal, setShowPaymentModal] = useState(false); // modal de cobro
+    const [lastChange, setLastChange] = useState(null); // vuelta del último pago en efectivo
     const [localError, setLocalError] = useState('');
     const [isPrinting, setIsPrinting] = useState(false);
     const [invoiceLoading, setInvoiceLoading] = useState(false);
@@ -56,6 +75,7 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
 
     // Notas internas controladas
     const [internalNotes, setInternalNotes] = useState('');
+    const [notesSaveState, setNotesSaveState] = useState(''); // '' | 'saving' | 'saved'
 
     // Edición fecha de entrega
     const [editingDate, setEditingDate] = useState(false);
@@ -118,111 +138,95 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
         }
     }, [token, orderId]);
 
+    // Solo hacemos el fetch inicial si NO nos pasaron initialOrder (evita N+1 en listas)
+    const initialOrderProvided = !!initialOrder;
     useEffect(() => {
+        if (initialOrderProvided) {
+            setOrder(initialOrder);
+            setInternalNotes(initialOrder?.observacionesInternas || '');
+            return;
+        }
         loadOrder();
-    }, [loadOrder]);
+    }, [loadOrder, initialOrderProvided]);
 
     const loadUsers = useCallback(async () => {
-        if (workers.length > 0) return; // Solo cargar si no hay trabajadores ya cargados
+        // Si nos pasaron workers desde el padre, no hace falta cargarlos
+        if (workersProp && workersProp.length >= 0) return;
+        if (workers.length > 0) return;
         try {
             const workersResp = await fetchUsers(token, {role: 'worker'});
             setWorkers(workersResp.data || []);
         } catch (e) {
             console.error('Error cargando trabajadores:', e);
         }
-    }, [token, workers.length]);
+    }, [token, workers.length, workersProp]);
 
     useEffect(() => {
-        loadUsers();
-    }, [loadUsers]);
-
-    const handleCardPay = async () => {
-        if (!order) return;
-        // Evita prompt; confirm más simple y rápido
-        const confirmed = window.confirm(`Confirmar pago con tarjeta por ${formatEUR(order.total)}.`);
-        if (!confirmed) return;
-
-        setIsProcessing(true);
-        setLocalError('');
-        try {
-            const {order: updatedOrder} = await payWithCard(token, order.id);
-            setOrder(updatedOrder);
-            onPaid?.();
-        } catch (e) {
-            console.error('Error pago con tarjeta:', e);
-            setLocalError(e.error || 'Error en pago con tarjeta');
-        } finally {
-            setIsProcessing(false);
-        }
-    };
-
-    const handleCashPay = async () => {
-        if (!order) return;
-        const received = parseFloat(receivedAmount);
-        if (isNaN(received) || received < Number(order.total || 0)) {
-            setLocalError('Cantidad recibida insuficiente');
+        if (workersProp) {
+            setWorkers(workersProp);
             return;
         }
+        loadUsers();
+    }, [loadUsers, workersProp]);
 
-        setIsProcessing(true);
-        setLocalError('');
-        try {
-            // 1) Procesar el pago
-            const {order: paidOrder, change} = await payWithCash(token, order.id, received);
-            setOrder(paidOrder);
+    // Handlers de cobro consumidos por PaymentModal: actualizan estado y relanzan en error
+    const handleCardPay = async () => {
+        if (!order) return;
+        const {order: updatedOrder} = await payWithCard(token, order.id);
+        setOrder(updatedOrder);
+        onPaid?.();
+    };
 
-            // 2) Registrar movimiento de caja solo si el pedido ha quedado pagado
-            if (paidOrder?.paid) {
-                try {
-                    const payload = {
-                        type: 'sale_cash_in',
-                        amount: paidOrder.total, // <-- usar el importe actualizado
-                        note: `Pago pedido #${paidOrder.orderNum || paidOrder.id}`,
-                        orderId: paidOrder.id,
-                        person: user?.id ?? null,
-                    };
-                    await createCashMovement(token, payload);
-                } catch (movError) {
-                    console.error('Error al registrar movimiento de caja:', movError);
-                    // No bloquea el flujo
-                }
-            }
-
-            onPaid?.();
-            // (Opcional) feedback al usuario
-            alert(`Pago registrado. Vuelta: ${formatEUR(change)}`);
-        } catch (e) {
-            console.error('Error pago en efectivo:', e);
-            setLocalError(e.error || 'Error en pago en efectivo');
-        } finally {
-            setIsProcessing(false);
-        }
+    const handleCashPay = async (received) => {
+        if (!order) return 0;
+        const {order: paidOrder, change} = await payWithCash(token, order.id, received);
+        setOrder(paidOrder);
+        setLastChange(change);
+        onPaid?.();
+        return change;
     };
 
     const markReady = async (sendSMS = false) => {
+        setIsProcessing(true);
         try {
             await apiUpdateOrder(token, order.id, {status: 'ready', sendSMS});
             await loadOrder();
+            notify('Pedido marcado como listo', 'success');
         } catch (e) {
             console.error(e);
+            notify(e.error || 'Error al marcar como listo', 'danger');
+        } finally {
+            setIsProcessing(false);
         }
     };
 
     const markCollected = async (sendSMS = false) => {
+        setIsProcessing(true);
         try {
             await apiUpdateOrder(token, order.id, {status: 'collected', sendSMS});
             await loadOrder();
+            notify('Pedido marcado como recogido', 'success');
         } catch (e) {
             console.error(e);
+            notify(e.error || 'Error al marcar como recogido', 'danger');
+        } finally {
+            setIsProcessing(false);
         }
     };
 
     const handleSaveInternalNotes = async () => {
         if (!order) return;
+        if ((order.observacionesInternas || '') === internalNotes) return; // sin cambios
+        setNotesSaveState('saving');
         try {
             await updateOrder(token, order.id, {observacionesInternas: internalNotes});
+            setOrder((prev) => (prev ? {...prev, observacionesInternas: internalNotes} : prev));
+            setNotesSaveState('saved');
+            setTimeout(() => setNotesSaveState(''), 2000);
         } catch (e) {
             console.error('Error guardando notas internas:', e);
+            setNotesSaveState('');
+            notify('No se pudieron guardar las notas internas', 'danger');
         }
     };
 
@@ -321,32 +325,23 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
     };
 
     const handleStripePaymentLink = async () => {
-        if (!order) return;
-        setIsProcessing(true);
-        try {
-            const { url } = await createStripeCheckout(token, { type: 'order', id: order.id });
-            await navigator.clipboard.writeText(url);
-            UIkit.notification({
-                message: 'Enlace de pago copiado al portapapeles',
-                status: 'success',
-                pos: 'top-right',
-                timeout: 3000
-            });
-        } catch (e) {
-            console.error('Error generando enlace Stripe:', e);
-            setLocalError(e.error || 'Error generando enlace de pago');
-        } finally {
-            setIsProcessing(false);
+        if (!order) return '';
+        const { url } = await createStripeCheckout(token, { type: 'order', id: order.id });
+        if (navigator.clipboard?.writeText) {
+            try { await navigator.clipboard.writeText(url); } catch { /* sin portapapeles */ }
         }
+        return url;
     };
 
     const handleCancelOrder = async () => {
         if (!order) return;
-        if (!window.confirm('¿Seguro que quieres cancelar este pedido?')) return;
+        const confirmed = await confirmModal('¿Seguro que quieres <b>cancelar</b> este pedido?');
+        if (!confirmed) return;
         setIsProcessing(true);
         try {
             await apiUpdateOrder(token, order.id, {status: 'cancelled'});
             await loadOrder();
+            notify('Pedido cancelado', 'warning');
         } catch (e) {
             console.error('Error cancelando pedido:', e);
             setLocalError(e.error || 'Error al cancelar el pedido');
@@ -409,7 +404,6 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
         setLocalError('');
         try {
             const res = await createInvoice(token, {orderIds: [order.id], type: 'n'});
-            console.log(res);
             const invoice = res?.data ?? res;
             // Si la factura es tipo 'n' mostrar notificación de envío por email
             if (invoice && invoice.type === 'n') {
@@ -439,15 +433,41 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
     const createdDate = order.createdAt ? new Date(order.createdAt).toLocaleDateString('es-ES') : '—';
     const dueDate = order.fechaLimite ? new Date(order.fechaLimite).toLocaleDateString('es-ES') : '—';
 
-    const changePreview = receivedAmount && !isNaN(parseFloat(receivedAmount)) ? Math.max(0, parseFloat(receivedAmount) - Number(order.total || 0)).toFixed(2) : '0.00';
+    const statusMeta = STATUS_META[order.status] || { label: order.status, bg: '#e5e7eb', color: '#374151' };
+    const isOverdue = order.fechaLimite
+        && !['collected', 'cancelled'].includes(order.status)
+        && new Date(order.fechaLimite) < new Date(new Date().toDateString());
 
     return (<div className={'uk-card uk-card-body uk-card-default'}>
-        <div className={'uk-card-badge'}>{order.status}</div>
-        <h3 className={'uk-card-title'}>
-            {clienteDisplay()} {order.orderNum}
+        <div
+            className={'uk-card-badge'}
+            style={{
+                background: statusMeta.bg, color: statusMeta.color,
+                fontWeight: 600, padding: '2px 10px', borderRadius: 12, fontSize: 12,
+            }}
+        >
+            {statusMeta.label}
+        </div>
+        <h3 className={'uk-card-title'} style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+            <span>{clienteDisplay()}</span>
+            <span style={{
+                fontFamily: 'monospace', fontSize: '0.65em', color: '#64748b',
+                background: '#f1f5f9', padding: '2px 8px', borderRadius: 6,
+            }}>
+                {order.orderNum}
+            </span>
+            {isOverdue && (
+                <span style={{
+                    fontSize: '0.55em', fontWeight: 700, color: '#991b1b',
+                    background: '#fee2e2', padding: '2px 8px', borderRadius: 6,
+                    textTransform: 'uppercase', letterSpacing: 0.5,
+                }}>
+                    ⚠ Atrasado
+                </span>
+            )}
         </h3>
 
-        <div className={'uk-badge uk-text-bolder'}>
+        <div className={'uk-badge uk-text-bolder'} style={isOverdue ? { background: '#dc2626', color: '#fff' } : undefined}>
             {createdDate}
             <span className="uk-icon" uk-icon="icon: arrow-right"></span>
             {editingDate ? (
@@ -483,6 +503,31 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
                 </span>
             )}
         </div>
+
+
+        {showPaymentModal && (
+            <PaymentModal
+                total={order.total}
+                onClose={() => setShowPaymentModal(false)}
+                onPayCard={handleCardPay}
+                onPayCash={handleCashPay}
+                onStripeLink={handleStripePaymentLink}
+            />
+        )}
+
+        {/* Vuelta del último pago en efectivo (persiste tras el cobro) */}
+        {order.paid && lastChange !== null && (
+            <div style={{
+                marginTop: 12, padding: '6px 12px', borderRadius: 6,
+                background: '#f0fdf4', border: '1px solid #bbf7d0',
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13,
+            }}>
+                <span style={{ color: '#166534', fontWeight: 600 }}>✓ Pago registrado</span>
+                <span style={{ fontWeight: 700, color: '#166534' }}>
+                    Vuelta: {formatEUR(lastChange)}
+                </span>
+            </div>
+        )}
 
         {order.status !== 'cancelled' && (<div className={'uk-grid uk-child-width-1-3@l uk-margin-top'}>
             <div>
@@ -532,10 +577,13 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
                 </div>
 
                 <div className="uk-margin-small">
-                    <label className="uk-form-label" htmlFor="">
+                    <label className="uk-form-label" htmlFor={`internal-notes-${order.id}`}>
                         Observaciones internas
+                        {notesSaveState === 'saving' && <span style={{ marginLeft: 6, fontSize: 11, color: '#94a3b8' }}><span uk-spinner="ratio: 0.4"></span> Guardando…</span>}
+                        {notesSaveState === 'saved' && <span style={{ marginLeft: 6, fontSize: 11, color: '#16a34a' }}>✓ Guardado</span>}
                     </label>
                     <textarea
+                        id={`internal-notes-${order.id}`}
                         className="uk-textarea"
                         value={internalNotes}
                         onChange={(e) => setInternalNotes(e.target.value)}
@@ -551,7 +599,6 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
                     const name = l.productName || l.product?.name || `#${l.productId}`;
                     const subtotal = Number(l.unitPrice || 0) * Number(l.quantity || 0);
                     const discountAmount = (subtotal * (l.discount || 0)) / 100;
-                    console.log(l);
                     const lineTotal = subtotal - discountAmount;
                     const isEditing = editingLineId === l.id;
                     const canEdit = !order.paid && order.status !== 'cancelled';
@@ -584,6 +631,8 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
                                 <span>Descuento:</span>
                                 <input
                                     type="number"
+                                    id={`line-discount-${l.id}`}
+                                    aria-label={`Descuento de la línea ${name}`}
                                     className="uk-input uk-form-small"
                                     style={{width: '50px', padding: '1px 4px', fontSize: 11, height: '22px'}}
                                     value={lineDiscounts[l.id] !== undefined ? lineDiscounts[l.id] : (l.discount || 0)}
@@ -617,11 +666,13 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
                                     <span
                                         className="uk-icon-link"
                                         uk-icon="icon: pencil; ratio: 0.7"
-                                        style={{cursor: 'pointer', color: '#1e87f0'}}
+                                        role="button"
+                                        aria-label="Editar descuento"
+                                        style={{cursor: 'pointer', color: '#1e87f0', padding: 4}}
                                         onClick={() => {
                                             setEditingLineId(l.id);
-                                            const input = document.querySelector(`input[type="number"]`);
-                                            if (input) setTimeout(() => input.focus(), 0);
+                                            const input = document.getElementById(`line-discount-${l.id}`);
+                                            if (input) setTimeout(() => { input.focus(); input.select(); }, 0);
                                         }}
                                     ></span>
                                 )}
@@ -653,7 +704,6 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
                             const receiptNotes = annotations.filter(a => a.origin === 'receipt' && a.type === 'note');
                             const receiptPhotos = annotations.filter(a => a.origin === 'receipt' && a.type === 'photo');
                             const internalAnnotations = annotations.filter(a => a.origin === 'internal');
-                            const hasAnnotations = annotations.length > 0;
 
                             return (<>
                                 {/* Notas de recepción (inmutables) */}
@@ -843,6 +893,18 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
                         width: '100%',
                     }}
                 >
+                    {/* Cobro: acción principal cuando el pedido está pendiente de pago */}
+                    {!order.paid && (
+                        <button
+                            type="button"
+                            className={'uk-button uk-button-primary uk-width-1-1@l'}
+                            onClick={() => setShowPaymentModal(true)}
+                            disabled={isProcessing}
+                        >
+                            💰 Cobrar {formatEUR(order.total)}
+                        </button>
+                    )}
+
                     <button
                         className={'uk-button uk-button-default uk-width-1-1@l'}
                         uk-icon={'print'}
@@ -962,65 +1024,16 @@ export default function PaymentSection({token, orderId, onPaid, user}) {
             <ul className="uk-list uk-list-divider">
                 {order.notification.map((n) => (<li key={n.id} style={{fontSize: 12, marginBottom: 6}}>
                     <strong>{n.type}</strong> — {n.status} {n.status === 'failed' && (
-                    <div className={"uk-text-danger"} uk-icon="refresh"
-                         onClick={() => handleRetryNotification(n.id, order.client.phone)}></div>)} <br/>
+                    <button type="button" className="uk-text-danger" uk-icon="refresh"
+                            aria-label="Reintentar notificación"
+                            disabled={isProcessing}
+                            style={{background: 'none', border: 'none', cursor: 'pointer', padding: 4}}
+                            onClick={() => handleRetryNotification(n.id, order.client.phone)}></button>)} <br/>
                     {n.content} <br/>
                     {n.createdAt && <span
                         style={{color: '#555'}}>{new Date(n.createdAt).toLocaleString('es-ES')}</span>}
                 </li>))}
             </ul>
-        </div>)}
-
-        {!order.paid && order.status !== 'cancelled' && (<div className={'uk-grid uk-grid-divider'}>
-            <h4 className={'uk-width-1-1 uk-margin'}>Pendiente de pago</h4>
-            <div className={'uk-width-1-1 uk-margin-small-bottom'}>
-                <button
-                    onClick={handleStripePaymentLink}
-                    disabled={isProcessing}
-                    className={'uk-button uk-button-default'}
-                    style={{ fontSize: '0.85em' }}
-                >
-                    {isProcessing ? 'Generando...' : 'Copiar enlace de pago (Stripe)'}
-                </button>
-            </div>
-
-            <div className={'uk-width-1-2@l uk-grid'}>
-                <p className={'uk-text-bold uk-width-1-1'}>Pago con tarjeta</p>
-                <div>
-                    <button onClick={handleCardPay} disabled={isProcessing}
-                            className={'uk-button uk-button-primary uk-margin-top'}>
-                        {isProcessing ? 'Procesando...' : 'Pagar con tarjeta'}
-                    </button>
-                </div>
-            </div>
-
-            <div className={'uk-width-1-2@l uk-grid'}>
-                <p className={'uk-text-bold uk-width-1-1'}>Pago en efectivo</p>
-                <div className={'uk-grid uk-child-width-1-2 uk-margin-top'}>
-                    <label>
-                        <input
-                            type="number"
-                            className={'uk-input uk-width-1-1'}
-                            value={receivedAmount}
-                            onChange={(e) => setReceivedAmount(e.target.value)}
-                            disabled={isProcessing}
-                            placeholder="€"
-                            min="0"
-                            step="0.01"
-                            inputMode="decimal"
-                        />
-                        <small style={{textAlign: 'center', width: '100%', display: 'block'}}>
-                            Vuelta: {formatEUR(changePreview)}
-                        </small>
-                    </label>
-                    <div>
-                        <button onClick={handleCashPay} disabled={isProcessing}
-                                className={'uk-button uk-button-primary uk-margin'}>
-                            {isProcessing ? 'Procesando...' : 'Pagar en efectivo'}
-                        </button>
-                    </div>
-                </div>
-            </div>
         </div>)}
     </div>);
 }

@@ -497,6 +497,19 @@ export default async function (fastify, opts) {
                     }
                 });
 
+                // Si es efectivo, registrar movimiento de caja atómicamente
+                if (method === 'cash') {
+                    await tx.cashMovement.create({
+                        data: {
+                            type: 'sale_cash_in',
+                            amount: order.total,
+                            note: `Pago pedido #${updatedOrder.orderNum || orderId}`,
+                            orderid: orderId,
+                            userid: req.user?.userId,
+                        }
+                    });
+                }
+
                 // Si el pedido ya tenía factura normal vinculada, marcarla como pagada
                 if (order.invoiceTickets?.invoices) {
                     await tx.invoices.update({
@@ -580,12 +593,21 @@ export default async function (fastify, opts) {
                             totalPrice: true,
                             annotations: true,
                             discount: true,
+                            color: true,
                             product: {
-                                select: {id: true, name: true, basePrice: true}
+                                select: {id: true, name: true, basePrice: true, serviceOptions: true}
+                            },
+                            steps: {
+                                include: {
+                                    stepConfig: true,
+                                    itineraryStep: true,
+                                    completedByUser: { select: { id: true, firstName: true } }
+                                },
+                                orderBy: { id: 'asc' }
                             }
                         }
                     }, client: {
-                        select: {id: true, firstName: true, lastName: true, phone: true, email: true},
+                        select: {id: true, firstName: true, lastName: true, phone: true, email: true, notifyChannel: true},
                     }, notification: {
                         select: {id: true, type: true, sentAt: true, status: true, content: true}
                     }, invoiceTickets: {

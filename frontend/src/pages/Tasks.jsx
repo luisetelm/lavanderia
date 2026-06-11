@@ -1,5 +1,5 @@
 import React, {useEffect, useState, useRef} from 'react';
-import {fetchOrders, payWithCard, payWithCash} from '../api.js';
+import {fetchOrders, fetchUsers, payWithCard, payWithCash} from '../api.js';
 import PaymentSection from '../components/PaymentSection.jsx';
 import {useLocation} from 'react-router-dom';
 import PageToolbar from '../components/PageToolbar.jsx';
@@ -7,6 +7,7 @@ import PageToolbar from '../components/PageToolbar.jsx';
 
 export default function Tasks({token, user}) {
     const [tasks, setTasks] = useState([]);
+    const [workers, setWorkers] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [query, setQuery] = useState('');
@@ -55,6 +56,20 @@ export default function Tasks({token, user}) {
         if (!filterOrderId) {
             load(query, filterStatus, filterWorker, sortBy, sortOrder);
         }
+    }, [token]);
+
+    // Cargar trabajadores UNA sola vez para pasarlos a todas las PaymentSection
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            try {
+                const resp = await fetchUsers(token, { role: 'worker' });
+                if (!cancelled) setWorkers(resp.data || []);
+            } catch (e) {
+                console.error('Error cargando trabajadores:', e);
+            }
+        })();
+        return () => { cancelled = true; };
     }, [token]);
 
     useEffect(() => {
@@ -136,8 +151,9 @@ export default function Tasks({token, user}) {
                         <PaymentSection
                             token={token}
                             orderId={t.id}
+                            initialOrder={t}
+                            workers={workers}
                             onPaid={() => load(query, filterStatus)}
-                            user={user}
                         />
                     </div>) : (<div className="uk-alert uk-alert-warning uk-margin">
                         Pedido no disponible

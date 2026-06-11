@@ -382,6 +382,7 @@ export default async function dashboardRoutes(fastify) {
             )];
 
             let allOrderSteps = [];
+            const orderTotalsMap = new Map();
             if (touchedOrderIds.length > 0) {
                 allOrderSteps = await prisma.orderLineStep.findMany({
                     where: { orderLine: { orderId: { in: touchedOrderIds } } },
@@ -392,6 +393,13 @@ export default async function dashboardRoutes(fastify) {
                         orderLine: { select: { orderId: true } },
                     },
                 });
+                const orderRows = await prisma.order.findMany({
+                    where: { id: { in: touchedOrderIds } },
+                    select: { id: true, total: true },
+                });
+                for (const o of orderRows) {
+                    orderTotalsMap.set(o.id, Number(o.total) || 0);
+                }
             }
 
             const stepsByOrder = new Map();
@@ -404,8 +412,10 @@ export default async function dashboardRoutes(fastify) {
 
             const computeFinished = (gte, lte) => {
                 const perWorker = new Map();
+                const perWorkerAmount = new Map();
                 let total = 0;
-                for (const steps of stepsByOrder.values()) {
+                let totalAmount = 0;
+                for (const [orderId, steps] of stepsByOrder.entries()) {
                     if (!steps.length) continue;
                     if (!steps.every(s => s.status === 'done' && s.completedAt)) continue;
                     const last = steps.reduce((a, b) =>
@@ -413,12 +423,15 @@ export default async function dashboardRoutes(fastify) {
                     );
                     const t = new Date(last.completedAt);
                     if (t < gte || t > lte) continue;
+                    const amount = orderTotalsMap.get(orderId) || 0;
                     total += 1;
+                    totalAmount += amount;
                     if (last.completedBy) {
                         perWorker.set(last.completedBy, (perWorker.get(last.completedBy) || 0) + 1);
+                        perWorkerAmount.set(last.completedBy, (perWorkerAmount.get(last.completedBy) || 0) + amount);
                     }
                 }
-                return { perWorker, total };
+                return { perWorker, perWorkerAmount, total, totalAmount };
             };
 
             const finishedCur = computeFinished(from, to);
@@ -532,10 +545,10 @@ export default async function dashboardRoutes(fastify) {
             const injectFinished = (agg, finished) => {
                 for (const w of agg.workers) {
                     w.ordersFinishedCount = finished.perWorker.get(w.workerId) || 0;
+                    w.ordersFinishedAmount = Number((finished.perWorkerAmount.get(w.workerId) || 0).toFixed(2));
                 }
-                // Workers que cerraron pedidos pero no aparecen en agg (caso raro: solo cerraron
-                // el último paso fuera del rango por algún motivo). Suelen ya estar en agg.
                 agg.totals.ordersFinishedCount = finished.total;
+                agg.totals.ordersFinishedAmount = Number((finished.totalAmount || 0).toFixed(2));
             };
             injectFinished(cur, finishedCur);
             injectFinished(prev, finishedPrev);
@@ -579,6 +592,7 @@ export default async function dashboardRoutes(fastify) {
                     totalDurationMin: 0, avgStepMin: null,
                     onTimePct: null, onTimeEligible: 0, onTimeCount: 0,
                     ordersFinishedCount: 0,
+                    ordersFinishedAmount: 0,
                 };
                 return {
                     workerId: row.workerId,
@@ -599,6 +613,7 @@ export default async function dashboardRoutes(fastify) {
                         onTimeEligible: c.onTimeEligible,
                         onTimeCount:    c.onTimeCount,
                         ordersFinishedCount: c.ordersFinishedCount || 0,
+                        ordersFinishedAmount: c.ordersFinishedAmount || 0,
                     },
                     previous: {
                         stepsCompleted: p.stepsCompleted,
@@ -608,12 +623,14 @@ export default async function dashboardRoutes(fastify) {
                         avgStepMin:     p.avgStepMin,
                         onTimePct:      p.onTimePct,
                         ordersFinishedCount: p.ordersFinishedCount || 0,
+                        ordersFinishedAmount: p.ordersFinishedAmount || 0,
                     },
                     deltas: {
                         stepsCompletedPct: pct(c.stepsCompleted, p.stepsCompleted),
                         ordersCountPct:    pct(c.ordersCount,    p.ordersCount),
                         linesCountPct:     pct(c.linesCount,     p.linesCount),
                         ordersFinishedPct: pct(c.ordersFinishedCount || 0, p.ordersFinishedCount || 0),
+                        ordersFinishedAmountPct: pct(c.ordersFinishedAmount || 0, p.ordersFinishedAmount || 0),
                     },
                     sharePct: cur.totals.stepsCompleted > 0
                         ? Number(((c.stepsCompleted / cur.totals.stepsCompleted) * 100).toFixed(1))
@@ -634,6 +651,7 @@ export default async function dashboardRoutes(fastify) {
                         ordersCountPct:    pct(cur.totals.ordersCount,    prev.totals.ordersCount),
                         linesCountPct:     pct(cur.totals.linesCount,     prev.totals.linesCount),
                         ordersFinishedPct: pct(cur.totals.ordersFinishedCount || 0, prev.totals.ordersFinishedCount || 0),
+                        ordersFinishedAmountPct: pct(cur.totals.ordersFinishedAmount || 0, prev.totals.ordersFinishedAmount || 0),
                     },
                 },
                 workers,

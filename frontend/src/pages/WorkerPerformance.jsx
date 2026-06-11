@@ -25,6 +25,11 @@ function formatMin(min) {
     return m === 0 ? `${h} h` : `${h} h ${m} min`;
 }
 
+function formatEUR(amount) {
+    if (amount == null || isNaN(amount)) return '–';
+    return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR', maximumFractionDigits: 2 }).format(amount);
+}
+
 function Delta({ pct }) {
     if (pct == null || isNaN(pct)) return <span style={{ color: '#94a3b8' }}>–</span>;
     if (pct === 0) return <span style={{ color: '#64748b' }}>0%</span>;
@@ -265,6 +270,12 @@ export default function WorkerPerformance({ token }) {
                             delta={data.totals.deltas.ordersFinishedPct}
                         />
                         <KpiCard
+                            label="Importe finalizado"
+                            value={formatEUR(data.totals.current.ordersFinishedAmount ?? 0)}
+                            previous={formatEUR(data.totals.previous.ordersFinishedAmount ?? 0)}
+                            delta={data.totals.deltas.ordersFinishedAmountPct}
+                        />
+                        <KpiCard
                             label="Pedidos atendidos"
                             value={data.totals.current.ordersCount}
                             previous={data.totals.previous.ordersCount}
@@ -368,6 +379,7 @@ export default function WorkerPerformance({ token }) {
                                         <th className="uk-text-right" style={{ minWidth: 120 }}>Procesos</th>
                                         <th className="uk-text-right" style={{ minWidth: 120 }}>Pedidos</th>
                                         <th className="uk-text-right" style={{ minWidth: 110 }}>Finalizados</th>
+                                        <th className="uk-text-right" style={{ minWidth: 120 }}>Importe finalizado</th>
                                         <th className="uk-text-right" style={{ minWidth: 110 }}>Líneas</th>
                                         <th className="uk-text-right" style={{ minWidth: 110 }}>Tiempo medio / proceso</th>
                                         <th className="uk-text-right" style={{ minWidth: 110 }}>Tiempo total</th>
@@ -381,7 +393,7 @@ export default function WorkerPerformance({ token }) {
                                 <tbody>
                                     {data.workers.length === 0 ? (
                                         <tr>
-                                            <td colSpan={9 + topStepLabels.length} style={{ textAlign: 'center', padding: 30, color: '#94a3b8' }}>
+                                            <td colSpan={10 + topStepLabels.length} style={{ textAlign: 'center', padding: 30, color: '#94a3b8' }}>
                                                 No hay procesos cerrados en el período.
                                             </td>
                                         </tr>
@@ -413,6 +425,13 @@ export default function WorkerPerformance({ token }) {
                                                     current={w.current.ordersFinishedCount ?? 0}
                                                     previous={w.previous.ordersFinishedCount ?? 0}
                                                     delta={w.deltas.ordersFinishedPct}
+                                                />
+                                            </td>
+                                            <td className="uk-text-right">
+                                                <CompareCell
+                                                    current={formatEUR(w.current.ordersFinishedAmount ?? 0)}
+                                                    previous={formatEUR(w.previous.ordersFinishedAmount ?? 0)}
+                                                    delta={w.deltas.ordersFinishedAmountPct}
                                                 />
                                             </td>
                                             <td className="uk-text-right">
@@ -476,6 +495,13 @@ export default function WorkerPerformance({ token }) {
                                                     current={data.totals.current.ordersFinishedCount ?? 0}
                                                     previous={data.totals.previous.ordersFinishedCount ?? 0}
                                                     delta={data.totals.deltas.ordersFinishedPct}
+                                                />
+                                            </td>
+                                            <td className="uk-text-right">
+                                                <CompareCell
+                                                    current={formatEUR(data.totals.current.ordersFinishedAmount ?? 0)}
+                                                    previous={formatEUR(data.totals.previous.ordersFinishedAmount ?? 0)}
+                                                    delta={data.totals.deltas.ordersFinishedAmountPct}
                                                 />
                                             </td>
                                             <td className="uk-text-right">
