@@ -14,6 +14,13 @@ const typeLabels = {
     correction: 'Corrección',
 };
 
+const cardMethodLabels = {
+    card_pos: 'Tarjeta (TPV)',
+    card: 'Tarjeta',
+    stripe: 'Stripe',
+    transfer: 'Transferencia',
+};
+
 function isNegativeType(type) {
     return ['withdrawal', 'refund_cash_out'].includes(type);
 }
@@ -148,47 +155,124 @@ export default function CashAudit({ token }) {
                                                         <div style={{ background: '#f8fafc', padding: '12px 20px', borderTop: '1px solid #e2e8f0' }}>
                                                             {movLoading === c.id ? (
                                                                 <div style={{ textAlign: 'center', padding: 12, color: '#94a3b8' }}>Cargando movimientos...</div>
-                                                            ) : closureMovs?.movements?.length === 0 ? (
-                                                                <div style={{ textAlign: 'center', padding: 12, color: '#94a3b8' }}>Sin movimientos</div>
                                                             ) : (
-                                                                <table className="uk-table uk-table-small uk-table-divider" style={{ margin: 0, fontSize: '0.8rem' }}>
-                                                                    <thead>
-                                                                        <tr>
-                                                                            <th>Hora</th>
-                                                                            <th>Tipo</th>
-                                                                            <th style={{ textAlign: 'right' }}>Importe</th>
-                                                                            <th>Pedido</th>
-                                                                            <th>Persona</th>
-                                                                            <th>Nota</th>
-                                                                        </tr>
-                                                                    </thead>
-                                                                    <tbody>
-                                                                        {(closureMovs?.movements || []).map(m => {
-                                                                            const amount = Number(m.amount || 0);
-                                                                            const neg = isNegativeType(m.type);
-                                                                            return (
-                                                                                <tr key={m.id}>
-                                                                                    <td>{new Date(m.movementat).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}</td>
-                                                                                    <td>
-                                                                                        <span style={{
-                                                                                            fontSize: '0.7rem', padding: '1px 6px', borderRadius: 4,
-                                                                                            background: neg ? '#fef2f2' : '#f0fdf4',
-                                                                                            color: neg ? '#dc2626' : '#16a34a',
-                                                                                        }}>
-                                                                                            {typeLabels[m.type] || m.type}
-                                                                                        </span>
-                                                                                    </td>
-                                                                                    <td style={{ textAlign: 'right', fontWeight: 600, color: neg ? '#dc2626' : '#16a34a' }}>
-                                                                                        {neg ? '-' : '+'}{formatEUR(amount)}
-                                                                                    </td>
-                                                                                    <td>{m.order ? `#${m.order.orderNum}` : '-'}</td>
-                                                                                    <td>{m.personUser ? `${m.personUser.firstName} ${m.personUser.lastName}` : '-'}</td>
-                                                                                    <td style={{ color: '#64748b' }}>{m.note || '-'}</td>
+                                                                <>
+                                                                    {/* Movimientos de efectivo */}
+                                                                    <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475569', textTransform: 'uppercase', marginBottom: 6 }}>
+                                                                        Movimientos en efectivo
+                                                                    </div>
+                                                                    {closureMovs?.movements?.length === 0 ? (
+                                                                        <div style={{ textAlign: 'center', padding: 8, color: '#94a3b8', fontSize: '0.85rem' }}>Sin movimientos</div>
+                                                                    ) : (
+                                                                        <table className="uk-table uk-table-small uk-table-divider" style={{ margin: 0, fontSize: '0.8rem' }}>
+                                                                            <thead>
+                                                                                <tr>
+                                                                                    <th>Hora</th>
+                                                                                    <th>Tipo</th>
+                                                                                    <th style={{ textAlign: 'right' }}>Importe</th>
+                                                                                    <th>Pedido</th>
+                                                                                    <th>Persona</th>
+                                                                                    <th>Nota</th>
                                                                                 </tr>
-                                                                            );
-                                                                        })}
-                                                                    </tbody>
-                                                                </table>
+                                                                            </thead>
+                                                                            <tbody>
+                                                                                {(closureMovs?.movements || []).map(m => {
+                                                                                    const amount = Number(m.amount || 0);
+                                                                                    const neg = isNegativeType(m.type);
+                                                                                    return (
+                                                                                        <tr key={m.id}>
+                                                                                            <td>{new Date(m.movementat).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}</td>
+                                                                                            <td>
+                                                                                                <span style={{
+                                                                                                    fontSize: '0.7rem', padding: '1px 6px', borderRadius: 4,
+                                                                                                    background: neg ? '#fef2f2' : '#f0fdf4',
+                                                                                                    color: neg ? '#dc2626' : '#16a34a',
+                                                                                                }}>
+                                                                                                    {typeLabels[m.type] || m.type}
+                                                                                                </span>
+                                                                                            </td>
+                                                                                            <td style={{ textAlign: 'right', fontWeight: 600, color: neg ? '#dc2626' : '#16a34a' }}>
+                                                                                                {neg ? '-' : '+'}{formatEUR(amount)}
+                                                                                            </td>
+                                                                                            <td>{m.order ? `#${m.order.orderNum}` : '-'}</td>
+                                                                                            <td>{m.personUser ? `${m.personUser.firstName} ${m.personUser.lastName}` : '-'}</td>
+                                                                                            <td style={{ color: '#64748b' }}>{m.note || '-'}</td>
+                                                                                        </tr>
+                                                                                    );
+                                                                                })}
+                                                                            </tbody>
+                                                                        </table>
+                                                                    )}
+
+                                                                    {/* Pagos con tarjeta (informativo, no afecta al cierre) */}
+                                                                    {(() => {
+                                                                        const cardPayments = closureMovs?.cardPayments || [];
+                                                                        const cardTotal = Number(closureMovs?.cardTotal || 0);
+                                                                        const byMethod = cardPayments.reduce((acc, p) => {
+                                                                            const k = p.method || 'card';
+                                                                            acc[k] = (acc[k] || 0) + Number(p.amount || 0);
+                                                                            return acc;
+                                                                        }, {});
+                                                                        return (
+                                                                            <div style={{ marginTop: 14 }}>
+                                                                                <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 6, flexWrap: 'wrap', gap: 8 }}>
+                                                                                    <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475569', textTransform: 'uppercase' }}>
+                                                                                        Pagos con tarjeta / otros (informativo)
+                                                                                    </div>
+                                                                                    <div style={{ fontSize: '0.85rem', color: '#0f172a' }}>
+                                                                                        Total: <strong style={{ color: '#2563eb' }}>{formatEUR(cardTotal)}</strong>
+                                                                                        {Object.keys(byMethod).length > 0 && (
+                                                                                            <span style={{ color: '#64748b', marginLeft: 8 }}>
+                                                                                                ({Object.entries(byMethod).map(([k, v]) =>
+                                                                                                    `${cardMethodLabels[k] || k}: ${formatEUR(v)}`
+                                                                                                ).join(' · ')})
+                                                                                            </span>
+                                                                                        )}
+                                                                                    </div>
+                                                                                </div>
+                                                                                {cardPayments.length === 0 ? (
+                                                                                    <div style={{ textAlign: 'center', padding: 8, color: '#94a3b8', fontSize: '0.85rem' }}>
+                                                                                        Sin pagos con tarjeta en este periodo
+                                                                                    </div>
+                                                                                ) : (
+                                                                                    <table className="uk-table uk-table-small uk-table-divider" style={{ margin: 0, fontSize: '0.8rem' }}>
+                                                                                        <thead>
+                                                                                            <tr>
+                                                                                                <th>Hora</th>
+                                                                                                <th>Método</th>
+                                                                                                <th style={{ textAlign: 'right' }}>Importe</th>
+                                                                                                <th>Pedido</th>
+                                                                                                <th>Cliente</th>
+                                                                                                <th>Nota</th>
+                                                                                            </tr>
+                                                                                        </thead>
+                                                                                        <tbody>
+                                                                                            {cardPayments.map(p => (
+                                                                                                <tr key={p.id}>
+                                                                                                    <td>{new Date(p.createdAt).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}</td>
+                                                                                                    <td>
+                                                                                                        <span style={{
+                                                                                                            fontSize: '0.7rem', padding: '1px 6px', borderRadius: 4,
+                                                                                                            background: '#eff6ff', color: '#2563eb',
+                                                                                                        }}>
+                                                                                                            {cardMethodLabels[p.method] || p.method}
+                                                                                                        </span>
+                                                                                                    </td>
+                                                                                                    <td style={{ textAlign: 'right', fontWeight: 600, color: '#2563eb' }}>
+                                                                                                        {formatEUR(Number(p.amount || 0))}
+                                                                                                    </td>
+                                                                                                    <td>{p.order ? `#${p.order.orderNum}` : '-'}</td>
+                                                                                                    <td>{p.client ? `${p.client.firstName} ${p.client.lastName}` : '-'}</td>
+                                                                                                    <td style={{ color: '#64748b' }}>{p.note || '-'}</td>
+                                                                                                </tr>
+                                                                                            ))}
+                                                                                        </tbody>
+                                                                                    </table>
+                                                                                )}
+                                                                            </div>
+                                                                        );
+                                                                    })()}
+                                                                </>
                                                             )}
                                                         </div>
                                                     </td>

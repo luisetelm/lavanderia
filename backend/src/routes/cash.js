@@ -16,18 +16,70 @@ function signedAmount(type, amount) {
 export default async function cashRoutes(fastify) {
     const prisma = fastify.prisma;
 
+    // Métodos de pago que NO suponen entrada/salida de efectivo en caja
+    const NON_CASH_METHODS = ['card_pos', 'card', 'stripe', 'transfer'];
+
+    // Devuelve la fecha del último cierre (o null si no hay)
+    async function getLastClosureDate() {
+        const last = await prisma.cashClosure.findFirst({
+            orderBy: { closedat: 'desc' },
+            select: { closedat: true },
+        });
+        return last ? last.closedat : null;
+    }
+
+    // Pagos no-efectivo registrados desde el último cierre (informativo)
+    async function getUnclosedCardPayments() {
+        const since = await getLastClosureDate();
+        return prisma.payment.findMany({
+            where: {
+                status: 'completed',
+                method: { in: NON_CASH_METHODS },
+                ...(since ? { createdAt: { gt: since } } : {}),
+            },
+            orderBy: { createdAt: 'asc' },
+            include: {
+                order: { select: { id: true, orderNum: true } },
+            },
+        });
+    }
+
     // GET /api/cash/last-closure
     fastify.get('/last-closure', async () => {
         return prisma.cashClosure.findFirst({orderBy: {closedat: 'desc'}});
     });
 
     // GET /api/cash/movements/unclosed
+    // Mantenemos el array de movimientos en efectivo (compatibilidad con el frontend actual).
     fastify.get('/movements/unclosed', async () => {
         return prisma.cashMovement.findMany({
             where: {closureId: null},
             orderBy: {movementat: 'asc'},
             include: {personUser: {select: {id: true, firstName: true, lastName: true, email: true}}},
         });
+    });
+
+    // GET /api/cash/unclosed-summary
+    // Devuelve movimientos en efectivo + pagos con tarjeta pendientes de cierre, listos
+    // para mostrar en el modal de cierre.
+    fastify.get('/unclosed-summary', async () => {
+        const [movements, cardPayments] = await Promise.all([
+            prisma.cashMovement.findMany({
+                where: {closureId: null},
+                orderBy: {movementat: 'asc'},
+                include: {
+                    personUser: {select: {id: true, firstName: true, lastName: true, email: true}},
+                    order: {select: {id: true, orderNum: true}},
+                },
+            }),
+            getUnclosedCardPayments(),
+        ]);
+        const cardTotal = cardPayments.reduce((acc, p) => acc + Number(p.amount || 0), 0);
+        return {
+            movements,
+            cardPayments,
+            cardTotal: Number(cardTotal.toFixed(2)),
+        };
     });
 
     // POST /api/cash/movements
@@ -144,16 +196,42 @@ export default async function cashRoutes(fastify) {
         });
         if (!closure) return reply.code(404).send({error: 'Cierre no encontrado'});
 
-        const movements = await prisma.cashMovement.findMany({
-            where: {closureId: id},
-            orderBy: {movementat: 'asc'},
-            include: {
-                personUser: {select: {id: true, firstName: true, lastName: true}},
-                order: {select: {id: true, orderNum: true}},
-            },
+        // Cierre anterior para acotar el periodo de los pagos con tarjeta
+        const prevClosure = await prisma.cashClosure.findFirst({
+            where: {closedat: {lt: closure.closedat}},
+            orderBy: {closedat: 'desc'},
+            select: {closedat: true},
         });
+        const periodFrom = prevClosure ? prevClosure.closedat : new Date(0);
 
-        return {closure, movements};
+        const [movements, cardPayments] = await Promise.all([
+            prisma.cashMovement.findMany({
+                where: {closureId: id},
+                orderBy: {movementat: 'asc'},
+                include: {
+                    personUser: {select: {id: true, firstName: true, lastName: true}},
+                    order: {select: {id: true, orderNum: true}},
+                },
+            }),
+            prisma.payment.findMany({
+                where: {
+                    status: 'completed',
+                    method: {in: NON_CASH_METHODS},
+                    createdAt: {gt: periodFrom, lte: closure.closedat},
+                },
+                orderBy: {createdAt: 'asc'},
+                include: {
+                    order: {select: {id: true, orderNum: true}},
+                    client: {select: {id: true, firstName: true, lastName: true}},
+                },
+            }),
+        ]);
+
+        const cardTotal = Number(
+            cardPayments.reduce((acc, p) => acc + Number(p.amount || 0), 0).toFixed(2)
+        );
+
+        return {closure, movements, cardPayments, cardTotal};
     });
 
     // GET /api/cash/closures

@@ -204,6 +204,10 @@ export function fetchUnclosedCashMovements(token) {
     return request('/cash/movements/unclosed', token, { method: 'GET' });
 }
 
+export function fetchUnclosedCashSummary(token) {
+    return request('/cash/unclosed-summary', token, { method: 'GET' });
+}
+
 export function fetchLastClosure(token) {
     return request('/cash/last-closure', token, { method: 'GET' });
 }
