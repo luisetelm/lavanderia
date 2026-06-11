@@ -5,6 +5,7 @@ import {
     fetchUsers,
     payWithCard,
     payWithCash,
+    markOrderPaidFree,
     updateOrder,
     updateOrder as apiUpdateOrder,
     retryNotification,
@@ -184,6 +185,24 @@ export default function PaymentSection({token, orderId, onPaid, initialOrder = n
         setLastChange(change);
         onPaid?.();
         return change;
+    };
+
+    // Pedido de importe 0 (p. ej. 100% descuento): marcar pagado sin cobro
+    const handleMarkPaidFree = async () => {
+        if (!order) return;
+        setIsProcessing(true);
+        setLocalError('');
+        try {
+            const {order: paidOrder} = await markOrderPaidFree(token, order.id);
+            setOrder(paidOrder);
+            onPaid?.();
+            notify('Pedido marcado como pagado (0 €)', 'success');
+        } catch (e) {
+            console.error('Error marcando pedido como pagado:', e);
+            setLocalError(e.error || 'Error al marcar como pagado');
+        } finally {
+            setIsProcessing(false);
+        }
     };
 
     const markReady = async (sendSMS = false) => {
@@ -895,14 +914,25 @@ export default function PaymentSection({token, orderId, onPaid, initialOrder = n
                 >
                     {/* Cobro: acción principal cuando el pedido está pendiente de pago */}
                     {!order.paid && (
-                        <button
-                            type="button"
-                            className={'uk-button uk-button-primary uk-width-1-1@l'}
-                            onClick={() => setShowPaymentModal(true)}
-                            disabled={isProcessing}
-                        >
-                            💰 Cobrar {formatEUR(order.total)}
-                        </button>
+                        Number(order.total) <= 0 ? (
+                            <button
+                                type="button"
+                                className={'uk-button uk-button-primary uk-width-1-1@l'}
+                                onClick={handleMarkPaidFree}
+                                disabled={isProcessing}
+                            >
+                                ✓ Marcar como pagado (0 €)
+                            </button>
+                        ) : (
+                            <button
+                                type="button"
+                                className={'uk-button uk-button-primary uk-width-1-1@l'}
+                                onClick={() => setShowPaymentModal(true)}
+                                disabled={isProcessing}
+                            >
+                                💰 Cobrar {formatEUR(order.total)}
+                            </button>
+                        )
                     )}
 
                     <button

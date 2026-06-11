@@ -3,6 +3,7 @@ import {fetchOrders, fetchUsers, payWithCard, payWithCash} from '../api.js';
 import PaymentSection from '../components/PaymentSection.jsx';
 import {useLocation} from 'react-router-dom';
 import PageToolbar from '../components/PageToolbar.jsx';
+import Pagination from '../components/Pagination.jsx';
 
 
 export default function Tasks({token, user}) {
@@ -15,7 +16,10 @@ export default function Tasks({token, user}) {
     const [filterWorker, setFilterWorker] = useState(''); // Todas las tareas por defecto
     const [sortBy, setSortBy] = useState('createdAt');
     const [sortOrder, setSortOrder] = useState('desc');
+    const [page, setPage] = useState(0);
+    const [meta, setMeta] = useState(null);
     const debounceRef = useRef(null);
+    const PAGE_SIZE = 20;
 
     const [showCashModalForTask, setShowCashModalForTask] = useState(null);
     const [receivedAmount, setReceivedAmount] = useState('');
@@ -24,20 +28,26 @@ export default function Tasks({token, user}) {
     const location = useLocation();
     const {filterOrderId, orderNumber} = location.state || {};
 
-    const load = async (search = '', status = 'all', workerId, sort = 'createdAt', order = 'desc') => {
+    const load = async (search = '', status = 'all', workerId, sort = 'createdAt', order = 'desc', pageArg = 0) => {
         setLoading(true);
         try {
-            const list = await fetchOrders(token, {
+            const resp = await fetchOrders(token, {
                 q: search,
                 status,
-                workerId, // Esto ahora recibirá el parámetro correctamente
+                workerId,
                 sortBy: sort,
-                sortOrder: order
+                sortOrder: order,
+                page: pageArg,
+                size: PAGE_SIZE,
             });
-            setTasks(Array.isArray(list) ? list : []);
+            // Respuesta paginada: { data, meta }
+            const list = Array.isArray(resp) ? resp : (resp?.data || []);
+            setTasks(list);
+            setMeta(Array.isArray(resp) ? null : (resp?.meta || null));
             setError('');
         } catch (e) {
             setTasks([]);
+            setMeta(null);
             setError(e.error || 'Error cargando tareas');
         } finally {
             setLoading(false);
@@ -48,15 +58,8 @@ export default function Tasks({token, user}) {
     useEffect(() => {
         if (filterOrderId && orderNumber) {
             setQuery(orderNumber.toString());
-            load(orderNumber.toString(), filterStatus, filterWorker, sortBy, sortOrder);
         }
-    }, [filterOrderId, orderNumber, filterStatus, filterWorker, sortBy, sortOrder]);
-
-    useEffect(() => {
-        if (!filterOrderId) {
-            load(query, filterStatus, filterWorker, sortBy, sortOrder);
-        }
-    }, [token]);
+    }, [filterOrderId, orderNumber]);
 
     // Cargar trabajadores UNA sola vez para pasarlos a todas las PaymentSection
     useEffect(() => {
@@ -72,13 +75,25 @@ export default function Tasks({token, user}) {
         return () => { cancelled = true; };
     }, [token]);
 
+    // Al cambiar búsqueda/filtros/orden, volver a la primera página
+    useEffect(() => {
+        setPage(0);
+    }, [query, filterStatus, filterWorker, sortBy, sortOrder]);
+
+    // Carga con debounce; incluye la página actual
     useEffect(() => {
         if (debounceRef.current) clearTimeout(debounceRef.current);
         debounceRef.current = setTimeout(() => {
-            load(query, filterStatus, filterWorker, sortBy, sortOrder);
+            load(query, filterStatus, filterWorker, sortBy, sortOrder, page);
         }, 300);
         return () => clearTimeout(debounceRef.current);
-    }, [query, token, filterStatus, filterWorker, sortBy, sortOrder]);
+    }, [query, token, filterStatus, filterWorker, sortBy, sortOrder, page]);
+
+    const handlePageChange = (newPage1Based) => {
+        const newPage = newPage1Based - 1; // Pagination usa base 1
+        setPage(newPage);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
 
     return (<div>
         <PageToolbar
@@ -153,7 +168,7 @@ export default function Tasks({token, user}) {
                             orderId={t.id}
                             initialOrder={t}
                             workers={workers}
-                            onPaid={() => load(query, filterStatus)}
+                            onPaid={() => load(query, filterStatus, filterWorker, sortBy, sortOrder, page)}
                         />
                     </div>) : (<div className="uk-alert uk-alert-warning uk-margin">
                         Pedido no disponible
@@ -184,6 +199,10 @@ export default function Tasks({token, user}) {
                 </div>);
             })}
         </div>
+
+        {!loading && meta && meta.totalPages > 1 && (
+            <Pagination meta={meta} onPageChange={handlePageChange} />
+        )}
     </div>);
 }
 

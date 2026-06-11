@@ -446,6 +446,23 @@ export default async function (fastify, opts) {
                 return reply.status(400).send({error: 'Pedido ya está pagado'});
             }
 
+            // Pedido sin importe (p. ej. 100% de descuento): no hay nada que cobrar.
+            // Se marca como pagado sin crear pago, movimiento de caja ni factura.
+            if (Number(order.total) <= 0) {
+                const updatedFree = await prisma.order.update({
+                    where: {id: orderId},
+                    data: {paymentMethod: 'none', paid: true},
+                    include: {
+                        lines: {include: {product: true}},
+                        client: {
+                            select: {id: true, firstName: true, lastName: true, email: true, phone: true},
+                        },
+                        invoiceTickets: {include: {invoices: true}},
+                    },
+                });
+                return reply.send({order: updatedFree, change: 0});
+            }
+
             if (method !== 'cash' && method !== 'card') {
                 return reply.status(400).send({error: 'Método de pago inválido'});
             }
@@ -532,7 +549,7 @@ export default async function (fastify, opts) {
 
     fastify.get('/', async (req, reply) => {
         const prisma = fastify.prisma;
-        const {q, status, workerId, sortBy = 'createdAt', sortOrder = 'desc', startDate, endDate} = req.query || {};
+        const {q, status, workerId, sortBy = 'createdAt', sortOrder = 'desc', startDate, endDate, page, size} = req.query || {};
 
         const where = {};
 
@@ -580,43 +597,56 @@ export default async function (fastify, opts) {
         const orderByField = validSortFields.includes(sortBy) ? sortBy : 'createdAt';
         const orderByDirection = validSortOrders.includes(sortOrder) ? sortOrder : 'desc';
 
-        try {
-            const orders = await prisma.order.findMany({
-                where, include: {
-                    lines: {
-                        select: {
-                            id: true,
-                            productId: true,
-                            variantId: true,
-                            quantity: true,
-                            unitPrice: true,
-                            totalPrice: true,
-                            annotations: true,
-                            discount: true,
-                            color: true,
-                            product: {
-                                select: {id: true, name: true, basePrice: true, serviceOptions: true}
-                            },
-                            steps: {
-                                include: {
-                                    stepConfig: true,
-                                    itineraryStep: true,
-                                    completedByUser: { select: { id: true, firstName: true } }
-                                },
-                                orderBy: { id: 'asc' }
-                            }
-                        }
-                    }, client: {
-                        select: {id: true, firstName: true, lastName: true, phone: true, email: true, notifyChannel: true},
-                    }, notification: {
-                        select: {id: true, type: true, sentAt: true, status: true, content: true}
-                    }, invoiceTickets: {
+        // Paginación opt-in: solo si llega ?page. Si no, se devuelve el array completo (compatibilidad).
+        const paginated = page !== undefined;
+        const pageNum = Math.max(0, parseInt(page, 10) || 0);
+        const pageSize = Math.min(100, Math.max(1, parseInt(size, 10) || 20));
+
+        const include = {
+            lines: {
+                select: {
+                    id: true,
+                    productId: true,
+                    variantId: true,
+                    quantity: true,
+                    unitPrice: true,
+                    totalPrice: true,
+                    annotations: true,
+                    discount: true,
+                    color: true,
+                    product: {
+                        select: {id: true, name: true, basePrice: true, serviceOptions: true}
+                    },
+                    steps: {
                         include: {
-                            invoices: true
-                        }
+                            stepConfig: true,
+                            itineraryStep: true,
+                            completedByUser: { select: { id: true, firstName: true } }
+                        },
+                        orderBy: { id: 'asc' }
                     }
-                }, orderBy: {[orderByField]: orderByDirection},
-            });
+                }
+            }, client: {
+                select: {id: true, firstName: true, lastName: true, phone: true, email: true, notifyChannel: true},
+            }, notification: {
+                select: {id: true, type: true, sentAt: true, status: true, content: true}
+            }, invoiceTickets: {
+                include: {
+                    invoices: true
+                }
+            }
+        };
+
+        try {
+            const [orders, total] = await Promise.all([
+                prisma.order.findMany({
+                    where,
+                    include,
+                    orderBy: {[orderByField]: orderByDirection},
+                    ...(paginated ? {skip: pageNum * pageSize, take: pageSize} : {}),
+                }),
+                paginated ? prisma.order.count({where}) : Promise.resolve(null),
+            ]);
 
             orders.forEach(order => {
                 const inv = order?.invoiceTickets?.invoices;
@@ -624,6 +654,21 @@ export default async function (fastify, opts) {
                     order.factura = inv;
                 }
             })
+
+            if (paginated) {
+                const totalPages = Math.ceil(total / pageSize);
+                return reply.send({
+                    data: orders,
+                    meta: {
+                        page: pageNum,
+                        size: pageSize,
+                        total,
+                        totalPages,
+                        hasPrevPage: pageNum > 0,
+                        hasNextPage: pageNum < totalPages - 1,
+                    },
+                });
+            }
 
             return reply.send(orders);
 

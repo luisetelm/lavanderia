@@ -88,7 +88,7 @@ export function fetchDates(page, token) {
     });
 }
 
-export function fetchOrders(token, {q, status, workerId, sortBy, sortOrder, startDate, endDate} = {}) {
+export function fetchOrders(token, {q, status, workerId, sortBy, sortOrder, startDate, endDate, page, size} = {}) {
     const params = new URLSearchParams();
     if (q) params.set('q', q);
     if (status && status !== 'all') params.set('status', status);
@@ -97,6 +97,8 @@ export function fetchOrders(token, {q, status, workerId, sortBy, sortOrder, star
     if (startDate) params.set('startDate', startDate);
     if (endDate) params.set('endDate', endDate);
     if (workerId) params.set('workerId',parseInt(workerId,10));
+    if (page !== undefined && page !== null) params.set('page', page);
+    if (size !== undefined && size !== null) params.set('size', size);
     const qs = params.toString();
     return request(`/orders${qs ? `?${qs}` : ''}`, token, {method: 'GET'});
 }
@@ -187,6 +189,13 @@ export function payWithCash(token, orderId, receivedAmount) {
         method: 'POST', body: JSON.stringify({
             method: 'cash', receivedAmount: parseFloat(receivedAmount),
         }),
+    });
+}
+
+// Marca un pedido de importe 0 como pagado (sin cobro real)
+export function markOrderPaidFree(token, orderId) {
+    return request(`/orders/${orderId}/pay`, token, {
+        method: 'POST', body: JSON.stringify({method: 'none'}),
     });
 }
 
