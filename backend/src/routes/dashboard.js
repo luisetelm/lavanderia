@@ -304,4 +304,259 @@ export default async function dashboardRoutes(fastify) {
             return reply.status(500).send({ error: 'Error obteniendo top productos' });
         }
     });
+
+    /**
+     * GET /api/dashboard/worker-performance
+     * Query: ?from=YYYY-MM-DD&to=YYYY-MM-DD
+     *
+     * Devuelve, para el rango pedido y el rango anterior de igual duración,
+     * el rendimiento de cada trabajadora basado en los pasos (OrderLineStep)
+     * que ha completado.
+     *
+     * Métricas por trabajadora y período:
+     *   - stepsCompleted   : nº de procesos cerrados (status=done)
+     *   - ordersCount      : nº de pedidos distintos en los que intervino
+     *   - linesCount       : nº de líneas (prendas) distintas tocadas
+     *   - totalDurationMin : suma de tiempos (completedAt - startedAt)
+     *   - avgStepMin       : tiempo medio por proceso
+     *   - byStepLabel      : { 'Lavado': 12, 'Planchado': 7, ... }
+     */
+    fastify.get('/worker-performance', async (req, reply) => {
+        try {
+            const now = new Date();
+            const defaultTo = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+            const defaultFrom = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 29, 0, 0, 0, 0);
+
+            const from = req.query.from ? new Date(`${req.query.from}T00:00:00.000`) : defaultFrom;
+            const to = req.query.to ? new Date(`${req.query.to}T23:59:59.999`) : defaultTo;
+
+            if (isNaN(from.getTime()) || isNaN(to.getTime()) || from > to) {
+                return reply.status(400).send({ error: 'Rango de fechas inválido' });
+            }
+
+            // Período anterior de IGUAL duración: termina justo antes de "from"
+            const rangeMs = to.getTime() - from.getTime();
+            const prevTo = new Date(from.getTime() - 1);
+            const prevFrom = new Date(prevTo.getTime() - rangeMs);
+
+            // Carga de pasos completados en ambos rangos
+            const loadSteps = (gte, lte) => prisma.orderLineStep.findMany({
+                where: {
+                    status: 'done',
+                    completedBy: { not: null },
+                    completedAt: { gte, lte },
+                },
+                select: {
+                    id: true,
+                    orderLineId: true,
+                    startedAt: true,
+                    completedAt: true,
+                    completedBy: true,
+                    stepConfig:    { select: { stepLabel: true } },
+                    itineraryStep: { select: { stepLabel: true } },
+                    orderLine:     {
+                        select: {
+                            orderId: true,
+                            order: { select: { fechaLimite: true } },
+                        },
+                    },
+                    completedByUser: {
+                        select: { id: true, firstName: true, lastName: true, role: true, isActive: true },
+                    },
+                },
+            });
+
+            const [currentSteps, previousSteps] = await Promise.all([
+                loadSteps(from, to),
+                loadSteps(prevFrom, prevTo),
+            ]);
+
+            const labelOf = (s) => s.stepConfig?.stepLabel || s.itineraryStep?.stepLabel || 'Otro';
+
+            const aggregate = (steps) => {
+                const byWorker = new Map();
+                let totals = {
+                    stepsCompleted: 0,
+                    ordersCount: 0,
+                    linesCount: 0,
+                    totalDurationMin: 0,
+                };
+                const totalOrders = new Set();
+                const totalLines = new Set();
+
+                for (const s of steps) {
+                    const wid = s.completedBy;
+                    if (!wid) continue;
+                    let row = byWorker.get(wid);
+                    if (!row) {
+                        row = {
+                            workerId: wid,
+                            name: s.completedByUser
+                                ? `${s.completedByUser.firstName || ''} ${s.completedByUser.lastName || ''}`.trim()
+                                : `#${wid}`,
+                            role: s.completedByUser?.role || null,
+                            isActive: s.completedByUser?.isActive ?? true,
+                            stepsCompleted: 0,
+                            _orders: new Set(),
+                            _lines: new Set(),
+                            totalDurationMin: 0,
+                            _durationsCount: 0,
+                            byStepLabel: {},
+                            _onTimeEligible: 0,
+                            _onTime: 0,
+                        };
+                        byWorker.set(wid, row);
+                    }
+                    row.stepsCompleted += 1;
+                    if (s.orderLine?.orderId) {
+                        row._orders.add(s.orderLine.orderId);
+                        totalOrders.add(s.orderLine.orderId);
+                    }
+                    if (s.orderLineId) {
+                        row._lines.add(s.orderLineId);
+                        totalLines.add(s.orderLineId);
+                    }
+                    if (s.startedAt && s.completedAt) {
+                        const min = (new Date(s.completedAt) - new Date(s.startedAt)) / 60000;
+                        if (min >= 0 && min < 60 * 24) { // descartamos outliers > 24h
+                            row.totalDurationMin += min;
+                            row._durationsCount += 1;
+                            totals.totalDurationMin += min;
+                        }
+                    }
+                    // Puntualidad: ¿el paso se cerró antes de la fechaLimite del pedido?
+                    const limit = s.orderLine?.order?.fechaLimite;
+                    if (limit && s.completedAt) {
+                        row._onTimeEligible += 1;
+                        if (new Date(s.completedAt) <= new Date(limit)) {
+                            row._onTime += 1;
+                        }
+                    }
+                    const lbl = labelOf(s);
+                    row.byStepLabel[lbl] = (row.byStepLabel[lbl] || 0) + 1;
+                }
+
+                const workers = Array.from(byWorker.values()).map(r => ({
+                    workerId: r.workerId,
+                    name: r.name,
+                    role: r.role,
+                    isActive: r.isActive,
+                    stepsCompleted: r.stepsCompleted,
+                    ordersCount: r._orders.size,
+                    linesCount: r._lines.size,
+                    totalDurationMin: Math.round(r.totalDurationMin),
+                    avgStepMin: r._durationsCount > 0
+                        ? Number((r.totalDurationMin / r._durationsCount).toFixed(1))
+                        : null,
+                    byStepLabel: r.byStepLabel,
+                    onTimePct: r._onTimeEligible > 0
+                        ? Number(((r._onTime / r._onTimeEligible) * 100).toFixed(1))
+                        : null,
+                    onTimeEligible: r._onTimeEligible,
+                    onTimeCount: r._onTime,
+                }));
+
+                totals.stepsCompleted = steps.length;
+                totals.ordersCount = totalOrders.size;
+                totals.linesCount = totalLines.size;
+                totals.totalDurationMin = Math.round(totals.totalDurationMin);
+
+                return { workers, totals };
+            };
+
+            const cur = aggregate(currentSteps);
+            const prev = aggregate(previousSteps);
+
+            // Mezclamos para tener una fila por trabajadora con ambos períodos
+            const map = new Map();
+            for (const w of cur.workers) {
+                map.set(w.workerId, { ...w, current: w, previous: null });
+            }
+            for (const w of prev.workers) {
+                if (!map.has(w.workerId)) {
+                    map.set(w.workerId, {
+                        workerId: w.workerId,
+                        name: w.name,
+                        role: w.role,
+                        isActive: w.isActive,
+                        current: {
+                            workerId: w.workerId, name: w.name,
+                            stepsCompleted: 0, ordersCount: 0, linesCount: 0,
+                            totalDurationMin: 0, avgStepMin: null, byStepLabel: {},
+                        },
+                        previous: w,
+                    });
+                } else {
+                    map.get(w.workerId).previous = w;
+                }
+            }
+
+            const pct = (a, b) => {
+                if (b === 0 || b == null) return a > 0 ? 100 : 0;
+                return Number((((a - b) / b) * 100).toFixed(1));
+            };
+
+            const workers = Array.from(map.values()).map(row => {
+                const c = row.current;
+                const p = row.previous || {
+                    stepsCompleted: 0, ordersCount: 0, linesCount: 0,
+                    totalDurationMin: 0, avgStepMin: null,
+                    onTimePct: null, onTimeEligible: 0, onTimeCount: 0,
+                };
+                return {
+                    workerId: row.workerId,
+                    name: row.name,
+                    role: row.role,
+                    isActive: row.isActive,
+                    current: {
+                        stepsCompleted: c.stepsCompleted,
+                        ordersCount:    c.ordersCount,
+                        linesCount:     c.linesCount,
+                        totalDurationMin: c.totalDurationMin,
+                        avgStepMin:     c.avgStepMin,
+                        byStepLabel:    c.byStepLabel,
+                        onTimePct:      c.onTimePct,
+                        onTimeEligible: c.onTimeEligible,
+                        onTimeCount:    c.onTimeCount,
+                    },
+                    previous: {
+                        stepsCompleted: p.stepsCompleted,
+                        ordersCount:    p.ordersCount,
+                        linesCount:     p.linesCount,
+                        totalDurationMin: p.totalDurationMin,
+                        avgStepMin:     p.avgStepMin,
+                        onTimePct:      p.onTimePct,
+                    },
+                    deltas: {
+                        stepsCompletedPct: pct(c.stepsCompleted, p.stepsCompleted),
+                        ordersCountPct:    pct(c.ordersCount,    p.ordersCount),
+                        linesCountPct:     pct(c.linesCount,     p.linesCount),
+                    },
+                    sharePct: cur.totals.stepsCompleted > 0
+                        ? Number(((c.stepsCompleted / cur.totals.stepsCompleted) * 100).toFixed(1))
+                        : 0,
+                };
+            }).sort((a, b) => b.current.stepsCompleted - a.current.stepsCompleted);
+
+            const days = Math.max(1, Math.round((to - from) / (1000 * 60 * 60 * 24)) + 1);
+
+            return reply.send({
+                range:    { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10), days },
+                previous: { from: prevFrom.toISOString().slice(0, 10), to: prevTo.toISOString().slice(0, 10) },
+                totals: {
+                    current:  cur.totals,
+                    previous: prev.totals,
+                    deltas: {
+                        stepsCompletedPct: pct(cur.totals.stepsCompleted, prev.totals.stepsCompleted),
+                        ordersCountPct:    pct(cur.totals.ordersCount,    prev.totals.ordersCount),
+                        linesCountPct:     pct(cur.totals.linesCount,     prev.totals.linesCount),
+                    },
+                },
+                workers,
+            });
+        } catch (err) {
+            console.error('Error en GET /api/dashboard/worker-performance:', err);
+            return reply.status(500).send({ error: 'Error obteniendo rendimiento de trabajadoras' });
+        }
+    });
 }

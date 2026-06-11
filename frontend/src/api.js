@@ -387,6 +387,14 @@ export function fetchDashboard(token) {
     return request('/dashboard', token);
 }
 
+export function fetchWorkerPerformance(token, { from, to } = {}) {
+    const params = new URLSearchParams();
+    if (from) params.set('from', from);
+    if (to) params.set('to', to);
+    const qs = params.toString();
+    return request(`/dashboard/worker-performance${qs ? `?${qs}` : ''}`, token);
+}
+
 export function fetchTopProducts(token, { from, to, limit, groupBy } = {}) {
     const params = new URLSearchParams();
     if (from) params.set('from', from);

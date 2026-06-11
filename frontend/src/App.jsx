@@ -17,6 +17,7 @@ import ItineraryConfig from './pages/ItineraryConfig.jsx';
 import ResourceConfig from './pages/ResourceConfig.jsx';
 import WorkSchedule from './pages/WorkSchedule.jsx';
 import Stats from './pages/Stats.jsx';
+import WorkerPerformance from './pages/WorkerPerformance.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
 import DraftOrderBanner from './components/DraftOrderBanner.jsx';
 import { DraftOrderProvider } from './context/DraftOrderContext.jsx';
@@ -279,6 +280,7 @@ export default function App() {
                         <li><NavLink to="/productos"><span uk-icon="icon: grid; ratio: 0.9"></span> Productos</NavLink></li>
                         <li><NavLink to="/tareas"><span uk-icon="icon: list; ratio: 0.9"></span> Tareas</NavLink></li>
                         <li><NavLink to="/tracking"><span uk-icon="icon: bolt; ratio: 0.9"></span> Tracking</NavLink></li>
+                        <li><NavLink to="/rendimiento"><span uk-icon="icon: users; ratio: 0.9"></span> Rendimiento</NavLink></li>
                         <li><NavLink to="/usuarios"><span uk-icon="icon: users; ratio: 0.9"></span> Usuarios</NavLink></li>
                         <li><NavLink to="/mensajes">
                             <span uk-icon="icon: comment; ratio: 0.9"></span> Mensajes
@@ -337,6 +339,7 @@ export default function App() {
                     <Route path="/mensajes" element={<Messages token={token} onUnreadCount={setUnreadMsgCount}/>}/>
                     <Route path="/ventas" element={<Ventas token={token}/>}/>
                     <Route path="/estadisticas" element={<Stats token={token}/>}/>
+                    <Route path="/rendimiento" element={<WorkerPerformance token={token}/>}/>
                     <Route path="/resenas" element={<Reviews token={token}/>}/>
                     <Route path="/caja" element={<CashAudit token={token}/>}/>
                     <Route path="/horario" element={<WorkSchedule token={token}/>}/>
