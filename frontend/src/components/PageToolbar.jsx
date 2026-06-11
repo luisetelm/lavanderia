@@ -1,9 +1,32 @@
 import React, { useState } from 'react';
 
+function getCurrentUser() {
+    try {
+        const raw = localStorage.getItem('user');
+        return raw ? JSON.parse(raw) : null;
+    } catch {
+        return null;
+    }
+}
+
+const ROLE_LABELS = {
+    admin: 'Administrador/a',
+    cashier: 'Cajero/a',
+    worker: 'Trabajador/a',
+    customer: 'Cliente',
+};
+
 export default function PageToolbar({ title, filters, actions, children }) {
     const [filtersOpen, setFiltersOpen] = useState(false);
     const hasFilters = filters && filters.length > 0;
     const activeCount = hasFilters ? filters.filter(f => f.active).length : 0;
+    const user = getCurrentUser();
+    const fullName = user
+        ? `${user.firstName || ''} ${user.lastName || ''}`.trim()
+        : '';
+    const initials = user
+        ? `${(user.firstName || '').charAt(0)}${(user.lastName || '').charAt(0)}`.toUpperCase()
+        : '';
 
     return (
         <div className="page-toolbar">
@@ -21,6 +44,48 @@ export default function PageToolbar({ title, filters, actions, children }) {
                         </button>
                     )}
                     {actions}
+                    {user && (
+                        <div
+                            className="page-toolbar-user"
+                            title={`${fullName}${user.role ? ` · ${ROLE_LABELS[user.role] || user.role}` : ''}`}
+                            style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 8,
+                                padding: '4px 10px 4px 4px',
+                                borderRadius: 999,
+                                background: '#f1f5f9',
+                                border: '1px solid #e2e8f0',
+                                marginLeft: 4,
+                            }}
+                        >
+                            <span style={{
+                                width: 26,
+                                height: 26,
+                                borderRadius: '50%',
+                                background: '#048ABF',
+                                color: '#fff',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontSize: '0.7rem',
+                                fontWeight: 700,
+                                flexShrink: 0,
+                            }}>
+                                {initials || '?'}
+                            </span>
+                            <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.1 }}>
+                                <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#1e293b' }}>
+                                    {fullName || user.firstName || 'Usuario'}
+                                </span>
+                                {user.role && (
+                                    <span style={{ fontSize: '0.65rem', color: '#64748b' }}>
+                                        {ROLE_LABELS[user.role] || user.role}
+                                    </span>
+                                )}
+                            </span>
+                        </div>
+                    )}
                 </div>
             </div>
             {hasFilters && filtersOpen && (

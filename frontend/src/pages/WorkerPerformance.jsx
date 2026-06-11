@@ -10,6 +10,13 @@ const STEP_PALETTE = [
     '#0891b2', '#ca8a04', '#db2777', '#0d9488', '#7c3aed',
 ];
 
+// Devuelve el mejor nombre disponible para una trabajadora
+function workerDisplayName(w) {
+    if (!w) return '';
+    const composed = `${w.firstName || ''} ${w.lastName || ''}`.trim();
+    return composed || w.name || w.email || `Trabajadora #${w.workerId}`;
+}
+
 function formatMin(min) {
     if (min == null) return '–';
     if (min < 60) return `${Math.round(min)} min`;
@@ -252,6 +259,12 @@ export default function WorkerPerformance({ token }) {
                             delta={data.totals.deltas.stepsCompletedPct}
                         />
                         <KpiCard
+                            label="Pedidos finalizados"
+                            value={data.totals.current.ordersFinishedCount ?? 0}
+                            previous={data.totals.previous.ordersFinishedCount ?? 0}
+                            delta={data.totals.deltas.ordersFinishedPct}
+                        />
+                        <KpiCard
                             label="Pedidos atendidos"
                             value={data.totals.current.ordersCount}
                             previous={data.totals.previous.ordersCount}
@@ -328,8 +341,8 @@ export default function WorkerPerformance({ token }) {
                                                     whiteSpace: 'nowrap',
                                                     overflow: 'hidden',
                                                     textOverflow: 'ellipsis',
-                                                }} title={w.name}>
-                                                    {w.name}
+                                                }} title={workerDisplayName(w)}>
+                                                    {workerDisplayName(w)}
                                                 </div>
                                                 <StackedBar
                                                     byStepLabel={w.current.byStepLabel || {}}
@@ -354,6 +367,7 @@ export default function WorkerPerformance({ token }) {
                                         <th style={{ minWidth: 160 }}>Trabajadora</th>
                                         <th className="uk-text-right" style={{ minWidth: 120 }}>Procesos</th>
                                         <th className="uk-text-right" style={{ minWidth: 120 }}>Pedidos</th>
+                                        <th className="uk-text-right" style={{ minWidth: 110 }}>Finalizados</th>
                                         <th className="uk-text-right" style={{ minWidth: 110 }}>Líneas</th>
                                         <th className="uk-text-right" style={{ minWidth: 110 }}>Tiempo medio / proceso</th>
                                         <th className="uk-text-right" style={{ minWidth: 110 }}>Tiempo total</th>
@@ -367,7 +381,7 @@ export default function WorkerPerformance({ token }) {
                                 <tbody>
                                     {data.workers.length === 0 ? (
                                         <tr>
-                                            <td colSpan={8 + topStepLabels.length} style={{ textAlign: 'center', padding: 30, color: '#94a3b8' }}>
+                                            <td colSpan={9 + topStepLabels.length} style={{ textAlign: 'center', padding: 30, color: '#94a3b8' }}>
                                                 No hay procesos cerrados en el período.
                                             </td>
                                         </tr>
@@ -375,7 +389,7 @@ export default function WorkerPerformance({ token }) {
                                         <tr key={w.workerId}>
                                             <td>
                                                 <div style={{ fontWeight: 600 }}>
-                                                    {w.name}
+                                                    {workerDisplayName(w)}
                                                     {!w.isActive && <span style={{ marginLeft: 6, fontSize: '0.7rem', color: '#94a3b8' }}>(inactiva)</span>}
                                                 </div>
                                                 <div style={{ fontSize: '0.72rem', color: '#64748b' }}>{w.role}</div>
@@ -392,6 +406,13 @@ export default function WorkerPerformance({ token }) {
                                                     current={w.current.ordersCount}
                                                     previous={w.previous.ordersCount}
                                                     delta={w.deltas.ordersCountPct}
+                                                />
+                                            </td>
+                                            <td className="uk-text-right">
+                                                <CompareCell
+                                                    current={w.current.ordersFinishedCount ?? 0}
+                                                    previous={w.previous.ordersFinishedCount ?? 0}
+                                                    delta={w.deltas.ordersFinishedPct}
                                                 />
                                             </td>
                                             <td className="uk-text-right">
@@ -452,6 +473,13 @@ export default function WorkerPerformance({ token }) {
                                             </td>
                                             <td className="uk-text-right">
                                                 <CompareCell
+                                                    current={data.totals.current.ordersFinishedCount ?? 0}
+                                                    previous={data.totals.previous.ordersFinishedCount ?? 0}
+                                                    delta={data.totals.deltas.ordersFinishedPct}
+                                                />
+                                            </td>
+                                            <td className="uk-text-right">
+                                                <CompareCell
                                                     current={data.totals.current.linesCount}
                                                     previous={data.totals.previous.linesCount}
                                                     delta={data.totals.deltas.linesCountPct}
@@ -475,7 +503,8 @@ export default function WorkerPerformance({ token }) {
 
                     <div style={{ marginTop: 12, fontSize: '0.75rem', color: '#64748b', lineHeight: 1.5 }}>
                         <strong>Cómo leer la tabla:</strong> "Procesos" cuenta cada paso del itinerario que la trabajadora cerró
-                        (lavado, planchado, doblado…). "Pedidos" cuenta cabeceras únicas: aunque cierre 8 pasos del mismo
+                        (lavado, planchado, doblado…). "Finalizados" cuenta los pedidos que la trabajadora <em>cerró por completo</em>:
+                        es decir, fue ella quien marcó el último paso pendiente, dejando el pedido listo. "Pedidos" cuenta cabeceras únicas: aunque cierre 8 pasos del mismo
                         pedido, suma 1. El "tiempo medio" se calcula sólo cuando el paso tiene <em>inicio</em> y <em>fin</em>
                         registrados (auto-progress o doble click). Las variaciones <Delta pct={12} /> / <Delta pct={-9} />
                         comparan con el período anterior de igual duración. La <strong>puntualidad</strong> es el % de

@@ -35,7 +35,35 @@ export default async function (fastify, opts) {
         const valid = await compare(password, user.password);
         if (!valid) return reply.status(401).send({ error: 'Invalid credentials' });
         const token = jwt.sign({ userId: user.id, role: user.role, email: user.email }, process.env.JWT_SECRET, { expiresIn: '8h' });
-        return reply.send({ token, user: { id: user.id, name: user.firstName, role: user.role } });
+        return reply.send({
+            token,
+            user: {
+                id: user.id,
+                firstName: user.firstName,
+                lastName: user.lastName,
+                name: `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email,
+                email: user.email,
+                role: user.role,
+            },
+        });
+    });
+
+    // Devuelve el perfil del usuario autenticado (refresca datos de sesión)
+    fastify.get('/me', async (req, reply) => {
+        const userId = req.user?.userId;
+        if (!userId) return reply.status(401).send({ error: 'No autenticado' });
+        const user = await prisma.user.findUnique({
+            where: { id: userId },
+            select: {
+                id: true, firstName: true, lastName: true,
+                email: true, phone: true, role: true, isActive: true,
+            },
+        });
+        if (!user) return reply.status(404).send({ error: 'Usuario no encontrado' });
+        return reply.send({
+            ...user,
+            name: `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email,
+        });
     });
 
     // Solicitar restablecimiento de contraseña

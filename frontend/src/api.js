@@ -29,6 +29,10 @@ export function login(email, password) {
     });
 }
 
+export function fetchMe(token) {
+    return request('/auth/me', token);
+}
+
 export function forgotPassword(email) {
     return request('/auth/forgot-password', null, {
         method: 'POST',

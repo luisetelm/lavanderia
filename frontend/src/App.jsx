@@ -40,7 +40,7 @@ import PortalDashboard from './pages/portal/PortalDashboard.jsx';
 import PortalOrders from './pages/portal/PortalOrders.jsx';
 import PortalOrderDetail from './pages/portal/PortalOrderDetail.jsx';
 import PortalInvoices from './pages/portal/PortalInvoices.jsx';
-import { fetchConversations } from './api.js';
+import { fetchConversations, fetchMe } from './api.js';
 
 
 function PortalApp() {
@@ -93,6 +93,19 @@ export default function App() {
             localStorage.removeItem('token');
             localStorage.removeItem('user');
         }
+    }, [token]);
+
+    // Si el user en localStorage está incompleto (sesión antigua sin firstName/lastName),
+    // refrescamos los datos desde /auth/me.
+    useEffect(() => {
+        if (!token || token === 'expired') return;
+        if (user && user.firstName && user.lastName) return;
+        fetchMe(token)
+            .then(fresh => {
+                setUser(fresh);
+                localStorage.setItem('user', JSON.stringify(fresh));
+            })
+            .catch(() => { /* ignorar; si el token es inválido ya se limpia en el otro effect */ });
     }, [token]);
 
     const handleLogin = ({token, user}) => {
@@ -317,7 +330,19 @@ export default function App() {
                     <div className="sidebar-footer">
                         <div className="sidebar-user">
                             <div className="sidebar-user-avatar">{user?.firstName?.[0]}{user?.lastName?.[0]}</div>
-                            <span className="sidebar-user-name">{user?.firstName}</span>
+                            <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2, minWidth: 0 }}>
+                                <span className="sidebar-user-name" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                    {user?.firstName} {user?.lastName}
+                                </span>
+                                {user?.role && (
+                                    <span style={{ fontSize: '0.68rem', color: '#94a3b8', textTransform: 'capitalize' }}>
+                                        {user.role === 'admin' ? 'Administrador/a'
+                                            : user.role === 'cashier' ? 'Cajero/a'
+                                            : user.role === 'worker' ? 'Trabajador/a'
+                                            : user.role}
+                                    </span>
+                                )}
+                            </div>
                         </div>
                         <button onClick={handleLogout} className="sidebar-logout-btn">
                             <span uk-icon="icon: sign-out; ratio: 0.85"></span>
