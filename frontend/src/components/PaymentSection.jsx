@@ -540,10 +540,47 @@ export default function PaymentSection({token, orderId, onPaid, initialOrder = n
                 <div>
                     <strong>Estado pago:</strong> {order.paid ? 'Pagado' : (Number(order.total) <= 0 ? 'No requiere pago' : 'Pendiente de pago')}
                 </div>
-                <div>
-                    <strong>Método de pago:</strong>{' '}
-                    {order.paymentMethod ? (order.paymentMethod === 'cash' ? 'Efectivo' : 'Tarjeta') : 'No seleccionado'}
-                </div>
+                {(() => {
+                    const pay = (order.payments || []).find(p => p.status === 'completed') || (order.payments || [])[0] || null;
+                    const METHOD = { cash: 'Efectivo', card_pos: 'Tarjeta (TPV)', card: 'Tarjeta', stripe: 'Stripe', transfer: 'Transferencia', none: 'Sin cobro' };
+                    const methodLabel = pay?.method
+                        ? (METHOD[pay.method] || pay.method)
+                        : (order.paymentMethod ? (order.paymentMethod === 'cash' ? 'Efectivo' : order.paymentMethod === 'none' ? 'Sin cobro' : 'Tarjeta') : 'No seleccionado');
+                    return (<>
+                        <div>
+                            <strong>Método de pago:</strong> {methodLabel}
+                        </div>
+                        {order.paid && pay?.createdAt && (
+                            <div>
+                                <strong>Fecha de pago:</strong>{' '}
+                                {new Date(pay.createdAt).toLocaleString('es-ES', { dateStyle: 'medium', timeStyle: 'short' })}
+                            </div>
+                        )}
+                    </>);
+                })()}
+                {(() => {
+                    // "Listo": último paso de tracking completado (dato ya disponible)
+                    const completedDates = (order.lines || [])
+                        .flatMap(l => l.steps || [])
+                        .filter(s => s.status === 'done' && s.completedAt)
+                        .map(s => new Date(s.completedAt).getTime());
+                    const readyAt = completedDates.length ? new Date(Math.max(...completedDates)) : null;
+                    // "Recogido": aproximado por updatedAt cuando el pedido está recogido
+                    const collectedAt = order.status === 'collected' && order.updatedAt ? new Date(order.updatedAt) : null;
+                    const fmt = (d) => d.toLocaleString('es-ES', { dateStyle: 'medium', timeStyle: 'short' });
+                    return (<>
+                        {readyAt && (order.status === 'ready' || order.status === 'collected') && (
+                            <div>
+                                <strong>Listo:</strong> {fmt(readyAt)}
+                            </div>
+                        )}
+                        {collectedAt && (
+                            <div>
+                                <strong>Recogido:</strong> {fmt(collectedAt)}
+                            </div>
+                        )}
+                    </>);
+                })()}
                 <div>
                     <strong>Observaciones:</strong> {order.observaciones || '—'}
                 </div>

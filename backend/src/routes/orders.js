@@ -366,6 +366,7 @@ export default async function (fastify, opts) {
             data.status = status;
             data.updatedAt = new Date();
 
+
             if (status === 'cancelled') {
                 data.total = 0;
             }
@@ -618,6 +619,9 @@ export default async function (fastify, opts) {
                 include: {
                     invoices: true
                 }
+            }, payments: {
+                select: {id: true, amount: true, method: true, status: true, createdAt: true},
+                orderBy: {createdAt: 'desc'}
             }
         };
 
@@ -730,6 +734,10 @@ export default async function (fastify, opts) {
                         include: {
                             invoices: true
                         },
+                    },
+                    payments: {
+                        select: {id: true, amount: true, method: true, status: true, createdAt: true},
+                        orderBy: {createdAt: 'desc'}
                     },
                 },
             });
