@@ -165,8 +165,8 @@ export default function CashAudit({ token }) {
     const totalNonCash = closures.reduce((sum, c) => sum + Number(c.cardTotal || 0), 0);
     const totalReconciled = closures.reduce((sum, c) => sum + Number(c.reconciledTotal || 0), 0);
     const totalPendingNonCash = Number((totalNonCash - totalReconciled).toFixed(2));
-    // Descuadre total: descuadre de efectivo + lo no conciliado del no-efectivo
-    const totalGlobalDiff = Number((totalDiff + totalPendingNonCash).toFixed(2));
+    // Descuadre total: descuadre de efectivo menos lo que aún falta por conciliar del no-efectivo
+    const totalGlobalDiff = Number((totalDiff - totalPendingNonCash).toFixed(2));
 
     const handleDownloadPdf = async () => {
         setDownloadingPdf(true);
@@ -232,7 +232,7 @@ export default function CashAudit({ token }) {
                 </div>
                 <div className="uk-card uk-card-default uk-card-body uk-text-center"
                      style={{ padding: '14px 10px', borderTop: Math.abs(totalGlobalDiff) > 0.01 ? '3px solid #ef4444' : '3px solid #10b981' }}
-                     title="Descuadre de efectivo + importe no conciliado del no efectivo">
+                     title="Descuadre de efectivo menos el importe no conciliado del no efectivo">
                     <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Descuadre total</div>
                     <div style={{ fontSize: '1.25rem', fontWeight: 700, marginTop: 2, color: Math.abs(totalGlobalDiff) > 0.01 ? '#ef4444' : '#10b981' }}>
                         {formatEUR(totalGlobalDiff)}
@@ -248,7 +248,7 @@ export default function CashAudit({ token }) {
                     <div style={{ textAlign: 'center', padding: 20, color: '#94a3b8' }}>No hay cierres en este periodo</div>
                 ) : (
                     <div className="uk-overflow-auto">
-                        <table className="uk-table uk-table-divider uk-table-small uk-table-hover" style={{ minWidth: 600 }}>
+                        <table className="uk-table uk-table-divider uk-table-small uk-table-hover" style={{ minWidth: 900 }}>
                             <thead>
                                 <tr>
                                     <th>Fecha</th>
@@ -256,7 +256,10 @@ export default function CashAudit({ token }) {
                                     <th style={{ textAlign: 'right' }}>Apertura</th>
                                     <th style={{ textAlign: 'right' }}>Esperado</th>
                                     <th style={{ textAlign: 'right' }}>Contado</th>
-                                    <th style={{ textAlign: 'right' }}>Descuadre</th>
+                                    <th style={{ textAlign: 'right' }}>Desc. efectivo</th>
+                                    <th style={{ textAlign: 'right' }}>No efectivo</th>
+                                    <th style={{ textAlign: 'right' }}>Conciliado</th>
+                                    <th style={{ textAlign: 'right' }}>Descuadre total</th>
                                     <th>Notas</th>
                                     <th></th>
                                 </tr>
@@ -265,6 +268,11 @@ export default function CashAudit({ token }) {
                                 {closures.map(c => {
                                     const diff = Number(c.diff || 0);
                                     const hasDiff = Math.abs(diff) > 0.01;
+                                    const cardTotal = Number(c.cardTotal || 0);
+                                    const reconciledTotal = Number(c.reconciledTotal || 0);
+                                    const pendingNonCash = Number((cardTotal - reconciledTotal).toFixed(2));
+                                    const globalDiff = Number((diff - pendingNonCash).toFixed(2));
+                                    const hasGlobalDiff = Math.abs(globalDiff) > 0.01;
                                     const isExpanded = expandedId === c.id;
                                     const closureMovs = movements[c.id];
 
@@ -289,6 +297,19 @@ export default function CashAudit({ token }) {
                                                 <td style={{ textAlign: 'right', fontWeight: 600, color: hasDiff ? '#ef4444' : '#10b981' }}>
                                                     {diff > 0 ? '+' : ''}{formatEUR(diff)}
                                                 </td>
+                                                <td style={{ textAlign: 'right', color: '#2563eb' }}>{formatEUR(cardTotal)}</td>
+                                                <td style={{ textAlign: 'right' }}>
+                                                    <span style={{ color: '#16a34a' }}>{formatEUR(reconciledTotal)}</span>
+                                                    {pendingNonCash > 0.01 && (
+                                                        <div style={{ fontSize: '0.7rem', color: '#ef4444' }}>
+                                                            Pend. {formatEUR(pendingNonCash)}
+                                                        </div>
+                                                    )}
+                                                </td>
+                                                <td style={{ textAlign: 'right', fontWeight: 700, color: hasGlobalDiff ? '#ef4444' : '#10b981' }}
+                                                    title="Descuadre de efectivo menos el importe no conciliado del no efectivo">
+                                                    {globalDiff > 0 ? '+' : ''}{formatEUR(globalDiff)}
+                                                </td>
                                                 <td style={{ fontSize: '0.8rem', color: '#64748b', maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                                     {c.notes || '-'}
                                                 </td>
@@ -298,7 +319,7 @@ export default function CashAudit({ token }) {
                                             </tr>
                                             {isExpanded && (
                                                 <tr>
-                                                    <td colSpan="8" style={{ padding: 0 }}>
+                                                    <td colSpan="11" style={{ padding: 0 }}>
                                                         <div style={{ background: '#f8fafc', padding: '12px 20px', borderTop: '1px solid #e2e8f0' }}>
                                                             {movLoading === c.id ? (
                                                                 <div style={{ textAlign: 'center', padding: 12, color: '#94a3b8' }}>Cargando movimientos...</div>
