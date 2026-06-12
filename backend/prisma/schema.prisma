@@ -378,6 +378,9 @@ model Payment {
   clientId        Int?
   recordedBy      Int?
   note            String?
+  reconciled      Boolean   @default(false)
+  reconciledAt    DateTime? @db.Timestamptz(6)
+  reconciledBy    Int?
   createdAt       DateTime  @default(now()) @db.Timestamptz(6)
   order           Order?    @relation(fields: [orderId], references: [id])
   invoice         invoices? @relation(fields: [invoiceId], references: [id])

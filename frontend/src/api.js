@@ -192,12 +192,6 @@ export function payWithCash(token, orderId, receivedAmount) {
     });
 }
 
-// Marca un pedido de importe 0 como pagado (sin cobro real)
-export function markOrderPaidFree(token, orderId) {
-    return request(`/orders/${orderId}/pay`, token, {
-        method: 'POST', body: JSON.stringify({method: 'none'}),
-    });
-}
 
 // helper para refrescar un pedido existente (asume que tu backend tiene GET /orders/:id)
 export function fetchOrder(token, orderId) {
@@ -260,6 +254,37 @@ export function closeCashRegister(token, { countedAmount, notes, user }) {
         method: 'POST',
         body: JSON.stringify({ countedAmount, notes, user }),
     });
+}
+
+// Marca/desmarca un pago no-efectivo como conciliado (extracto banco/TPV)
+export function reconcilePayment(token, paymentId, reconciled) {
+    return request(`/cash/payments/${paymentId}/reconcile`, token, {
+        method: 'PATCH',
+        body: JSON.stringify({ reconciled }),
+    });
+}
+
+// Descarga el informe PDF de cierres de caja del periodo (un cierre por página)
+export async function downloadClosuresReport(token, { from, to } = {}) {
+    const params = new URLSearchParams();
+    if (from) params.set('from', from);
+    if (to) params.set('to', to);
+    const url = `${API_BASE}/cash/closures/report.pdf${params.toString() ? `?${params}` : ''}`;
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) {
+        if (res.status === 401) window.dispatchEvent(new CustomEvent('unauthorized'));
+        throw new Error(`Error generando informe: ${res.status}`);
+    }
+    const blob = await res.blob();
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.download = `cierres_${from || 'inicio'}_${to || 'fin'}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(downloadUrl);
+    return true;
 }
 
 export function retryNotification(token, id, phone) {

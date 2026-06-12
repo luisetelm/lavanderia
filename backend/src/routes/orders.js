@@ -355,10 +355,10 @@ export default async function (fastify, opts) {
         const data = {};
 
         if (status) {
-            // No permitir marcar como recogido si no está pagado
+            // No permitir marcar como recogido si no está pagado (salvo pedidos de importe 0)
             if (status === 'collected') {
-                const currentOrder = await prisma.order.findUnique({ where: { id: orderId }, select: { paid: true } });
-                if (currentOrder && !currentOrder.paid) {
+                const currentOrder = await prisma.order.findUnique({ where: { id: orderId }, select: { paid: true, total: true } });
+                if (currentOrder && !currentOrder.paid && Number(currentOrder.total) > 0) {
                     return reply.status(400).send({ error: 'No se puede marcar como recogido un pedido que no ha sido cobrado. Cobra primero el pedido.' });
                 }
             }
@@ -446,22 +446,6 @@ export default async function (fastify, opts) {
                 return reply.status(400).send({error: 'Pedido ya está pagado'});
             }
 
-            // Pedido sin importe (p. ej. 100% de descuento): no hay nada que cobrar.
-            // Se marca como pagado sin crear pago, movimiento de caja ni factura.
-            if (Number(order.total) <= 0) {
-                const updatedFree = await prisma.order.update({
-                    where: {id: orderId},
-                    data: {paymentMethod: 'none', paid: true},
-                    include: {
-                        lines: {include: {product: true}},
-                        client: {
-                            select: {id: true, firstName: true, lastName: true, email: true, phone: true},
-                        },
-                        invoiceTickets: {include: {invoices: true}},
-                    },
-                });
-                return reply.send({order: updatedFree, change: 0});
-            }
 
             if (method !== 'cash' && method !== 'card') {
                 return reply.status(400).send({error: 'Método de pago inválido'});
@@ -653,6 +637,25 @@ export default async function (fastify, opts) {
                 if (inv) {
                     order.factura = inv;
                 }
+                // Normalizar los pasos igual que en GET /:id para que el frontend
+                // disponga de completedBy, stepLabel, position y durationMin en las listas.
+                (order.lines || []).forEach(l => {
+                    l.steps = (l.steps || []).map((s, idx) => {
+                        const stepKey = s.stepConfig?.stepKey || s.itineraryStep?.stepKey;
+                        const stepLabel = s.stepConfig?.stepLabel || s.itineraryStep?.stepLabel;
+                        const position = s.stepConfig?.position ?? s.itineraryStep?.position;
+                        const resourceKey = s.stepConfig?.resourceKey || s.itineraryStep?.resourceKey;
+                        return {
+                            ...s,
+                            completedBy: s.completedByUser || null,
+                            stepKey: stepKey || '?',
+                            stepLabel: stepLabel || '?',
+                            position: position ?? idx,
+                            resourceKey: resourceKey || null,
+                            durationMin: s.itineraryStep?.durationMin ?? s.stepConfig?.durationMin ?? 0,
+                        };
+                    });
+                });
             })
 
             if (paginated) {

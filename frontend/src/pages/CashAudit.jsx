@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { fetchCashClosures, fetchClosureMovements } from '../api.js';
+import { fetchCashClosures, fetchClosureMovements, reconcilePayment, downloadClosuresReport } from '../api.js';
 import { formatEUR } from '../utils/format.js';
 import PageToolbar from '../components/PageToolbar.jsx';
 import DateRangeSelector from '../components/DateRangeSelector.jsx';
@@ -31,6 +31,7 @@ export default function CashAudit({ token }) {
     const [expandedId, setExpandedId] = useState(null);
     const [movements, setMovements] = useState({});
     const [movLoading, setMovLoading] = useState(null);
+    const [downloadingPdf, setDownloadingPdf] = useState(false);
 
     const [dateRange, setDateRange] = useState(() => {
         const [from, to] = getDateRange('last_3');
@@ -44,6 +45,7 @@ export default function CashAudit({ token }) {
             .catch(() => setClosures([]))
             .finally(() => setLoading(false));
     }, [token, dateRange.from, dateRange.to]);
+
 
     const handleExpand = async (closureId) => {
         if (expandedId === closureId) {
@@ -64,11 +66,135 @@ export default function CashAudit({ token }) {
         }
     };
 
+    // Marca/desmarca un pago como conciliado y actualiza el detalle en memoria
+    const handleToggleReconcile = async (closureId, payment) => {
+        const next = !payment.reconciled;
+        try {
+            const res = await reconcilePayment(token, payment.id, next);
+            setMovements(prev => {
+                const detail = prev[closureId];
+                if (!detail) return prev;
+                const cardPayments = (detail.cardPayments || []).map(p =>
+                    p.id === payment.id ? { ...p, reconciled: res.reconciled, reconciledAt: res.reconciledAt } : p
+                );
+                const cardTotal = Number(detail.cardTotal || 0);
+                const reconciledTotal = Number(
+                    cardPayments.filter(p => p.reconciled).reduce((a, p) => a + Number(p.amount || 0), 0).toFixed(2)
+                );
+                return {
+                    ...prev,
+                    [closureId]: {
+                        ...detail,
+                        cardPayments,
+                        reconciledTotal,
+                        pendingTotal: Number((cardTotal - reconciledTotal).toFixed(2)),
+                    },
+                };
+            });
+        } catch (e) {
+            console.error('Error conciliando pago:', e);
+        }
+    };
+
+    // Exporta un informe CSV con el detalle y descuadres de un cierre
+    const handleExportClosure = (closure, detail) => {
+        const esc = (v) => {
+            const s = v == null ? '' : String(v);
+            return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+        };
+        const fmt = (n) => Number(n || 0).toFixed(2).replace('.', ',');
+        const rows = [];
+        rows.push(['INFORME DE CIERRE DE CAJA']);
+        rows.push(['Fecha', new Date(closure.closedat).toLocaleString('es-ES')]);
+        rows.push(['Cajero', closure.user ? `${closure.user.firstName} ${closure.user.lastName}` : '-']);
+        rows.push([]);
+        rows.push(['Resumen efectivo']);
+        rows.push(['Apertura', fmt(closure.openingamount)]);
+        rows.push(['Esperado', fmt(closure.expectedamount)]);
+        rows.push(['Contado', fmt(closure.countedamount)]);
+        rows.push(['Descuadre', fmt(closure.diff)]);
+        rows.push([]);
+
+        rows.push(['Movimientos en efectivo']);
+        rows.push(['Hora', 'Tipo', 'Importe', 'Pedido', 'Persona', 'Nota']);
+        (detail?.movements || []).forEach(m => {
+            const neg = isNegativeType(m.type);
+            rows.push([
+                new Date(m.movementat).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
+                typeLabels[m.type] || m.type,
+                `${neg ? '-' : ''}${fmt(m.amount)}`,
+                m.order ? `#${m.order.orderNum}` : '',
+                m.personUser ? `${m.personUser.firstName} ${m.personUser.lastName}` : '',
+                m.note || '',
+            ]);
+        });
+        rows.push([]);
+
+        rows.push(['Pagos no en efectivo (TPV / transferencia / Stripe)']);
+        rows.push(['Hora', 'Método', 'Importe', 'Pedido', 'Cliente', 'Conciliado', 'Fecha conciliación', 'Nota']);
+        (detail?.cardPayments || []).forEach(p => {
+            rows.push([
+                new Date(p.createdAt).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
+                cardMethodLabels[p.method] || p.method,
+                fmt(p.amount),
+                p.order ? `#${p.order.orderNum}` : '',
+                p.client ? `${p.client.firstName} ${p.client.lastName}` : '',
+                p.reconciled ? 'Sí' : 'No',
+                p.reconciledAt ? new Date(p.reconciledAt).toLocaleString('es-ES') : '',
+                p.note || '',
+            ]);
+        });
+        rows.push([]);
+        rows.push(['Total no efectivo', fmt(detail?.cardTotal)]);
+        rows.push(['Conciliado', fmt(detail?.reconciledTotal)]);
+        rows.push(['Pendiente de conciliar', fmt(detail?.pendingTotal)]);
+
+        const csv = '\uFEFF' + rows.map(r => r.map(esc).join(';')).join('\n');
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `cierre_${new Date(closure.closedat).toISOString().slice(0, 10)}_${closure.id}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    };
+
     const totalDiff = closures.reduce((sum, c) => sum + Number(c.diff || 0), 0);
+    const totalNonCash = closures.reduce((sum, c) => sum + Number(c.cardTotal || 0), 0);
+    const totalReconciled = closures.reduce((sum, c) => sum + Number(c.reconciledTotal || 0), 0);
+    const totalPendingNonCash = Number((totalNonCash - totalReconciled).toFixed(2));
+    // Descuadre total: descuadre de efectivo + lo no conciliado del no-efectivo
+    const totalGlobalDiff = Number((totalDiff + totalPendingNonCash).toFixed(2));
+
+    const handleDownloadPdf = async () => {
+        setDownloadingPdf(true);
+        try {
+            await downloadClosuresReport(token, dateRange);
+        } catch (e) {
+            console.error('Error descargando informe PDF:', e);
+        } finally {
+            setDownloadingPdf(false);
+        }
+    };
 
     return (
         <div>
-            <PageToolbar title="Auditoría de caja" />
+            <PageToolbar
+                title="Auditoría de caja"
+                actions={
+                    <button
+                        type="button"
+                        className="uk-button uk-button-primary uk-button-small"
+                        onClick={handleDownloadPdf}
+                        disabled={downloadingPdf || closures.length === 0}
+                    >
+                        <span uk-icon="icon: download; ratio: 0.8" style={{ marginRight: 4 }}></span>
+                        {downloadingPdf ? 'Generando…' : 'Informe PDF'}
+                    </button>
+                }
+            />
 
             <div className="uk-card uk-card-default uk-card-body" style={{ marginBottom: 16 }}>
                 <DateRangeSelector
@@ -86,9 +212,30 @@ export default function CashAudit({ token }) {
                 </div>
                 <div className="uk-card uk-card-default uk-card-body uk-text-center"
                      style={{ padding: '14px 10px', borderTop: Math.abs(totalDiff) > 0.01 ? '3px solid #ef4444' : '3px solid #10b981' }}>
-                    <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Descuadre total</div>
+                    <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Descuadre efectivo</div>
                     <div style={{ fontSize: '1.25rem', fontWeight: 700, marginTop: 2, color: Math.abs(totalDiff) > 0.01 ? '#ef4444' : '#10b981' }}>
                         {formatEUR(totalDiff)}
+                    </div>
+                </div>
+                <div className="uk-card uk-card-default uk-card-body uk-text-center" style={{ padding: '14px 10px' }}>
+                    <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>No efectivo (TPV/transf.)</div>
+                    <div style={{ fontSize: '1.25rem', fontWeight: 700, marginTop: 2, color: '#2563eb' }}>{formatEUR(totalNonCash)}</div>
+                </div>
+                <div className="uk-card uk-card-default uk-card-body uk-text-center" style={{ padding: '14px 10px' }}>
+                    <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Conciliado</div>
+                    <div style={{ fontSize: '1.25rem', fontWeight: 700, marginTop: 2, color: '#16a34a' }}>{formatEUR(totalReconciled)}</div>
+                    {totalPendingNonCash > 0.01 && (
+                        <div style={{ fontSize: '0.7rem', color: '#ef4444', marginTop: 2 }}>
+                            Pendiente: {formatEUR(totalPendingNonCash)}
+                        </div>
+                    )}
+                </div>
+                <div className="uk-card uk-card-default uk-card-body uk-text-center"
+                     style={{ padding: '14px 10px', borderTop: Math.abs(totalGlobalDiff) > 0.01 ? '3px solid #ef4444' : '3px solid #10b981' }}
+                     title="Descuadre de efectivo + importe no conciliado del no efectivo">
+                    <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Descuadre total</div>
+                    <div style={{ fontSize: '1.25rem', fontWeight: 700, marginTop: 2, color: Math.abs(totalGlobalDiff) > 0.01 ? '#ef4444' : '#10b981' }}>
+                        {formatEUR(totalGlobalDiff)}
                     </div>
                 </div>
             </div>
@@ -157,6 +304,16 @@ export default function CashAudit({ token }) {
                                                                 <div style={{ textAlign: 'center', padding: 12, color: '#94a3b8' }}>Cargando movimientos...</div>
                                                             ) : (
                                                                 <>
+                                                                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
+                                                                        <button
+                                                                            type="button"
+                                                                            className="uk-button uk-button-default uk-button-small"
+                                                                            onClick={() => handleExportClosure(c, closureMovs)}
+                                                                        >
+                                                                            <span uk-icon="icon: download; ratio: 0.8" style={{ marginRight: 4 }}></span>
+                                                                            Exportar informe (CSV)
+                                                                        </button>
+                                                                    </div>
                                                                     {/* Movimientos de efectivo */}
                                                                     <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475569', textTransform: 'uppercase', marginBottom: 6 }}>
                                                                         Movimientos en efectivo
@@ -204,10 +361,12 @@ export default function CashAudit({ token }) {
                                                                         </table>
                                                                     )}
 
-                                                                    {/* Pagos con tarjeta (informativo, no afecta al cierre) */}
+                                                                    {/* Pagos no en efectivo: conciliación a posteriori (banco/TPV) */}
                                                                     {(() => {
                                                                         const cardPayments = closureMovs?.cardPayments || [];
                                                                         const cardTotal = Number(closureMovs?.cardTotal || 0);
+                                                                        const reconciledTotal = Number(closureMovs?.reconciledTotal ?? cardPayments.filter(p => p.reconciled).reduce((a, p) => a + Number(p.amount || 0), 0));
+                                                                        const pendingTotal = Number((cardTotal - reconciledTotal).toFixed(2));
                                                                         const byMethod = cardPayments.reduce((acc, p) => {
                                                                             const k = p.method || 'card';
                                                                             acc[k] = (acc[k] || 0) + Number(p.amount || 0);
@@ -217,10 +376,12 @@ export default function CashAudit({ token }) {
                                                                             <div style={{ marginTop: 14 }}>
                                                                                 <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 6, flexWrap: 'wrap', gap: 8 }}>
                                                                                     <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475569', textTransform: 'uppercase' }}>
-                                                                                        Pagos con tarjeta / otros (informativo)
+                                                                                        Pagos no en efectivo (conciliación banco/TPV)
                                                                                     </div>
                                                                                     <div style={{ fontSize: '0.85rem', color: '#0f172a' }}>
                                                                                         Total: <strong style={{ color: '#2563eb' }}>{formatEUR(cardTotal)}</strong>
+                                                                                        <span style={{ color: '#16a34a', marginLeft: 8 }}>Conciliado: {formatEUR(reconciledTotal)}</span>
+                                                                                        <span style={{ color: pendingTotal > 0.01 ? '#ef4444' : '#64748b', marginLeft: 8 }}>Pendiente: {formatEUR(pendingTotal)}</span>
                                                                                         {Object.keys(byMethod).length > 0 && (
                                                                                             <span style={{ color: '#64748b', marginLeft: 8 }}>
                                                                                                 ({Object.entries(byMethod).map(([k, v]) =>
@@ -232,12 +393,13 @@ export default function CashAudit({ token }) {
                                                                                 </div>
                                                                                 {cardPayments.length === 0 ? (
                                                                                     <div style={{ textAlign: 'center', padding: 8, color: '#94a3b8', fontSize: '0.85rem' }}>
-                                                                                        Sin pagos con tarjeta en este periodo
+                                                                                        Sin pagos no en efectivo en este periodo
                                                                                     </div>
                                                                                 ) : (
                                                                                     <table className="uk-table uk-table-small uk-table-divider" style={{ margin: 0, fontSize: '0.8rem' }}>
                                                                                         <thead>
                                                                                             <tr>
+                                                                                                <th style={{ textAlign: 'center', width: 70 }}>Conciliado</th>
                                                                                                 <th>Hora</th>
                                                                                                 <th>Método</th>
                                                                                                 <th style={{ textAlign: 'right' }}>Importe</th>
@@ -248,7 +410,16 @@ export default function CashAudit({ token }) {
                                                                                         </thead>
                                                                                         <tbody>
                                                                                             {cardPayments.map(p => (
-                                                                                                <tr key={p.id}>
+                                                                                                <tr key={p.id} style={{ background: p.reconciled ? '#f0fdf4' : undefined }}>
+                                                                                                    <td style={{ textAlign: 'center' }}>
+                                                                                                        <input
+                                                                                                            type="checkbox"
+                                                                                                            className="uk-checkbox"
+                                                                                                            checked={!!p.reconciled}
+                                                                                                            title={p.reconciled && p.reconciledAt ? `Conciliado el ${new Date(p.reconciledAt).toLocaleString('es-ES')}` : 'Marcar como conciliado en banco/TPV'}
+                                                                                                            onChange={() => handleToggleReconcile(c.id, p)}
+                                                                                                        />
+                                                                                                    </td>
                                                                                                     <td>{new Date(p.createdAt).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}</td>
                                                                                                     <td>
                                                                                                         <span style={{
@@ -275,7 +446,7 @@ export default function CashAudit({ token }) {
                                                                 </>
                                                             )}
                                                         </div>
-                                                    </td>
+                                                     </td>
                                                 </tr>
                                             )}
                                         </React.Fragment>

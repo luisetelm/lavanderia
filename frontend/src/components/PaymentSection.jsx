@@ -5,7 +5,6 @@ import {
     fetchUsers,
     payWithCard,
     payWithCash,
-    markOrderPaidFree,
     updateOrder,
     updateOrder as apiUpdateOrder,
     retryNotification,
@@ -185,24 +184,6 @@ export default function PaymentSection({token, orderId, onPaid, initialOrder = n
         setLastChange(change);
         onPaid?.();
         return change;
-    };
-
-    // Pedido de importe 0 (p. ej. 100% descuento): marcar pagado sin cobro
-    const handleMarkPaidFree = async () => {
-        if (!order) return;
-        setIsProcessing(true);
-        setLocalError('');
-        try {
-            const {order: paidOrder} = await markOrderPaidFree(token, order.id);
-            setOrder(paidOrder);
-            onPaid?.();
-            notify('Pedido marcado como pagado (0 €)', 'success');
-        } catch (e) {
-            console.error('Error marcando pedido como pagado:', e);
-            setLocalError(e.error || 'Error al marcar como pagado');
-        } finally {
-            setIsProcessing(false);
-        }
     };
 
     const markReady = async (sendSMS = false) => {
@@ -557,7 +538,7 @@ export default function PaymentSection({token, orderId, onPaid, initialOrder = n
                     </a>
                 </div>)}
                 <div>
-                    <strong>Estado pago:</strong> {order.paid ? 'Pagado' : 'Pendiente de pago'}
+                    <strong>Estado pago:</strong> {order.paid ? 'Pagado' : (Number(order.total) <= 0 ? 'No requiere pago' : 'Pendiente de pago')}
                 </div>
                 <div>
                     <strong>Método de pago:</strong>{' '}
@@ -912,27 +893,17 @@ export default function PaymentSection({token, orderId, onPaid, initialOrder = n
                         width: '100%',
                     }}
                 >
-                    {/* Cobro: acción principal cuando el pedido está pendiente de pago */}
-                    {!order.paid && (
-                        Number(order.total) <= 0 ? (
-                            <button
-                                type="button"
-                                className={'uk-button uk-button-primary uk-width-1-1@l'}
-                                onClick={handleMarkPaidFree}
-                                disabled={isProcessing}
-                            >
-                                ✓ Marcar como pagado (0 €)
-                            </button>
-                        ) : (
-                            <button
-                                type="button"
-                                className={'uk-button uk-button-primary uk-width-1-1@l'}
-                                onClick={() => setShowPaymentModal(true)}
-                                disabled={isProcessing}
-                            >
-                                💰 Cobrar {formatEUR(order.total)}
-                            </button>
-                        )
+                    {/* Cobro: solo si el pedido tiene importe y está pendiente de pago.
+                        Los pedidos de 0 € (p. ej. 100% descuento) no requieren cobro. */}
+                    {!order.paid && Number(order.total) > 0 && (
+                        <button
+                            type="button"
+                            className={'uk-button uk-button-primary uk-width-1-1@l'}
+                            onClick={() => setShowPaymentModal(true)}
+                            disabled={isProcessing}
+                        >
+                            💰 Cobrar {formatEUR(order.total)}
+                        </button>
                     )}
 
                     <button
@@ -993,7 +964,7 @@ export default function PaymentSection({token, orderId, onPaid, initialOrder = n
                         );
                     })()}
 
-                    {order.status === 'ready' && order.paid && (<button
+                    {order.status === 'ready' && (order.paid || Number(order.total) <= 0) && (<button
                         type="button"
                         className="uk-button uk-button-default uk-width-1-1@l"
                         onClick={() => showConfirmModal('collected')}
@@ -1002,7 +973,7 @@ export default function PaymentSection({token, orderId, onPaid, initialOrder = n
                         Marcar como recogido
                     </button>)}
 
-                    {order.status === 'ready' && !order.paid && (
+                    {order.status === 'ready' && !order.paid && Number(order.total) > 0 && (
                         <p style={{ fontSize: '0.8rem', color: '#f59e0b', margin: '4px 0' }}>
                             ⚠️ Cobra el pedido antes de marcar como recogido.
                         </p>

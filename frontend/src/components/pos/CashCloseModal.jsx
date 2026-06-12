@@ -27,6 +27,7 @@ export default function CashCloseModal({
 }) {
     if (!show) return null;
 
+
     return (
         <div className="uk-modal uk-open" style={{display: 'block'}}>
             <div className="uk-modal-dialog uk-modal-body">
@@ -102,6 +103,7 @@ export default function CashCloseModal({
                         {!unclosedMoves.length && <li>Sin movimientos</li>}
                     </ul>
                 </div>
+
 
                 <div className="uk-margin-top uk-flex uk-flex-right">
                     <button className="uk-button uk-button-default"
