@@ -20,6 +20,8 @@ const PAYMENT_DATE = new Date('2026-03-19T16:55:00');    // fecha que se pondrá
 const CLOSURE_DATE = new Date('2026-03-19T17:00:00');    // fecha del cierre de consolidación
 const MARK_RECONCILED = true;                            // saldo histórico => ya conciliado
 const NOTE = 'Consolidación TPV histórico (cobros con tarjeta sin Payment) hasta 19/03/2026';
+// userId del cierre (obligatorio en el modelo). Fijado al usuario 1 (Luis).
+const CLOSURE_USER_ID = 1;
 const eur = (n) => `${Number(n || 0).toFixed(2)} €`;
 
 async function main() {
@@ -66,6 +68,14 @@ async function main() {
         const last = await tx.cashClosure.findFirst({
             where: { closedat: { lt: CLOSURE_DATE } }, orderBy: { closedat: 'desc' },
         });
+        // Resolver userId obligatorio del cierre
+        let userId = CLOSURE_USER_ID ?? last?.userId ?? null;
+        if (userId == null) {
+            const u = await tx.user.findFirst({ orderBy: { id: 'asc' }, select: { id: true } });
+            userId = u?.id ?? null;
+        }
+        if (userId == null) throw new Error('No hay ningún usuario para asignar al cierre (userId es obligatorio).');
+
         const opening = last ? Number(last.countedamount) : 0;
         const closure = await tx.cashClosure.create({
             data: {
@@ -74,7 +84,7 @@ async function main() {
                 expectedamount: String(opening),
                 countedamount: String(opening),
                 diff: '0',
-                userId: null,
+                userId,
                 notes: NOTE,
             },
         });
@@ -99,12 +109,15 @@ async function main() {
             created++;
         }
         return { closureId: closure.id, created };
-    });
-
+    }, { timeout: 180000, maxWait: 20000 });
     console.log(`\nOK. Cierre #${result.closureId} creado. Payments insertados: ${result.created}. Total: ${eur(total)}`);
     await prisma.$disconnect();
 }
 
 main().catch(async (e) => { console.error(e); await prisma.$disconnect(); process.exit(1); });
+
+
+
+
 
 

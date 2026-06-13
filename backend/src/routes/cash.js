@@ -247,6 +247,7 @@ export default async function cashRoutes(fastify) {
                 include: {
                     order: {select: {id: true, orderNum: true}},
                     client: {select: {id: true, firstName: true, lastName: true}},
+                    recorder: {select: {id: true, firstName: true, lastName: true}},
                 },
             }),
         ]);
@@ -391,6 +392,7 @@ export default async function cashRoutes(fastify) {
                 include: {
                     order: {select: {id: true, orderNum: true}},
                     client: {select: {id: true, firstName: true, lastName: true}},
+                    recorder: {select: {id: true, firstName: true, lastName: true}},
                 },
             }),
         ]);
@@ -477,8 +479,9 @@ function buildClosuresReportHtml({from, to, closures, details}) {
                 <td class="r">${eur(p.amount)}</td>
                 <td>${p.order ? '#' + esc(p.order.orderNum) : '-'}</td>
                 <td>${p.client ? esc(p.client.firstName + ' ' + p.client.lastName) : '-'}</td>
+                <td>${p.recorder ? esc(p.recorder.firstName + ' ' + p.recorder.lastName) : '-'}</td>
                 <td>${p.reconciledAt ? esc(new Date(p.reconciledAt).toLocaleDateString('es-ES')) : '-'}</td>
-            </tr>`).join('') || `<tr><td colspan="7" class="muted">Sin pagos no en efectivo</td></tr>`;
+            </tr>`).join('') || `<tr><td colspan="8" class="muted">Sin pagos no en efectivo</td></tr>`;
 
         const diff = Number(c.diff || 0);
         return `<section class="page">
@@ -510,7 +513,7 @@ function buildClosuresReportHtml({from, to, closures, details}) {
                 <span class="${d.pendingTotal > 0.01 ? 'bad' : 'muted'}">Pendiente: ${eur(d.pendingTotal)}</span>
             </div>
             <table>
-                <thead><tr><th class="c">Conc.</th><th>Hora</th><th>Método</th><th class="r">Importe</th><th>Pedido</th><th>Cliente</th><th>Fecha conc.</th></tr></thead>
+                <thead><tr><th class="c">Conc.</th><th>Hora</th><th>Método</th><th class="r">Importe</th><th>Pedido</th><th>Cliente</th><th>Registrado por</th><th>Fecha conc.</th></tr></thead>
                 <tbody>${payRows}</tbody>
             </table>
             ${c.notes ? `<p class="notes"><b>Notas:</b> ${esc(c.notes)}</p>` : ''}

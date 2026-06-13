@@ -131,7 +131,7 @@ export default function CashAudit({ token }) {
         rows.push([]);
 
         rows.push(['Pagos no en efectivo (TPV / transferencia / Stripe)']);
-        rows.push(['Hora', 'Método', 'Importe', 'Pedido', 'Cliente', 'Conciliado', 'Fecha conciliación', 'Nota']);
+        rows.push(['Hora', 'Método', 'Importe', 'Pedido', 'Cliente', 'Registrado por', 'Conciliado', 'Fecha conciliación', 'Nota']);
         (detail?.cardPayments || []).forEach(p => {
             rows.push([
                 new Date(p.createdAt).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
@@ -139,6 +139,7 @@ export default function CashAudit({ token }) {
                 fmt(p.amount),
                 p.order ? `#${p.order.orderNum}` : '',
                 p.client ? `${p.client.firstName} ${p.client.lastName}` : '',
+                p.recorder ? `${p.recorder.firstName} ${p.recorder.lastName}` : '',
                 p.reconciled ? 'Sí' : 'No',
                 p.reconciledAt ? new Date(p.reconciledAt).toLocaleString('es-ES') : '',
                 p.note || '',
@@ -426,6 +427,7 @@ export default function CashAudit({ token }) {
                                                                                                 <th style={{ textAlign: 'right' }}>Importe</th>
                                                                                                 <th>Pedido</th>
                                                                                                 <th>Cliente</th>
+                                                                                                <th>Registrado por</th>
                                                                                                 <th>Nota</th>
                                                                                             </tr>
                                                                                         </thead>
@@ -455,6 +457,7 @@ export default function CashAudit({ token }) {
                                                                                                     </td>
                                                                                                     <td>{p.order ? `#${p.order.orderNum}` : '-'}</td>
                                                                                                     <td>{p.client ? `${p.client.firstName} ${p.client.lastName}` : '-'}</td>
+                                                                                                    <td>{p.recorder ? `${p.recorder.firstName} ${p.recorder.lastName}` : '-'}</td>
                                                                                                     <td style={{ color: '#64748b' }}>{p.note || '-'}</td>
                                                                                                 </tr>
                                                                                             ))}
