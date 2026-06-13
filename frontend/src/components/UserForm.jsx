@@ -44,6 +44,9 @@ export default function UserForm({ initial = {}, onSave, token, onCancel, logged
 
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [password, setPassword] = useState('');
+  const [passwordConfirm, setPasswordConfirm] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
   const isCustomer = form.role === 'customer';
 
@@ -83,8 +86,26 @@ export default function UserForm({ initial = {}, onSave, token, onCancel, logged
         setSaving(false);
         return;
       }
+
+      // Contraseña: en alta es opcional; en edición solo se cambia si se rellena
+      const wantsPassword = password.trim() !== '' || passwordConfirm.trim() !== '';
+      if (wantsPassword) {
+        if (password.length < 6) {
+          setError('La contraseña debe tener al menos 6 caracteres');
+          setSaving(false);
+          return;
+        }
+        if (password !== passwordConfirm) {
+          setError('Las contraseñas no coinciden');
+          setSaving(false);
+          return;
+        }
+      }
+
       const payload = { ...form, discount: d };
       if (!isAdmin) delete payload.role;
+      if (wantsPassword) payload.password = password;
+      else delete payload.password;
       if (isEdit) {
         await updateUser(token, initial.id, payload);
       } else {
@@ -278,6 +299,49 @@ export default function UserForm({ initial = {}, onSave, token, onCancel, logged
             <label className="uk-form-label">País</label>
             <input className="uk-input" value={form.pais}
               onChange={e => set('pais', e.target.value)} />
+          </div>
+        </div>
+      </div>
+
+      {/* ── Seguridad ── */}
+      <div style={sectionStyle}>
+        <h5 style={sectionTitle}>Seguridad</h5>
+        <div className="uk-grid-small" uk-grid="true">
+          <div className="uk-width-1-2@m">
+            <label className="uk-form-label">
+              {isEdit ? 'Nueva contraseña' : 'Contraseña'}
+            </label>
+            <input
+              type={showPassword ? 'text' : 'password'}
+              className="uk-input"
+              autoComplete="new-password"
+              value={password}
+              placeholder={isEdit ? 'Dejar en blanco para no cambiarla' : 'Mínimo 6 caracteres'}
+              onChange={e => setPassword(e.target.value)}
+            />
+          </div>
+          <div className="uk-width-1-2@m">
+            <label className="uk-form-label">Repetir contraseña</label>
+            <input
+              type={showPassword ? 'text' : 'password'}
+              className="uk-input"
+              autoComplete="new-password"
+              value={passwordConfirm}
+              placeholder="Repite la contraseña"
+              onChange={e => setPasswordConfirm(e.target.value)}
+            />
+          </div>
+          <div className="uk-width-1-1">
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', color: '#64748b' }}>
+              <input className="uk-checkbox" type="checkbox" checked={showPassword}
+                onChange={e => setShowPassword(e.target.checked)} />
+              Mostrar contraseña
+            </label>
+            <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: 2 }}>
+              {isEdit
+                ? 'Rellena ambos campos solo si quieres restablecer la contraseña de este usuario.'
+                : 'Opcional. Si lo dejas en blanco, el usuario se creará sin contraseña.'}
+            </div>
           </div>
         </div>
       </div>

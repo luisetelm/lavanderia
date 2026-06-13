@@ -54,6 +54,51 @@ const sendWelcomeEmail = async (email, firstName, lastName, password) => {
     }
 };
 
+// Aviso de contraseña restablecida por un administrador/cajero
+const sendPasswordResetEmail = async (email, firstName, lastName, password) => {
+    const mailOptions = {
+        from: {name: process.env.FROM_NAME, address: process.env.FROM_EMAIL},
+        to: email,
+        subject: 'Tu contraseña ha sido restablecida',
+        html: emailTemplate({
+            title: 'Contraseña restablecida',
+            body: `
+                <p>Hola <strong>${firstName} ${lastName}</strong>,</p>
+                <p>Un administrador ha restablecido la contraseña de tu cuenta. Estas son tus nuevas credenciales de acceso:</p>
+                <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
+                    <tr>
+                        <td style="padding: 10px 14px; background: #f1f5f9; border-radius: 6px 6px 0 0; border-bottom: 1px solid #e2e8f0;">
+                            <strong>Email:</strong>
+                        </td>
+                        <td style="padding: 10px 14px; background: #f1f5f9; border-radius: 6px 6px 0 0; border-bottom: 1px solid #e2e8f0;">
+                            ${email}
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 10px 14px; background: #f1f5f9; border-radius: 0 0 6px 6px;">
+                            <strong>Nueva contraseña:</strong>
+                        </td>
+                        <td style="padding: 10px 14px; background: #f1f5f9; border-radius: 0 0 6px 6px;">
+                            ${password}
+                        </td>
+                    </tr>
+                </table>
+                <p style="font-size: 13px; color: #94a3b8;">
+                    Por seguridad, te recomendamos cambiarla después de iniciar sesión.<br>
+                    Si no esperabas este cambio, contacta con nosotros.
+                </p>
+            `,
+        }),
+    };
+
+    try {
+        await emailTransporter.sendMail(mailOptions);
+        console.log(`Email de restablecimiento enviado a ${email}`);
+    } catch (error) {
+        console.error('Error enviando email de restablecimiento:', error);
+    }
+};
+
 import { isValidSpanishPhone, normalizePhone } from '../utils/validatePhone.js';
 
 export default async function (fastify, opts) {
@@ -469,6 +514,10 @@ export default async function (fastify, opts) {
                     notifyChannel: true,
                 },
             });
+            // Si se ha restablecido la contraseña y el usuario tiene email, notificarle
+            if (password && user.email) {
+                await sendPasswordResetEmail(user.email, user.firstName, user.lastName, password);
+            }
             return user;
         } catch (e) {
             console.log(e);
