@@ -17,6 +17,31 @@ const emailTransporter = nodemailer.createTransport({
 export default async function (fastify, opts) {
     const prisma = fastify.prisma;
 
+    // Extrae la IP real del cliente (teniendo en cuenta el proxy/nginx)
+    const getClientIp = (req) => {
+        const fwd = req.headers['x-forwarded-for'];
+        if (fwd) return String(fwd).split(',')[0].trim();
+        return req.ip || req.socket?.remoteAddress || null;
+    };
+
+    // Registra un intento de inicio de sesión sin bloquear la respuesta
+    const recordLogin = async ({ req, userId = null, email = null, success, reason = null }) => {
+        try {
+            await prisma.loginLog.create({
+                data: {
+                    userId,
+                    email: email || null,
+                    success,
+                    reason,
+                    ip: getClientIp(req),
+                    userAgent: (req.headers['user-agent'] || '').slice(0, 400) || null,
+                },
+            });
+        } catch (e) {
+            console.error('[Auth] No se pudo registrar el intento de login:', e);
+        }
+    };
+
     fastify.post('/register', async (req, reply) => {
         const { firstName, lastName, email, password, role, phone } = req.body;
         const existing = await prisma.user.findUnique({ where: { phone } });
@@ -31,10 +56,22 @@ export default async function (fastify, opts) {
     fastify.post('/login', async (req, reply) => {
         const { email, password } = req.body;
         const user = await prisma.user.findUnique({ where: { email } });
-        if (!user) return reply.status(401).send({ error: 'Invalid credentials' });
+        if (!user) {
+            await recordLogin({ req, email, success: false, reason: 'no_user' });
+            return reply.status(401).send({ error: 'Invalid credentials' });
+        }
         const valid = await compare(password, user.password);
-        if (!valid) return reply.status(401).send({ error: 'Invalid credentials' });
+        if (!valid) {
+            await recordLogin({ req, userId: user.id, email, success: false, reason: 'invalid_credentials' });
+            return reply.status(401).send({ error: 'Invalid credentials' });
+        }
+        // Bloquear acceso a usuarios desactivados
+        if (user.isActive === false) {
+            await recordLogin({ req, userId: user.id, email, success: false, reason: 'inactive' });
+            return reply.status(403).send({ error: 'Tu cuenta está desactivada. Contacta con el administrador.' });
+        }
         const token = jwt.sign({ userId: user.id, role: user.role, email: user.email }, process.env.JWT_SECRET, { expiresIn: '8h' });
+        await recordLogin({ req, userId: user.id, email, success: true });
         return reply.send({
             token,
             user: {

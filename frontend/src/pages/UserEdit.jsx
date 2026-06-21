@@ -25,6 +25,30 @@ const tabStyle = (active) => ({
   transition: 'all 0.15s',
 });
 
+// Resume el user-agent a un nombre de navegador/SO legible
+function parseUserAgent(ua) {
+  if (!ua) return '-';
+  let browser = 'Navegador';
+  if (/Edg\//.test(ua)) browser = 'Edge';
+  else if (/OPR\/|Opera/.test(ua)) browser = 'Opera';
+  else if (/Chrome\//.test(ua)) browser = 'Chrome';
+  else if (/Firefox\//.test(ua)) browser = 'Firefox';
+  else if (/Safari\//.test(ua)) browser = 'Safari';
+  let os = '';
+  if (/Windows/.test(ua)) os = 'Windows';
+  else if (/Android/.test(ua)) os = 'Android';
+  else if (/iPhone|iPad|iOS/.test(ua)) os = 'iOS';
+  else if (/Mac OS X|Macintosh/.test(ua)) os = 'macOS';
+  else if (/Linux/.test(ua)) os = 'Linux';
+  return os ? `${browser} · ${os}` : browser;
+}
+
+const LOGIN_FAIL_REASONS = {
+  no_user: 'Email no existe',
+  invalid_credentials: 'Contraseña incorrecta',
+  inactive: 'Cuenta desactivada',
+};
+
 export default function UserEdit({ token, user: loggedUser }) {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -51,6 +75,7 @@ export default function UserEdit({ token, user: loggedUser }) {
   const orders = user?.orders || [];
   const invoices = user?.invoices || [];
   const notifications = user?.notifications || [];
+  const loginLogs = user?.loginLogs || [];
 
   const stats = orders.reduce(
     (acc, order) => {
@@ -132,6 +157,9 @@ export default function UserEdit({ token, user: loggedUser }) {
                 </button>
                 <button type="button" style={tabStyle(activeTab === 'notifications')} onClick={() => setActiveTab('notifications')}>
                   Notificaciones ({notifications.length})
+                </button>
+                <button type="button" style={tabStyle(activeTab === 'logins')} onClick={() => setActiveTab('logins')}>
+                  Accesos ({loginLogs.length})
                 </button>
               </div>
 
@@ -262,6 +290,47 @@ export default function UserEdit({ token, user: loggedUser }) {
                               </tr>
                             );
                           })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )
+                )}
+
+                {/* ── Accesos (inicios de sesión) ── */}
+                {activeTab === 'logins' && (
+                  loginLogs.length === 0 ? (
+                    <div style={{textAlign: 'center', padding: 20, color: '#94a3b8'}}>Sin registros de acceso</div>
+                  ) : (
+                    <div className="uk-overflow-auto">
+                      <table className="uk-table uk-table-divider uk-table-small" style={{margin: 0}}>
+                        <thead>
+                          <tr>
+                            <th>Fecha</th>
+                            <th>Resultado</th>
+                            <th>IP</th>
+                            <th>Dispositivo</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {loginLogs.map(l => (
+                            <tr key={l.id}>
+                              <td style={{fontSize: '0.8rem', color: '#64748b', whiteSpace: 'nowrap'}}>
+                                {l.createdAt ? new Date(l.createdAt).toLocaleDateString('es-ES', { dateStyle: 'medium' }) : '-'}
+                                <div style={{fontSize: '0.7rem'}}>
+                                  {l.createdAt ? new Date(l.createdAt).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) : ''}
+                                </div>
+                              </td>
+                              <td>
+                                <span className={`uk-label ${l.success ? 'uk-label-success' : 'uk-label-danger'}`} style={{fontSize: '0.6rem'}}>
+                                  {l.success ? 'Correcto' : (LOGIN_FAIL_REASONS[l.reason] || 'Fallido')}
+                                </span>
+                              </td>
+                              <td style={{fontSize: '0.8rem', fontFamily: 'monospace', color: '#475569'}}>{l.ip || '-'}</td>
+                              <td style={{fontSize: '0.78rem', color: '#475569'}} title={l.userAgent || ''}>
+                                {parseUserAgent(l.userAgent)}
+                              </td>
+                            </tr>
+                          ))}
                         </tbody>
                       </table>
                     </div>

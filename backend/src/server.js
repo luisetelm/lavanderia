@@ -63,6 +63,25 @@ app.addHook('preHandler', async (request, reply) => {
     } catch (e) {
         return reply.status(401).send({error: 'Invalid token'});
     }
+
+    // Verificar que el usuario sigue existiendo y está activo en cada petición.
+    // Así, al desactivar un usuario, pierde el acceso de inmediato aunque su token aún sea válido.
+    try {
+        const dbUser = await prisma.user.findUnique({
+            where: { id: request.user.userId },
+            select: { isActive: true, role: true },
+        });
+        if (!dbUser) {
+            return reply.status(401).send({ error: 'Usuario no encontrado' });
+        }
+        if (dbUser.isActive === false) {
+            return reply.status(403).send({ error: 'Cuenta desactivada' });
+        }
+        // Mantener el rol sincronizado con la base de datos
+        request.user.role = dbUser.role;
+    } catch (e) {
+        return reply.status(500).send({ error: 'Error verificando la sesión' });
+    }
 });
 
 // Multipart (uploads de media)

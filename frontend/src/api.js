@@ -17,6 +17,10 @@ async function request(path, token, opts = {}) {
             // Emitir un evento personalizado cuando se recibe un 401
             window.dispatchEvent(new CustomEvent('unauthorized'));
         }
+        // 403 por cuenta desactivada => también cerrar sesión
+        if (res.status === 403 && /desactivad/i.test(err.error || '')) {
+            window.dispatchEvent(new CustomEvent('unauthorized'));
+        }
         throw {status: res.status, ...err};
     }
 
@@ -176,6 +180,18 @@ export function updateUser(token, id, data) {
     return request(`/users/${id}`, token, {
         method: 'PUT', body: JSON.stringify(data),
     });
+}
+
+// Historial global de inicios de sesión (solo admin)
+export function fetchLoginLogs(token, { page = 0, size = 50, success } = {}) {
+    const params = new URLSearchParams({ page, size });
+    if (success !== undefined && success !== null && success !== '') params.set('success', success);
+    return request(`/users/login-logs/all?${params}`, token);
+}
+
+// Inicios de sesión de un usuario concreto
+export function fetchUserLoginLogs(token, id) {
+    return request(`/users/${id}/login-logs`, token);
 }
 
 export function payWithCard(token, orderId) {

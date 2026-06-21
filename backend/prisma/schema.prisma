@@ -220,6 +220,23 @@ model User {
   clientMessages     Message[]      @relation("client_messages")
   conversations      Conversation[] @relation("client_conversations")
   completedSteps     OrderLineStep[] @relation("step_completed_by")
+  loginLogs          LoginLog[]     @relation("user_login_logs")
+}
+
+model LoginLog {
+  id        Int      @id @default(autoincrement())
+  userId    Int?
+  email     String?
+  success   Boolean  @default(true)
+  ip        String?  @db.VarChar(45)
+  userAgent String?  @db.VarChar(400)
+  reason    String?  @db.VarChar(60)   // motivo del fallo: 'invalid_credentials', 'inactive', 'no_user'
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  user      User?    @relation("user_login_logs", fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([createdAt])
+  @@map("login_log")
 }
 
 model Notification {

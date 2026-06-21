@@ -275,7 +275,69 @@ export default async function (fastify, opts) {
             });
         }
 
-        return { ...user, orders, invoices, notifications };
+        // Últimos inicios de sesión del usuario
+        const loginLogs = await prisma.loginLog.findMany({
+            where: {userId: Number(id)},
+            select: {
+                id: true,
+                success: true,
+                ip: true,
+                userAgent: true,
+                reason: true,
+                createdAt: true,
+            },
+            orderBy: {createdAt: 'desc'},
+            take: 50,
+        });
+
+        return { ...user, orders, invoices, notifications, loginLogs };
+    });
+
+    // Últimos inicios de sesión de un usuario concreto
+    fastify.get('/:id/login-logs', async (req, reply) => {
+        const {id} = req.params;
+        const logs = await prisma.loginLog.findMany({
+            where: {userId: Number(id)},
+            orderBy: {createdAt: 'desc'},
+            take: 100,
+        });
+        return logs;
+    });
+
+    // Historial global de accesos (solo admin)
+    fastify.get('/login-logs/all', async (req, reply) => {
+        if (req.user?.role !== 'admin') {
+            return reply.status(403).send({error: 'Solo administradores pueden ver los accesos'});
+        }
+        const {page = 0, size = 50, success} = req.query;
+        const pageNum = parseInt(page) || 0;
+        const pageSize = Math.min(parseInt(size) || 50, 200);
+        const skip = pageNum * pageSize;
+
+        const where = {};
+        if (success === 'true') where.success = true;
+        if (success === 'false') where.success = false;
+
+        const total = await prisma.loginLog.count({where});
+        const logs = await prisma.loginLog.findMany({
+            where,
+            orderBy: {createdAt: 'desc'},
+            skip,
+            take: pageSize,
+            include: {
+                user: {select: {id: true, firstName: true, lastName: true, email: true, role: true}},
+            },
+        });
+
+        const totalPages = Math.ceil(total / pageSize);
+        return {
+            data: logs,
+            meta: {
+                total, page: pageNum, size: pageSize, totalPages,
+                hasNextPage: pageNum < totalPages - 1,
+                hasPrevPage: pageNum > 0,
+            },
+        };
     });
 
     // Helper: comprueba si el cliente tiene los datos mínimos para facturación

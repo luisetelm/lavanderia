@@ -18,6 +18,7 @@ import ResourceConfig from './pages/ResourceConfig.jsx';
 import WorkSchedule from './pages/WorkSchedule.jsx';
 import Stats from './pages/Stats.jsx';
 import WorkerPerformance from './pages/WorkerPerformance.jsx';
+import LoginLogs from './pages/LoginLogs.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
 import DraftOrderBanner from './components/DraftOrderBanner.jsx';
 import { DraftOrderProvider } from './context/DraftOrderContext.jsx';
@@ -136,7 +137,7 @@ export default function App() {
     const [adminMenuOpen, setAdminMenuOpen] = useState(false);
 
     // Mantener menú admin abierto si la ruta actual es de administración
-    const adminPaths = ['/ventas', '/estadisticas', '/resenas', '/caja', '/horario', '/itinerarios', '/recursos'];
+    const adminPaths = ['/ventas', '/estadisticas', '/resenas', '/caja', '/horario', '/itinerarios', '/recursos', '/accesos'];
     useEffect(() => {
         if (adminPaths.some(p => location.pathname.startsWith(p))) {
             setAdminMenuOpen(true);
@@ -322,6 +323,7 @@ export default function App() {
                                         <li><NavLink to="/horario"><span uk-icon="icon: calendar; ratio: 0.8"></span> Horario</NavLink></li>
                                         <li><NavLink to="/itinerarios"><span uk-icon="icon: settings; ratio: 0.8"></span> Itinerarios</NavLink></li>
                                         <li><NavLink to="/recursos"><span uk-icon="icon: cog; ratio: 0.8"></span> Recursos</NavLink></li>
+                                        <li><NavLink to="/accesos"><span uk-icon="icon: sign-in; ratio: 0.8"></span> Accesos</NavLink></li>
                                     </ul>
                                 )}
                             </li>
@@ -370,6 +372,7 @@ export default function App() {
                     <Route path="/horario" element={<WorkSchedule token={token}/>}/>
                     <Route path="/itinerarios" element={<ItineraryConfig token={token}/>}/>
                     <Route path="/recursos" element={<ResourceConfig token={token}/>}/>
+                    <Route path="/accesos" element={user.role === 'admin' ? <LoginLogs token={token}/> : <Navigate to="/dashboard" replace/>}/>
                     <Route path="*" element={<div style={{padding: 40, textAlign: 'center'}}>Ruta no encontrada</div>}/>
                     <Route path="/login" element={<Login onLogin={handleLogin}/>}/>
                 </Routes>
