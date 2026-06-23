@@ -502,7 +502,7 @@ export async function printCashMovementTicket(movement, opts = {}) {
     await sendToPrinter(printerName, buildRawHtml(html));
 }
 
-export async function printCashClosureTicket({closure, openingAmount, movements, summary}, opts = {}) {
+export async function printCashClosureTicket({closure, openingAmount, movements, summary, tpv}, opts = {}) {
     const printerName = opts.printerName || getTicketPrinterName();
 
     const signed = (t, a) => (['withdrawal', 'refund_cash_out'].includes(t) ? -Math.abs(a) : Math.abs(a));
@@ -532,6 +532,27 @@ export async function printCashClosureTicket({closure, openingAmount, movements,
             const signAmt = signed(m.type, Number(m.amount));
             return `<div class="row"><span>${typeLabel[m.type] || m.type}${m.note ? ` - ${m.note}` : ''}</span><span>${fmtMoney(signAmt)}</span></div>`;
         }).join('');
+
+    // Sección Tarjeta / TPV (solo si hay cobros con tarjeta en el periodo)
+    const tpvPayments = tpv?.payments || [];
+    const tpvTotal = Number(tpv?.total || 0);
+    const tpvMarked = Number(tpv?.marked || 0);
+    const tpvPending = Number((tpvTotal - tpvMarked).toFixed(2));
+    const fmtTime = (d) => {
+        try { return new Date(d).toLocaleTimeString('es-ES', {hour: '2-digit', minute: '2-digit'}); }
+        catch { return ''; }
+    };
+    const tpvRowsHtml = tpvPayments
+        .map(p => `<div class="row"><span>${p.reconciled ? '[x]' : '[ ]'} ${fmtTime(p.createdAt)}${p.order ? ` #${p.order.orderNum}` : ''}</span><span>${fmtMoney(p.amount)}</span></div>`)
+        .join('');
+    const tpvHtml = tpvPayments.length ? `
+        <div class="hr"></div>
+        <div class="bold">Tarjeta / TPV</div>
+        <div class="row"><span>Cobros registrados</span><span>${fmtMoney(tpvTotal)}</span></div>
+        <div class="row"><span>Conciliado</span><span>${fmtMoney(tpvMarked)}</span></div>
+        <div class="row"><span class="bold">Pendiente</span><span class="bold">${fmtMoney(tpvPending)}</span></div>
+        <div class="mt">${tpvRowsHtml}</div>
+    ` : '';
 
     const html = `
     <html>
@@ -585,6 +606,8 @@ export async function printCashClosureTicket({closure, openingAmount, movements,
         <div class="hr"></div>
         <div class="bold">Detalle movimientos</div>
         ${movementsHtml || '<div>Sin movimientos</div>'}
+
+        ${tpvHtml}
 
         ${closure.notes ? `<div class="hr"></div><div><span class="bold">Notas:</span> ${closure.notes}</div>` : ''}
 

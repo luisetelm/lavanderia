@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { fetchCashClosures, fetchClosureMovements, reconcilePayment, downloadClosuresReport } from '../api.js';
+import { fetchCashClosures, fetchClosureMovements, reconcilePayment, reconcileClosureTpv, downloadClosuresReport } from '../api.js';
 import { formatEUR } from '../utils/format.js';
 import PageToolbar from '../components/PageToolbar.jsx';
 import DateRangeSelector from '../components/DateRangeSelector.jsx';
@@ -93,6 +93,18 @@ export default function CashAudit({ token }) {
             });
         } catch (e) {
             console.error('Error conciliando pago:', e);
+        }
+    };
+
+    // Concilia (o desconcilia) de golpe todos los pagos con tarjeta TPV del periodo del cierre
+    const handleReconcileTpvPeriod = async (closureId, reconciled) => {
+        try {
+            await reconcileClosureTpv(token, closureId, reconciled);
+            // Recargar el detalle del cierre para reflejar el nuevo estado
+            const data = await fetchClosureMovements(token, closureId);
+            setMovements(prev => ({ ...prev, [closureId]: data }));
+        } catch (e) {
+            console.error('Error conciliando TPV del periodo:', e);
         }
     };
 
@@ -394,6 +406,9 @@ export default function CashAudit({ token }) {
                                                                             acc[k] = (acc[k] || 0) + Number(p.amount || 0);
                                                                             return acc;
                                                                         }, {});
+                                                                        // Pagos con tarjeta TPV (datáfono): card_pos / card
+                                                                        const tpvPayments = cardPayments.filter(p => ['card_pos', 'card'].includes(p.method));
+                                                                        const tpvAllReconciled = tpvPayments.length > 0 && tpvPayments.every(p => p.reconciled);
                                                                         return (
                                                                             <div style={{ marginTop: 14 }}>
                                                                                 <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 6, flexWrap: 'wrap', gap: 8 }}>
@@ -410,6 +425,16 @@ export default function CashAudit({ token }) {
                                                                                                     `${cardMethodLabels[k] || k}: ${formatEUR(v)}`
                                                                                                 ).join(' · ')})
                                                                                             </span>
+                                                                                        )}
+                                                                                        {tpvPayments.length > 0 && (
+                                                                                            <button
+                                                                                                className="uk-button uk-button-small uk-margin-small-left"
+                                                                                                style={{ background: tpvAllReconciled ? '#fff' : '#16a34a', color: tpvAllReconciled ? '#475569' : '#fff', border: tpvAllReconciled ? '1px solid #cbd5e1' : 'none' }}
+                                                                                                title="Marca/desmarca todos los cobros con tarjeta TPV (datáfono) de este periodo como conciliados con el resumen Z"
+                                                                                                onClick={() => handleReconcileTpvPeriod(c.id, !tpvAllReconciled)}
+                                                                                            >
+                                                                                                {tpvAllReconciled ? 'Desconciliar TPV' : 'Conciliar TPV del periodo'}
+                                                                                            </button>
                                                                                         )}
                                                                                     </div>
                                                                                 </div>

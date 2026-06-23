@@ -23,6 +23,8 @@ export default async function cashRoutes(fastify) {
 
     // Métodos de pago que NO suponen entrada/salida de efectivo en caja
     const NON_CASH_METHODS = ['card_pos', 'card', 'stripe', 'transfer'];
+    // Métodos que aparecen en el resumen (Z) del datáfono TPV: tarjeta presencial
+    const TPV_METHODS = ['card_pos', 'card'];
 
     // Devuelve la fecha del último cierre (o null si no hay)
     async function getLastClosureDate() {
@@ -89,10 +91,14 @@ export default async function cashRoutes(fastify) {
             getUnclosedCardPayments(),
         ]);
         const cardTotal = cardPayments.reduce((acc, p) => acc + Number(p.amount || 0), 0);
+        const tpvTotal = cardPayments
+            .filter(p => TPV_METHODS.includes(p.method))
+            .reduce((acc, p) => acc + Number(p.amount || 0), 0);
         return {
             movements,
             cardPayments,
             cardTotal: Number(cardTotal.toFixed(2)),
+            tpvTotal: Number(tpvTotal.toFixed(2)),
             nonCashByMethod: breakdownByMethod(cardPayments),
         };
     });
@@ -171,13 +177,15 @@ export default async function cashRoutes(fastify) {
 
     // POST /api/cash/close
     fastify.post('/close', async (request, reply) => {
-        const {countedAmount, notes, user} = request.body || {};
+        const {countedAmount, notes, user, tpvCounted, reconcileTpv} = request.body || {};
         if (countedAmount === undefined) return reply.code(400).send({error: 'countedAmount requerido'});
         const counted = Number(countedAmount);
         if (!Number.isFinite(counted)) return reply.code(400).send({error: 'countedAmount inválido'});
 
         const last = await prisma.cashClosure.findFirst({orderBy: {closedat: 'desc'}});
         const openingAmount = last ? toNum(last.countedamount) : 0;
+        // Inicio del periodo = fecha del último cierre (o el origen si es el primero)
+        const periodFrom = last ? last.closedat : new Date(0);
 
         const moves = await prisma.cashMovement.findMany({
             where: {closureId: null},
@@ -204,7 +212,33 @@ export default async function cashRoutes(fastify) {
                 data: {closureId: closure.id},
             });
         }
-        return {closure, movesIncluded: moves.length};
+
+        // Conciliación del TPV en el cierre: marca como conciliados todos los pagos
+        // con tarjeta presencial (card_pos/card) del periodo contra el resumen del datáfono.
+        let tpvReconciledCount = 0;
+        if (reconcileTpv) {
+            const res = await prisma.payment.updateMany({
+                where: {
+                    status: 'completed',
+                    method: {in: TPV_METHODS},
+                    reconciled: false,
+                    createdAt: {gt: periodFrom, lte: closure.closedat},
+                },
+                data: {
+                    reconciled: true,
+                    reconciledAt: new Date(),
+                    reconciledBy: request.user?.userId ?? user ?? null,
+                },
+            });
+            tpvReconciledCount = res.count;
+        }
+
+        return {
+            closure,
+            movesIncluded: moves.length,
+            tpvCounted: tpvCounted !== undefined && tpvCounted !== null ? Number(tpvCounted) : null,
+            tpvReconciledCount,
+        };
     });
 
     // GET /api/cash/closures/:id/movements
@@ -297,7 +331,44 @@ export default async function cashRoutes(fastify) {
         return updated;
     });
 
-    // GET /api/cash/closures
+    // PATCH /api/cash/closures/:id/reconcile-tpv
+    // Concilia (o desconcilia) de golpe todos los pagos con tarjeta TPV del periodo
+    // del cierre, contra el resumen Z del datáfono.
+    fastify.patch('/closures/:id/reconcile-tpv', async (request, reply) => {
+        const id = Number(request.params.id);
+        if (!Number.isInteger(id)) return reply.code(400).send({error: 'id inválido'});
+
+        const {reconciled} = request.body || {};
+        const value = reconciled === undefined ? true : !!reconciled;
+
+        const closure = await prisma.cashClosure.findUnique({
+            where: {id},
+            select: {id: true, closedat: true},
+        });
+        if (!closure) return reply.code(404).send({error: 'Cierre no encontrado'});
+
+        const prevClosure = await prisma.cashClosure.findFirst({
+            where: {closedat: {lt: closure.closedat}},
+            orderBy: {closedat: 'desc'},
+            select: {closedat: true},
+        });
+        const periodFrom = prevClosure ? prevClosure.closedat : new Date(0);
+
+        const res = await prisma.payment.updateMany({
+            where: {
+                status: 'completed',
+                method: {in: TPV_METHODS},
+                createdAt: {gt: periodFrom, lte: closure.closedat},
+            },
+            data: {
+                reconciled: value,
+                reconciledAt: value ? new Date() : null,
+                reconciledBy: value ? (request.user?.userId ?? null) : null,
+            },
+        });
+
+        return {ok: true, reconciled: value, count: res.count};
+    });
     fastify.get('/closures', async (request) => {
         const {from, to} = request.query || {};
         const where = {};

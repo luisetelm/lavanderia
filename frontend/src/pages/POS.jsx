@@ -5,11 +5,13 @@ import {
     fetchItineraries,
     // Caja API:
     fetchUnclosedCashMovements,
+    fetchUnclosedCashSummary,
     fetchLastClosure,
     createCashMovement,
     updateCashMovement,
     deleteCashMovement,
     closeCashRegister,
+    reconcilePayment,
 } from '../api.js';
 import {
     printCashMovementTicket, printCashClosureTicket
@@ -63,6 +65,8 @@ export default function POS({token, user}) {
     // Cierre
     const [closeNotes, setCloseNotes] = useState('');
     const [countedAmount, setCountedAmount] = useState('');
+    // Conciliación TPV en el cierre
+    const [tpvPayments, setTpvPayments] = useState([]);   // cobros con tarjeta TPV del periodo
 
     // Carga de catálogo
     useEffect(() => {
@@ -132,9 +136,16 @@ export default function POS({token, user}) {
     const loadCash = async () => {
         setCashErr('');
         try {
-            const [moves, lc] = await Promise.all([fetchUnclosedCashMovements(token), fetchLastClosure(token)]);
+            const [moves, lc, summary] = await Promise.all([
+                fetchUnclosedCashMovements(token),
+                fetchLastClosure(token),
+                fetchUnclosedCashSummary(token),
+            ]);
             setUnclosedMoves(moves || []);
             setLastClosure(lc || null);
+            // Solo tarjeta presencial (datáfono): card_pos / card
+            const tpv = (summary?.cardPayments || []).filter(p => ['card_pos', 'card'].includes(p.method));
+            setTpvPayments(tpv);
         } catch (e) {
             setCashErr(e.message || 'Error cargando caja');
         }
@@ -151,6 +162,15 @@ export default function POS({token, user}) {
         const counted = Number(countedAmount || 0);
         return Number((counted - expectedAmount).toFixed(2));
     }, [countedAmount, expectedAmount]);
+    // Conciliación de tarjeta: total registrado y total ya marcado por el cajero
+    const tpvTotal = useMemo(
+        () => Number((tpvPayments.reduce((a, p) => a + Number(p.amount || 0), 0)).toFixed(2)),
+        [tpvPayments]
+    );
+    const tpvMarkedTotal = useMemo(
+        () => Number((tpvPayments.filter(p => p.reconciled).reduce((a, p) => a + Number(p.amount || 0), 0)).toFixed(2)),
+        [tpvPayments]
+    );
 
     // Añadir producto al carrito del borrador
     const add = (p) => {
@@ -197,20 +217,65 @@ export default function POS({token, user}) {
             return;
         }
 
+        // Aviso si quedan cobros con tarjeta sin conciliar antes de cerrar
+        const tpvPending = tpvPayments.filter(p => !p.reconciled);
+        if (tpvPending.length > 0) {
+            const ok = window.confirm(
+                `Quedan ${tpvPending.length} cobro(s) con tarjeta sin conciliar.\n\n` +
+                `¿Cerrar caja igualmente? Podrás conciliarlos después en Auditoría.`
+            );
+            if (!ok) return;
+        }
+
         const payload = { countedAmount: counted, notes: closeNotes || undefined, user: user.id };
 
         try {
             const {closure} = await closeCashRegister(token, payload);
             await printCashClosureTicket({
                 closure, openingAmount, movements: unclosedMoves, summary: null,
+                tpv: {
+                    payments: tpvPayments,
+                    total: tpvTotal,
+                    marked: tpvMarkedTotal,
+                },
             });
             setCountedAmount('');
             setCloseNotes('');
             setShowCloseModal(false);
             await loadCash();
-            alert(`Caja cerrada. Descuadre: ${closure.diff} €`);
+            alert(`Caja cerrada. Descuadre efectivo: ${closure.diff} €`);
         } catch (e) {
             setCashErr(e.message || 'Error al cerrar caja');
+        }
+    };
+
+    // Marca/desmarca un cobro con tarjeta como conciliado contra el ticket del TPV (en vivo)
+    const handleToggleTpv = async (payment) => {
+        const next = !payment.reconciled;
+        // Optimista: refleja el cambio al instante
+        setTpvPayments(prev => prev.map(p => p.id === payment.id ? { ...p, reconciled: next } : p));
+        try {
+            const res = await reconcilePayment(token, payment.id, next);
+            setTpvPayments(prev => prev.map(p =>
+                p.id === payment.id ? { ...p, reconciled: res.reconciled, reconciledAt: res.reconciledAt } : p
+            ));
+        } catch (e) {
+            // Revertir si falla
+            setTpvPayments(prev => prev.map(p => p.id === payment.id ? { ...p, reconciled: !next } : p));
+            setCashErr(e.message || 'Error conciliando cobro');
+        }
+    };
+
+    // Marca o desmarca todos los cobros con tarjeta de golpe (atajo cuando el total cuadra)
+    const handleToggleAllTpv = async (value) => {
+        const targets = tpvPayments.filter(p => !!p.reconciled !== value);
+        if (!targets.length) return;
+        setTpvPayments(prev => prev.map(p => ({ ...p, reconciled: value })));
+        try {
+            await Promise.all(targets.map(p => reconcilePayment(token, p.id, value)));
+        } catch (e) {
+            await loadCash();
+            setCashErr(e.message || 'Error conciliando cobros');
         }
     };
 
@@ -401,6 +466,11 @@ export default function POS({token, user}) {
             closeNotes={closeNotes}
             setCloseNotes={setCloseNotes}
             unclosedMoves={unclosedMoves}
+            tpvPayments={tpvPayments}
+            tpvTotal={tpvTotal}
+            tpvMarkedTotal={tpvMarkedTotal}
+            onToggleTpv={handleToggleTpv}
+            onToggleAllTpv={handleToggleAllTpv}
             onCloseCash={doCloseCash}
         />
 

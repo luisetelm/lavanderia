@@ -280,6 +280,14 @@ export function reconcilePayment(token, paymentId, reconciled) {
     });
 }
 
+// Concilia/desconcilia de golpe todos los pagos con tarjeta TPV del periodo de un cierre
+export function reconcileClosureTpv(token, closureId, reconciled = true) {
+    return request(`/cash/closures/${closureId}/reconcile-tpv`, token, {
+        method: 'PATCH',
+        body: JSON.stringify({ reconciled }),
+    });
+}
+
 // Descarga el informe PDF de cierres de caja del periodo (un cierre por página)
 export async function downloadClosuresReport(token, { from, to } = {}) {
     const params = new URLSearchParams();
