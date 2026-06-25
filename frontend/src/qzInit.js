@@ -54,7 +54,10 @@ export async function connectQZ(retries = 3, delay = 500) {
     if (typeof window === 'undefined') throw new Error('No hay window');
     await waitForQZ(); // espera a que el script haya enlazado window.qz
 
-    qz.api.setPromiseType((promise) => promise);
+    // setPromiseType DEBE envolver el resolver en una Promise real; de lo
+    // contrario, await qz.websocket.connect() no espera y print() se lanza
+    // antes de que la conexión esté activa ("connection not established yet").
+    qz.api.setPromiseType((resolver) => new Promise(resolver));
     configureSecurity();
 
     for (let i = 0; i <= retries; i++) {
