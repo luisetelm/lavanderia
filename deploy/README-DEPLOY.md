@@ -300,7 +300,31 @@ La firma de las peticiones está centralizada en el servidor.
 ### Parte servidor (una sola vez)
 
 La clave privada (`backend/certs/private-key.pem`) está en `.gitignore`, así que
-**NO se sube con git** y hay que copiarla manualmente al servidor:
+**NO se sube con git**. Tienes dos formas de proporcionarla al servidor:
+
+#### Opción A — Variable de entorno (recomendada, sin `scp`)
+
+Añade la clave (y opcionalmente el certificado) al `.env` del backend. Como el
+PEM tiene varias líneas, sustituye los saltos de línea por `\n` en una sola línea:
+
+```env
+# Clave privada para firmar las peticiones de QZ Tray (impresión)
+QZ_PRIVATE_KEY=-----BEGIN PRIVATE KEY-----\nMIIE...\n...\n-----END PRIVATE KEY-----
+# (opcional) certificado público; si no se define, se lee de certs/digital-certificate.txt
+#QZ_CERT=-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----
+```
+
+El código (`backend/src/routes/qz.js`) lee primero `QZ_PRIVATE_KEY` / `QZ_CERT` y,
+si no existen, cae al archivo en `certs/`. Tras editar el `.env`:
+
+```bash
+pm2 restart lavanderia
+```
+
+> Para convertir el `.pem` a una línea con `\n` (desde tu PC, PowerShell):
+> `(Get-Content backend\certs\private-key.pem -Raw) -replace "\r?\n","\n"`
+
+#### Opción B — Copiar el archivo con `scp`
 
 ```bash
 # Desde tu PC (donde se generó el certificado):

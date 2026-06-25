@@ -13,16 +13,35 @@ const KEY_PATH = path.join(CERTS_DIR, 'private-key.pem');
 let cachedCert = null;
 let cachedKey = null;
 
+// Permite definir el secreto en una variable de entorno usando "\n" como
+// separador de línea (cómodo para .env de una sola línea) o saltos reales.
+function normalizePem(value) {
+    return String(value || '').replace(/\\n/g, '\n').trim();
+}
+
+// Prioridad: variable de entorno (QZ_CERT / QZ_PRIVATE_KEY) -> archivo en certs/.
 function loadCert() {
     if (cachedCert === null) {
-        cachedCert = fs.existsSync(CERT_PATH) ? fs.readFileSync(CERT_PATH, 'utf8') : '';
+        if (process.env.QZ_CERT) {
+            cachedCert = normalizePem(process.env.QZ_CERT);
+        } else if (fs.existsSync(CERT_PATH)) {
+            cachedCert = fs.readFileSync(CERT_PATH, 'utf8');
+        } else {
+            cachedCert = '';
+        }
     }
     return cachedCert;
 }
 
 function loadKey() {
     if (cachedKey === null) {
-        cachedKey = fs.existsSync(KEY_PATH) ? fs.readFileSync(KEY_PATH, 'utf8') : '';
+        if (process.env.QZ_PRIVATE_KEY) {
+            cachedKey = normalizePem(process.env.QZ_PRIVATE_KEY);
+        } else if (fs.existsSync(KEY_PATH)) {
+            cachedKey = fs.readFileSync(KEY_PATH, 'utf8');
+        } else {
+            cachedKey = '';
+        }
     }
     return cachedKey;
 }
