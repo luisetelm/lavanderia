@@ -1,14 +1,16 @@
 // Importar la biblioteca para generar códigos QR
 import QRCode from 'qrcode';
+// Conexión a QZ Tray CON certificado + firma (evita el diálogo "anonymous request")
+import { connectQZ as connectQZSecure } from '../qzInit.js';
 
 // configuración mínima de QZ Tray
 async function connectQZ() {
-    if (qz.websocket.isActive()) return;
+    // Delegamos en qzInit.js, que configura el certificado público y la firma
+    // (setCertificatePromise / setSignaturePromise) ANTES de conectar. Así QZ
+    // Tray reconoce el certificado de confianza y no muestra el diálogo de
+    // seguridad ni trata la petición como anónima.
     try {
-        await qz.websocket.connect();
-        // opcional: verificar firma/seguridad si usas certificados
-        // qz.security.setCertificate(...);
-        // qz.security.setSignaturePromise(...);
+        await connectQZSecure();
     } catch (e) {
         console.error('Error conectando a QZ Tray:', e);
         throw e;
@@ -398,7 +400,7 @@ export async function printSaleTicket(order, products = [], printerName) {
   `;
 
     try {
-        await sendToPrinter('CLIENTE', buildRawHtml(fullHtml));
+        await sendToPrinter(getTicketPrinterName(), buildRawHtml(fullHtml));
     } catch (e) {
         console.warn('QZ Tray falló, recayendo a window.print()', e);
         const w = window.open('', 'print_ticket_fallback');
