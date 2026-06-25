@@ -7,3 +7,8 @@ dist/
 .DS_Store
 
 /backend/uploads/line-photos/
+
+# Clave privada de firma de QZ Tray (no subir nunca)
+/backend/certs/private-key.pem
+
+

@@ -19,6 +19,12 @@ npx prisma generate
 echo "--- Backend: reiniciando ---"
 pm2 restart lavanderia || pm2 start src/server.js --name lavanderia --env production
 
+# Aviso si falta la clave privada de QZ Tray (no se sube por git, ver README)
+if [ ! -f "$APP_DIR/backend/certs/private-key.pem" ]; then
+  echo "⚠️  AVISO: falta backend/certs/private-key.pem (firma de impresión QZ Tray)."
+  echo "    Cópiala con scp al servidor; ver 'Impresión con QZ Tray' en README-DEPLOY.md"
+fi
+
 # Frontend
 echo "--- Frontend: compilando ---"
 cd "$APP_DIR/frontend"

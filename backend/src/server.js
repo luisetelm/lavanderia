@@ -19,6 +19,7 @@ import googleRoutes from './routes/google.js';
 import dashboardRoutes from './routes/dashboard.js';
 import trackingRoutes from './routes/tracking.js';
 import itineraryRoutes from './routes/itineraries.js';
+import qzRoutes from './routes/qz.js';
 import fastifyStatic from '@fastify/static';
 import multipart from '@fastify/multipart';
 import path from 'path';
@@ -107,6 +108,7 @@ app.register(googleRoutes, {prefix: '/api/google'});
 app.register(dashboardRoutes, {prefix: '/api/dashboard'});
 app.register(trackingRoutes, {prefix: '/api/tracking'});
 app.register(itineraryRoutes, {prefix: '/api/itineraries'});
+app.register(qzRoutes, {prefix: '/api/qz'});
 
 // Servir la carpeta de PDFs de facturas de forma pública
 app.register(fastifyStatic, {
