@@ -291,6 +291,51 @@ Un solo comando:
 
 ---
 
+## Impresión con QZ Tray (etiquetas y tickets)
+
+QZ Tray es una app de escritorio que corre en **cada PC con impresora** (la caja/TPV),
+no en el servidor. El navegador se conecta a `wss://localhost` de su propia máquina.
+La firma de las peticiones está centralizada en el servidor.
+
+### Parte servidor (una sola vez)
+
+La clave privada (`backend/certs/private-key.pem`) está en `.gitignore`, así que
+**NO se sube con git** y hay que copiarla manualmente al servidor:
+
+```bash
+# Desde tu PC (donde se generó el certificado):
+scp -i tu-key.pem backend/certs/private-key.pem \
+    ubuntu@<IP_LIGHTSAIL>:/var/www/lavanderia/backend/certs/private-key.pem
+```
+
+El certificado público (`digital-certificate.txt`) sí está en git y llega con
+`git pull`. Tras copiar la clave, reinicia el backend:
+
+```bash
+pm2 restart lavanderia
+# Verifica que el endpoint responde:
+curl https://app.tinteyburbuja.com/api/qz/cert   # → debe devolver el certificado PEM
+```
+
+> Si regeneras el certificado, vuelve a copiar `private-key.pem` al servidor
+> Y repite la "Parte cliente" en cada caja (cambia la clave).
+
+### Parte cliente (una vez por cada PC con impresora)
+
+1. Instalar **QZ Tray**: https://qz.io/download/ (incluye Java).
+2. Ejecutar el script de confianza, que descarga el certificado del servidor y lo
+   añade a la lista de confianza de QZ Tray:
+   - Copia `deploy/setup-qz-trust.ps1` al PC.
+   - Clic derecho → **Ejecutar con PowerShell** (pedirá permisos de administrador).
+3. Listo: ese PC imprime sin mostrar el diálogo de seguridad.
+
+> ¿Por qué el botón "Allow" + "Remember" salía deshabilitado? Porque QZ Tray no
+> permite recordar un "Allow" para un certificado en el que no confía. El script
+> resuelve esto añadiendo el certificado a la confianza (`authcert.override`).
+
+---
+
+
 ## Comandos útiles
 
 ```bash

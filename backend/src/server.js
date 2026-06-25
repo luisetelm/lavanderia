@@ -51,7 +51,7 @@ app.addHook('onRequest', async (request, reply) => {
 
 // JWT middleware
 app.addHook('preHandler', async (request, reply) => {
-    const publicPrefixes = ['/api/auth/login', '/api/auth/register', '/api/auth/forgot-password', '/api/auth/reset-password', '/invoices_pdfs/', '/uploads/', '/api/stripe/webhook', '/api/portal/', '/api/whatsapp/webhook', '/api/google/callback'];
+    const publicPrefixes = ['/api/auth/login', '/api/auth/register', '/api/auth/forgot-password', '/api/auth/reset-password', '/invoices_pdfs/', '/uploads/', '/api/stripe/webhook', '/api/portal/', '/api/whatsapp/webhook', '/api/google/callback', '/api/qz/'];
     if (publicPrefixes.some(p => request.url.startsWith(p))) return;
     const auth = request.headers.authorization;
     if (!auth || !auth.startsWith('Bearer ')) {
