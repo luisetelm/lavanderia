@@ -50,7 +50,7 @@ function configureSecurity() {
     });
 }
 
-export async function connectQZ(retries = 3, delay = 500) {
+export async function connectQZ(retries = 8, delay = 700) {
     if (typeof window === 'undefined') throw new Error('No hay window');
     await waitForQZ(); // espera a que el script haya enlazado window.qz
 
