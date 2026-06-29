@@ -13,6 +13,7 @@ function ProductModal({ onSave, initial, token, onClose, isOpen, itineraries }) 
         bigClientPrice: 0,
         itineraryId: null,
         labelCount: 1,
+        printWashLabel: true,
         countsForLoad: true,
         workloadWeight: 1,
     });
@@ -32,6 +33,7 @@ function ProductModal({ onSave, initial, token, onClose, isOpen, itineraries }) 
             bigClientPrice: src.bigClientPrice ?? 0,
             itineraryId: src.itineraryId ?? null,
             labelCount: src.labelCount ?? 1,
+            printWashLabel: src.printWashLabel ?? true,
             countsForLoad: src.countsForLoad ?? true,
             workloadWeight: src.workloadWeight ?? 1,
         });
@@ -47,6 +49,7 @@ function ProductModal({ onSave, initial, token, onClose, isOpen, itineraries }) 
                 bigClientPrice: parseFloat(form.bigClientPrice),
                 itineraryId: form.itineraryId ? Number(form.itineraryId) : null,
                 labelCount: Math.max(1, parseInt(form.labelCount, 10) || 1),
+                printWashLabel: !!form.printWashLabel,
                 countsForLoad: !!form.countsForLoad,
                 workloadWeight: Math.max(0, parseFloat(form.workloadWeight) || 0),
             };
@@ -180,10 +183,22 @@ function ProductModal({ onSave, initial, token, onClose, isOpen, itineraries }) 
                                 value={form.labelCount}
                                 onChange={e => setForm(f => ({...f, labelCount: e.target.value}))}
                                 style={{ maxWidth: 120 }}
+                                disabled={!form.printWashLabel}
                             />
                             <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: 4 }}>
                                 Nº de etiquetas de ropa que se imprimen por cada unidad. Ej.: traje de 2 piezas = 2.
                             </div>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
+                                <input
+                                    className="uk-checkbox"
+                                    type="checkbox"
+                                    checked={!!form.printWashLabel}
+                                    onChange={e => setForm(f => ({...f, printWashLabel: e.target.checked}))}
+                                />
+                                <span style={{ fontSize: '0.85rem' }}>
+                                    {form.printWashLabel ? 'Imprime etiquetas de lavado' : 'No imprime etiquetas de lavado (p. ej. KG ropa blanca)'}
+                                </span>
+                            </label>
                         </div>
                     </div>
 

@@ -31,6 +31,7 @@ model Product {
   serviceOptions Json?            @default("{\"dryWash\": false, \"ironing\": false, \"wetWash\": false, \"externalService\": false}")
   itineraryId    Int?             @map("itinerary_id")
   labelCount     Int              @default(1) @map("label_count") // nº de etiquetas de ropa por unidad (traje 2 piezas = 2)
+  printWashLabel Boolean          @default(true) @map("print_wash_label") // si imprime etiquetas de lavado (no para KG ropa blanca, etc.)
   countsForLoad  Boolean          @default(true) @map("counts_for_load") // si computa en la carga de trabajo del día
   workloadWeight Float            @default(1) @map("workload_weight")    // factor de carga (traje=3, camisa=1, kg ropa blanca=0...)
   orderLines     OrderLine[]

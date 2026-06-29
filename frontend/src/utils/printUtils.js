@@ -67,6 +67,19 @@ function buildCut({feed = 0, variant = 'auto', partial = false, feedAfter = 0} =
 const SIZE_NORMAL = '\x1D\x21\x00'        // Normal
 const SIZE_DOUBLE = '\x1D\x21\x11'        // Doble ancho y alto
 
+// --- Código de barras CODE39 (ESC/POS GS k) para impresoras de impacto (TM-U220) ---
+// CODE39 admite A-Z, 0-9 y los símbolos - . $ / + % y espacio, así que codifica
+// directamente el nº de pedido (p. ej. "TPV/2025/0095").
+const GS = '\x1D';
+function buildBarcode39(data, { height = 70, width = 2, hri = 2 } = {}) {
+    // Saneamos a los caracteres válidos de CODE39 (mayúsculas).
+    const safe = String(data).toUpperCase().replace(/[^0-9A-Z\-.\$\/\+%\s]/g, '');
+    return GS + 'h' + String.fromCharCode(height) +   // GS h n  → altura del código
+        GS + 'w' + String.fromCharCode(width) +        // GS w n  → ancho de módulo
+        GS + 'H' + String.fromCharCode(hri) +          // GS H n  → HRI (2 = texto debajo)
+        GS + 'k' + String.fromCharCode(4) + safe + '\x00'; // GS k 4 (CODE39) ... NUL
+}
+
 export async function printWashLabels({
                                           orderNum, clientFirstName, clientLastName, totalItems, fechaLimite = ''
                                       }) {
@@ -90,6 +103,11 @@ export async function printWashLabels({
 
         // Restablecer a tamaño normal
         printData.push({ type: 'raw', format: 'command', data: SIZE_NORMAL });
+
+        // Código de barras CODE39 con el nº de pedido (escaneable para abrir el pedido)
+        printData.push({ type: 'raw', format: 'command', data: LF });
+        printData.push({ type: 'raw', format: 'command', data: buildBarcode39(orderNum) });
+        printData.push({ type: 'raw', format: 'command', data: LF });
 
         // Corte al borde
         printData.push({ type: 'raw', format: 'command', data: buildCut({ feed: 1 }) });

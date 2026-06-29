@@ -109,59 +109,66 @@ export default function DateCarousel({
                                     <div className="uk-text-small uk-text-bold">Carga: {fmtLoad(load)}</div>
                                 </div>
 
-                                {/* Mantener el dropdown existente */}
+                                {/* Dropdown acotado: cabecera/pie fijos y lista con scroll */}
                                 {ordersForDay.length > 0 && (<div
-                                    className="uk-width-large uk-card uk-card-default uk-card-body uk-padding-small"
+                                    className="uk-card uk-card-default"
+                                    style={{
+                                        width: 300, maxWidth: '92vw',
+                                        display: 'flex', flexDirection: 'column',
+                                        maxHeight: '60vh', padding: 0, overflow: 'hidden',
+                                    }}
                                     uk-dropdown="mode: hover; delay-hide: 200; pos: bottom-center; boundary: !.uk-grid; boundary-align: true; animation: uk-animation-slide-top-small"
                                 >
-                                    <h5 className="uk-margin-remove-top">Pedidos
-                                        para {new Date(key).toLocaleDateString('es-ES')}</h5>
-                                    <ul className="uk-list uk-list-divider uk-margin-small-top">
-                                        {ordersForDay.map((order) => (<li key={order.id} className="uk-text-small">
-                                            <div className="uk-flex uk-flex-between">
-                                                <Link
-                                                    to={`/tareas`}
-                                                    state={{
-                                                        filterOrderId: order.id,
-                                                        orderNumber: order.orderNum || order.id
-                                                    }}
-                                                    className="uk-text-bold"
-                                                >
-                                                    {order.orderNum}
-                                                </Link>
-                                                <span
-                                                    className={`uk-label uk-label-${order.status === 'pending' ? 'warning' : order.status === 'in_progress' ? 'primary' : order.status === 'ready' ? 'success' : 'default'}`}>
-                            {order.status}
-                        </span>
-                                            </div>
-                                            <div className="uk-text-muted">
-                                                {order.client?.firstName} {order.client?.lastName}
-                                            </div>
-                                            {/* Desglose de prendas del pedido */}
-                                            <ul className="uk-list uk-margin-remove" style={{fontSize: '0.78rem'}}>
-                                                {(order.lines || []).map((l) => {
-                                                    const noLoad = l.product?.countsForLoad === false;
-                                                    return (
-                                                        <li key={l.id}
-                                                            style={{color: noLoad ? '#9ca3af' : '#475569'}}>
-                                                            {l.quantity}× {l.product?.name || `#${l.productId}`}
-                                                            {noLoad && (
-                                                                <span className="uk-margin-small-left"
-                                                                      style={{fontSize: '0.68rem', color: '#9ca3af'}}>
-                                                                    (no computa)
+                                    {/* Cabecera fija */}
+                                    <div style={{ padding: '10px 12px', borderBottom: '1px solid #eef2f7', flexShrink: 0 }}>
+                                        <strong style={{ fontSize: '0.82rem' }}>
+                                            {new Date(key).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'short' })}
+                                        </strong>
+                                    </div>
+
+                                    {/* Lista con scroll */}
+                                    <div style={{ overflowY: 'auto', flex: 1 }}>
+                                        {ordersForDay.map((order) => {
+                                            const st = order.status;
+                                            const stLabel = st === 'pending' ? 'Pendiente' : st === 'in_progress' ? 'En proceso' : st === 'ready' ? 'Listo' : st === 'collected' ? 'Recogido' : st === 'cancelled' ? 'Cancelado' : st;
+                                            const stClass = st === 'pending' ? 'warning' : st === 'in_progress' ? 'primary' : st === 'ready' ? 'success' : 'default';
+                                            return (
+                                                <div key={order.id} style={{ padding: '8px 12px', borderBottom: '1px solid #f4f6f9' }}>
+                                                    <div className="uk-flex uk-flex-between uk-flex-middle" style={{ gap: 6 }}>
+                                                        <Link
+                                                            to={`/tareas`}
+                                                            state={{ filterOrderId: order.id, orderNumber: order.orderNum || order.id }}
+                                                            className="uk-text-bold"
+                                                            style={{ fontSize: '0.82rem' }}
+                                                        >
+                                                            {order.orderNum}
+                                                        </Link>
+                                                        <span className={`uk-label uk-label-${stClass}`} style={{ fontSize: '0.6rem' }}>
+                                                            {stLabel}
+                                                        </span>
+                                                    </div>
+                                                    <div className="uk-text-muted" style={{ fontSize: '0.72rem' }}>
+                                                        {order.client?.firstName} {order.client?.lastName} · Carga {fmtLoad(orderWeighted(order))}
+                                                    </div>
+                                                    {/* Prendas en una sola línea que envuelve */}
+                                                    <div style={{ fontSize: '0.72rem', marginTop: 2, lineHeight: 1.35 }}>
+                                                        {(order.lines || []).map((l, i) => {
+                                                            const noLoad = l.product?.countsForLoad === false;
+                                                            return (
+                                                                <span key={l.id} style={{ color: noLoad ? '#9ca3af' : '#475569' }}>
+                                                                    {i > 0 ? ', ' : ''}{l.quantity}× {l.product?.name || `#${l.productId}`}{noLoad ? ' (no computa)' : ''}
                                                                 </span>
-                                                            )}
-                                                        </li>
-                                                    );
-                                                })}
-                                            </ul>
-                                            <div className="uk-text-muted" style={{fontSize: '0.72rem'}}>
-                                                Carga: {fmtLoad(orderWeighted(order))}
-                                            </div>
-                                        </li>))}
-                                    </ul>
-                                    <div className="uk-text-small uk-text-muted uk-margin-small-top">
-                                        Total: {ordersForDay.length} pedido{ordersForDay.length !== 1 ? 's' : ''} · Carga {fmtLoad(load)}
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+
+                                    {/* Pie fijo con el resumen del día */}
+                                    <div style={{ padding: '8px 12px', borderTop: '1px solid #eef2f7', background: '#fbfcfe', fontSize: '0.72rem', color: '#64748b', flexShrink: 0 }}>
+                                        {ordersForDay.length} pedido{ordersForDay.length !== 1 ? 's' : ''} · Carga {fmtLoad(load)}
                                     </div>
                                 </div>)}
                             </div>

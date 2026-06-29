@@ -130,16 +130,19 @@ export default function DraftOrderBanner({ token, worker }) {
                 try {
                     const full = await fetchOrder(token, o.id);
                     const totalItems = (full.lines || []).reduce((sum, l) => {
+                        if (l.product?.printWashLabel === false) return sum; // no genera etiquetas de lavado
                         const labels = l.product?.labelCount || 1;
                         return sum + (l.quantity || 1) * labels;
                     }, 0);
-                    await printWashLabels({
-                        orderNum: full.orderNum,
-                        clientFirstName: full.client?.firstName || '',
-                        clientLastName: full.client?.lastName || '',
-                        totalItems,
-                        fechaLimite: full.fechaLimite,
-                    });
+                    if (totalItems > 0) {
+                        await printWashLabels({
+                            orderNum: full.orderNum,
+                            clientFirstName: full.client?.firstName || '',
+                            clientLastName: full.client?.lastName || '',
+                            totalItems,
+                            fechaLimite: full.fechaLimite,
+                        });
+                    }
                 } catch (printErr) {
                     console.warn('Impresión automática de etiquetas al crear falló:', printErr);
                 }

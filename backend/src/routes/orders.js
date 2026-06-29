@@ -601,7 +601,7 @@ export default async function (fastify, opts) {
                     discount: true,
                     color: true,
                     product: {
-                        select: {id: true, name: true, basePrice: true, serviceOptions: true, labelCount: true}
+                        select: {id: true, name: true, basePrice: true, serviceOptions: true, labelCount: true, printWashLabel: true}
                     },
                     steps: {
                         include: {
@@ -772,7 +772,7 @@ export default async function (fastify, opts) {
                             discount: true,
                             color: true,
                             product: {
-                                select: {id: true, name: true, basePrice: true, serviceOptions: true, labelCount: true,
+                                select: {id: true, name: true, basePrice: true, serviceOptions: true, labelCount: true, printWashLabel: true,
                                     itinerary: {
                                         include: {
                                             steps: {

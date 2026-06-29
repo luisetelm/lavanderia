@@ -339,9 +339,14 @@ export default function PaymentSection({token, orderId, onPaid, initialOrder = n
         setIsPrinting(true);
         try {
             const totalItems = (order.lines || []).reduce((sum, l) => {
+                if (l.product?.printWashLabel === false) return sum; // no genera etiquetas de lavado
                 const labels = l.product?.labelCount || l.labelCount || 1;
                 return sum + (l.quantity || 1) * labels;
             }, 0);
+            if (totalItems === 0) {
+                notify('Este pedido no tiene prendas con etiqueta de lavado', 'warning');
+                return;
+            }
             await printWashLabels({
                 orderNum: order.orderNum,
                 clientFirstName: order.client?.firstName || '',

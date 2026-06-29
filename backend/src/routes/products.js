@@ -21,7 +21,7 @@ export default async function (fastify, opts) {
     });
 
     fastify.post('/', async (req, reply) => {
-        let { name, sku, basePrice, categoryId, description, type, weight, bigClientPrice, serviceOptions, itineraryId, labelCount, countsForLoad, workloadWeight } = req.body;
+        let { name, sku, basePrice, categoryId, description, type, weight, bigClientPrice, serviceOptions, itineraryId, labelCount, countsForLoad, workloadWeight, printWashLabel } = req.body;
         if (!name || basePrice == null) return reply.status(400).send({ error: 'Name and basePrice required' });
 
         if (!sku || sku.trim() === '') {
@@ -44,6 +44,7 @@ export default async function (fastify, opts) {
                 bigClientPrice: bigClientPrice != null ? parseFloat(bigClientPrice) : 0,
                 itineraryId: itineraryId ? Number(itineraryId) : null,
                 labelCount: labelCount != null ? Math.max(1, parseInt(labelCount, 10) || 1) : 1,
+                printWashLabel: printWashLabel != null ? !!printWashLabel : true,
                 countsForLoad: countsForLoad != null ? !!countsForLoad : true,
                 workloadWeight: workloadWeight != null ? Math.max(0, parseFloat(workloadWeight) || 0) : 1,
                 serviceOptions: serviceOptions || {
@@ -59,7 +60,7 @@ export default async function (fastify, opts) {
 
     fastify.put('/:id', async (req, reply) => {
         const { id } = req.params;
-        const { name, sku, basePrice, categoryId, description, type, weight, bigClientPrice, serviceOptions, itineraryId, labelCount, countsForLoad, workloadWeight } = req.body;
+        const { name, sku, basePrice, categoryId, description, type, weight, bigClientPrice, serviceOptions, itineraryId, labelCount, countsForLoad, workloadWeight, printWashLabel } = req.body;
         try {
             const data = {};
             if (name !== undefined) data.name = name;
@@ -73,6 +74,7 @@ export default async function (fastify, opts) {
             if (serviceOptions !== undefined) data.serviceOptions = serviceOptions;
             if (itineraryId !== undefined) data.itineraryId = itineraryId ? Number(itineraryId) : null;
             if (labelCount !== undefined) data.labelCount = Math.max(1, parseInt(labelCount, 10) || 1);
+            if (printWashLabel !== undefined) data.printWashLabel = !!printWashLabel;
             if (countsForLoad !== undefined) data.countsForLoad = !!countsForLoad;
             if (workloadWeight !== undefined) data.workloadWeight = Math.max(0, parseFloat(workloadWeight) || 0);
 

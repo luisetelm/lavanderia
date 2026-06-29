@@ -26,6 +26,7 @@ import { useDraftOrder } from './hooks/useDraftOrder.js';
 import ForgotPassword from './pages/ForgotPassword.jsx';
 import OrderLookup from './pages/OrderLookup.jsx';
 import PrintSettings from './pages/PrintSettings.jsx';
+import ScanCapture from './components/ScanCapture.jsx';
 
 // Wrapper for main content that adds padding when draft banner is visible
 function AppMain({ children }) {
@@ -278,6 +279,7 @@ export default function App() {
     return (<AuthRedirect>
         <DraftOrderProvider>
         <div className="app-layout">
+            <ScanCapture />
             <nav className={`app-sidebar ${mobileMenuOpen ? 'sidebar-open' : ''}`}>
                 <div className="sidebar-inner">
                     <div className="sidebar-logo">
