@@ -110,15 +110,19 @@ export default function DateCarousel({
                                 </div>
 
                                 {/* Dropdown acotado: cabecera/pie fijos y lista con scroll */}
+                                {/* IMPORTANTE: no poner display/flex en el elemento uk-dropdown,
+                                    porque sobrescribe el display:none que UIkit usa para ocultarlo.
+                                    El layout va en un div interior. */}
                                 {ordersForDay.length > 0 && (<div
                                     className="uk-card uk-card-default"
-                                    style={{
-                                        width: 300, maxWidth: '92vw',
-                                        display: 'flex', flexDirection: 'column',
-                                        maxHeight: '60vh', padding: 0, overflow: 'hidden',
-                                    }}
+                                    style={{ padding: 0 }}
                                     uk-dropdown="mode: hover; delay-hide: 200; pos: bottom-center; boundary: !.uk-grid; boundary-align: true; animation: uk-animation-slide-top-small"
                                 >
+                                  <div style={{
+                                      width: 300, maxWidth: '92vw',
+                                      display: 'flex', flexDirection: 'column',
+                                      maxHeight: '60vh', overflow: 'hidden',
+                                  }}>
                                     {/* Cabecera fija */}
                                     <div style={{ padding: '10px 12px', borderBottom: '1px solid #eef2f7', flexShrink: 0 }}>
                                         <strong style={{ fontSize: '0.82rem' }}>
@@ -170,6 +174,7 @@ export default function DateCarousel({
                                     <div style={{ padding: '8px 12px', borderTop: '1px solid #eef2f7', background: '#fbfcfe', fontSize: '0.72rem', color: '#64748b', flexShrink: 0 }}>
                                         {ordersForDay.length} pedido{ordersForDay.length !== 1 ? 's' : ''} · Carga {fmtLoad(load)}
                                     </div>
+                                  </div>
                                 </div>)}
                             </div>
                         </div>);
