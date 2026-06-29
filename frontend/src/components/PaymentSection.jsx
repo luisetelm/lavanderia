@@ -16,7 +16,8 @@ import {
     recalculateTracking
 } from '../api.js';
 import UIkit from 'uikit';
-import {printSaleTicket, printWashLabels} from '../utils/printUtils.js';
+import {printSaleTicket, printWashLabels, printInternalLabel, printFinishedLabelForOrder} from '../utils/printUtils.js';
+import {getPrintSettings} from '../utils/printSettings.js';
 import {formatEUR} from '../utils/format.js';
 import StatusChangeModal from './StatusChangeModal.jsx';
 import StepProgress from './StepProgress.jsx';
@@ -175,6 +176,10 @@ export default function PaymentSection({token, orderId, onPaid, initialOrder = n
         const {order: updatedOrder} = await payWithCard(token, order.id);
         setOrder(updatedOrder);
         onPaid?.();
+        if (getPrintSettings().onPay) {
+            try { await printSaleTicket(updatedOrder, [], {token, variant: 'customer'}); }
+            catch (e) { console.warn('Impresión automática al cobrar falló:', e); }
+        }
     };
 
     const handleCashPay = async (received) => {
@@ -183,6 +188,10 @@ export default function PaymentSection({token, orderId, onPaid, initialOrder = n
         setOrder(paidOrder);
         setLastChange(change);
         onPaid?.();
+        if (getPrintSettings().onPay) {
+            try { await printSaleTicket(paidOrder, [], {token, variant: 'customer'}); }
+            catch (e) { console.warn('Impresión automática al cobrar falló:', e); }
+        }
         return change;
     };
 
@@ -192,6 +201,10 @@ export default function PaymentSection({token, orderId, onPaid, initialOrder = n
             await apiUpdateOrder(token, order.id, {status: 'ready', sendSMS});
             await loadOrder();
             notify('Pedido marcado como listo', 'success');
+            if (getPrintSettings().onReady) {
+                try { await printInternalLabel(order, {token}); }
+                catch (e) { console.warn('Impresión automática de etiqueta interna falló:', e); }
+            }
         } catch (e) {
             console.error(e);
             notify(e.error || 'Error al marcar como listo', 'danger');
@@ -232,8 +245,12 @@ export default function PaymentSection({token, orderId, onPaid, initialOrder = n
 
     const handleCompleteStep = async (stepId) => {
         try {
-            await updateStepStatus(token, stepId, {});
+            const res = await updateStepStatus(token, stepId, {});
             await loadOrder();
+            if (res?.orderBecameReady) {
+                const printed = await printFinishedLabelForOrder(token, res.orderId);
+                if (printed) notify('Pedido listo · etiqueta de finalizado impresa', 'success');
+            }
         } catch (e) {
             console.error('Error completando paso:', e);
             UIkit.notification({
@@ -297,9 +314,21 @@ export default function PaymentSection({token, orderId, onPaid, initialOrder = n
         if (!order) return;
         setIsPrinting(true);
         try {
-            await printSaleTicket(order, [], 'LAVADORA');
+            await printSaleTicket(order, [], { token, variant: 'customer' });
         } catch (e) {
             console.error('Error imprimiendo ticket:', e);
+        } finally {
+            setIsPrinting(false);
+        }
+    };
+
+    const handlePrintInternalTicket = async () => {
+        if (!order) return;
+        setIsPrinting(true);
+        try {
+            await printInternalLabel(order, { token });
+        } catch (e) {
+            console.error('Error imprimiendo etiqueta interna:', e);
         } finally {
             setIsPrinting(false);
         }
@@ -309,7 +338,10 @@ export default function PaymentSection({token, orderId, onPaid, initialOrder = n
         if (!order) return;
         setIsPrinting(true);
         try {
-            const totalItems = (order.lines || []).reduce((sum, l) => sum + (l.quantity || 1), 0);
+            const totalItems = (order.lines || []).reduce((sum, l) => {
+                const labels = l.product?.labelCount || l.labelCount || 1;
+                return sum + (l.quantity || 1) * labels;
+            }, 0);
             await printWashLabels({
                 orderNum: order.orderNum,
                 clientFirstName: order.client?.firstName || '',
@@ -956,9 +988,20 @@ export default function PaymentSection({token, orderId, onPaid, initialOrder = n
                         className={'uk-button uk-button-default uk-width-1-1@l'}
                         uk-icon={'print'}
                         onClick={handlePrintLabels}
-                        disabled={!order || isPrinting}
+                        disabled={!order || isPrinting || order.status !== 'pending'}
+                        title="Etiquetas de lavado (van con la ropa). Disponible mientras el pedido está pendiente."
                     >
-                        {isPrinting ? 'Imprimiendo...' : 'Imprimir etiquetas'}
+                        {isPrinting ? 'Imprimiendo...' : 'Etiqueta lavado'}
+                    </button>
+
+                    <button
+                        className={'uk-button uk-button-default uk-width-1-1@l'}
+                        uk-icon={'print'}
+                        onClick={handlePrintInternalTicket}
+                        disabled={!order || isPrinting || order.status !== 'ready'}
+                        title="Etiqueta de recogida con QR al pedido. Disponible cuando el pedido está listo."
+                    >
+                        {isPrinting ? 'Imprimiendo...' : 'Etiqueta finalizado'}
                     </button>
 
                     {/* Recalcular tracking: visible si alguna línea no tiene pasos y el pedido está activo */}

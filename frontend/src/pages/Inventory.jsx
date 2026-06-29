@@ -12,6 +12,9 @@ function ProductModal({ onSave, initial, token, onClose, isOpen, itineraries }) 
         weight: 0,
         bigClientPrice: 0,
         itineraryId: null,
+        labelCount: 1,
+        countsForLoad: true,
+        workloadWeight: 1,
     });
     const [error, setError] = useState('');
 
@@ -28,6 +31,9 @@ function ProductModal({ onSave, initial, token, onClose, isOpen, itineraries }) 
             weight: src.weight ?? 0,
             bigClientPrice: src.bigClientPrice ?? 0,
             itineraryId: src.itineraryId ?? null,
+            labelCount: src.labelCount ?? 1,
+            countsForLoad: src.countsForLoad ?? true,
+            workloadWeight: src.workloadWeight ?? 1,
         });
     }, [isOpen, initial?.id]);
 
@@ -40,6 +46,9 @@ function ProductModal({ onSave, initial, token, onClose, isOpen, itineraries }) 
                 weight: parseFloat(form.weight),
                 bigClientPrice: parseFloat(form.bigClientPrice),
                 itineraryId: form.itineraryId ? Number(form.itineraryId) : null,
+                labelCount: Math.max(1, parseInt(form.labelCount, 10) || 1),
+                countsForLoad: !!form.countsForLoad,
+                workloadWeight: Math.max(0, parseFloat(form.workloadWeight) || 0),
             };
 
             if (initial && initial.id) {
@@ -159,7 +168,61 @@ function ProductModal({ onSave, initial, token, onClose, isOpen, itineraries }) 
                             </div>
                         </div>
                     </div>
-                    
+
+                    <div className="uk-margin">
+                        <label className="uk-form-label">Etiquetas por unidad</label>
+                        <div className="uk-form-controls">
+                            <input
+                                className="uk-input"
+                                type="number"
+                                min="1"
+                                step="1"
+                                value={form.labelCount}
+                                onChange={e => setForm(f => ({...f, labelCount: e.target.value}))}
+                                style={{ maxWidth: 120 }}
+                            />
+                            <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: 4 }}>
+                                Nº de etiquetas de ropa que se imprimen por cada unidad. Ej.: traje de 2 piezas = 2.
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="uk-grid-small" uk-grid="true">
+                        <div className="uk-width-1-2@s">
+                            <label className="uk-form-label">Factor de carga</label>
+                            <div className="uk-form-controls">
+                                <input
+                                    className="uk-input"
+                                    type="number"
+                                    min="0"
+                                    step="0.5"
+                                    value={form.workloadWeight}
+                                    onChange={e => setForm(f => ({...f, workloadWeight: e.target.value}))}
+                                    disabled={!form.countsForLoad}
+                                />
+                                <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: 4 }}>
+                                    Peso de trabajo para planificar el día. Ej.: traje = 3, camisa = 1.
+                                </div>
+                            </div>
+                        </div>
+                        <div className="uk-width-1-2@s">
+                            <label className="uk-form-label">Computa en la carga del día</label>
+                            <div className="uk-form-controls">
+                                <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
+                                    <input
+                                        className="uk-checkbox"
+                                        type="checkbox"
+                                        checked={!!form.countsForLoad}
+                                        onChange={e => setForm(f => ({...f, countsForLoad: e.target.checked}))}
+                                    />
+                                    <span style={{ fontSize: '0.85rem' }}>
+                                        {form.countsForLoad ? 'Sí, suma trabajo' : 'No (p. ej. KG ropa blanca)'}
+                                    </span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
                     {form.type === 'service' && (
                         <div className="uk-margin">
                             <label className="uk-form-label">Itinerario de servicio</label>

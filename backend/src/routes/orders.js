@@ -3,6 +3,7 @@
 import {isValidSpanishPhone} from '../utils/validatePhone.js';
 import {crearFactura} from "./invoices.js";
 import { sendCollectedNotification, sendReadyNotification } from '../services/notify.js';
+import jwt from 'jsonwebtoken';
 import fs from 'fs';
 import path from 'path';
 
@@ -600,7 +601,7 @@ export default async function (fastify, opts) {
                     discount: true,
                     color: true,
                     product: {
-                        select: {id: true, name: true, basePrice: true, serviceOptions: true}
+                        select: {id: true, name: true, basePrice: true, serviceOptions: true, labelCount: true}
                     },
                     steps: {
                         include: {
@@ -685,6 +686,70 @@ export default async function (fastify, opts) {
         }
     });
 
+    // ─── GET /api/orders/find?num=TPV/2025/0095 ──────────────────────────────
+    // Resuelve un pedido a partir de su número (orderNum). Pensado para el
+    // escaneo del QR de los tickets internos de lavandería: el lector abre la
+    // página /buscar-pedido?num=... y esta consulta devuelve el id del pedido.
+    fastify.get('/find', async (req, reply) => {
+        const prisma = fastify.prisma;
+        const num = (req.query?.num || '').toString().trim();
+        if (!num) return reply.status(400).send({error: 'Parámetro "num" obligatorio'});
+
+        try {
+            // Búsqueda exacta primero; si no, tolerante a mayúsculas/espacios.
+            const order = await prisma.order.findFirst({
+                where: {
+                    OR: [
+                        {orderNum: num},
+                        {orderNum: {equals: num, mode: 'insensitive'}},
+                    ],
+                },
+                select: {id: true, orderNum: true},
+            });
+            if (!order) return reply.status(404).send({error: 'Pedido no encontrado'});
+            return reply.send(order);
+        } catch (err) {
+            req.log.error(err);
+            return reply.status(500).send({error: 'Error buscando el pedido'});
+        }
+    });
+
+    // ─── GET /api/orders/:id/portal-link ─────────────────────────────────────
+    // Devuelve un "magic link" de acceso al portal del cliente del pedido, para
+    // imprimirlo como QR en el ticket de cliente. Si el pedido no tiene cliente
+    // (cliente rápido), devuelve la URL de login del portal.
+    fastify.get('/:id/portal-link', async (req, reply) => {
+        const prisma = fastify.prisma;
+        const orderId = Number(req.params.id);
+        if (isNaN(orderId)) return reply.status(400).send({error: 'ID de pedido inválido'});
+
+        const baseUrl = process.env.APP_URL || 'https://app.tinteyburbuja.com';
+
+        try {
+            const order = await prisma.order.findUnique({
+                where: {id: orderId},
+                select: {id: true, client: {select: {id: true, role: true}}},
+            });
+            if (!order) return reply.status(404).send({error: 'Pedido no encontrado'});
+
+            // Sin cliente registrado → enlace genérico de login del portal.
+            if (!order.client?.id) {
+                return reply.send({link: `${baseUrl}/portal`, magic: false});
+            }
+
+            // Magic link de auto-acceso (mismo formato que el SMS de acceso al portal).
+            const magicToken = jwt.sign(
+                {id: order.client.id, role: 'portal_client'},
+                process.env.JWT_SECRET,
+                {expiresIn: '30d'}
+            );
+            return reply.send({link: `${baseUrl}/portal/verify/${magicToken}`, magic: true});
+        } catch (err) {
+            req.log.error(err);
+            return reply.status(500).send({error: 'Error generando el enlace del portal'});
+        }
+    });
+
     fastify.get('/:id', async (req, reply) => {
         const prisma = fastify.prisma;
         const orderId = Number(req.params.id);
@@ -707,7 +772,7 @@ export default async function (fastify, opts) {
                             discount: true,
                             color: true,
                             product: {
-                                select: {id: true, name: true, basePrice: true, serviceOptions: true,
+                                select: {id: true, name: true, basePrice: true, serviceOptions: true, labelCount: true,
                                     itinerary: {
                                         include: {
                                             steps: {
@@ -1197,6 +1262,9 @@ export default async function (fastify, opts) {
                 }, include: {
                     lines: {
                         include: {product: true}
+                    },
+                    client: {
+                        select: {id: true, firstName: true, lastName: true}
                     }
                 }
             });
@@ -1206,6 +1274,15 @@ export default async function (fastify, opts) {
             dates.forEach(date => {
                 loadByDay[date] = orders.filter(o => o.fechaLimite.toISOString().split('T')[0] === date);
             });
+
+            // Carga de trabajo ponderada de un pedido: ignora productos que no
+            // computan (counts_for_load = false) y pondera por workload_weight.
+            const weightedLoad = (order) => (order.lines || []).reduce((s, l) => {
+                const p = l.product || {};
+                if (p.countsForLoad === false) return s;
+                const w = (p.workloadWeight != null) ? Number(p.workloadWeight) : 1;
+                return s + (l.quantity || 0) * w;
+            }, 0);
 
             // Calcular fecha sugerida solo en la primera página (page = 0)
             // y asegurar que esté dentro de las fechas disponibles
@@ -1227,7 +1304,7 @@ export default async function (fastify, opts) {
                     // Solo considerar fechas que cumplan el mínimo de 2 días
                     if (dateStr >= minDateStr) {
                         const ordersForDay = loadByDay[dateStr] || [];
-                        const totalItems = ordersForDay.reduce((sum, order) => sum + order.lines.reduce((s, l) => s + l.quantity, 0), 0);
+                        const totalItems = ordersForDay.reduce((sum, order) => sum + weightedLoad(order), 0);
 
                         console.log(`Date ${dateStr} has ${totalItems} total items`);
 
@@ -1279,7 +1356,7 @@ export default async function (fastify, opts) {
                         // Buscar en las fechas de esta página
                         const searchDateObjects = searchDates.map(dateStr => new Date(dateStr + 'T00:00:00.000Z'));
                         const searchOrders = await prisma.order.findMany({
-                            where: {fechaLimite: {in: searchDateObjects}}, include: {lines: true}
+                            where: {fechaLimite: {in: searchDateObjects}}, include: {lines: {include: {product: true}}}
                         });
 
                         const searchLoadByDay = {};
@@ -1290,7 +1367,7 @@ export default async function (fastify, opts) {
                         for (const dateStr of searchDates) {
                             if (dateStr >= minDateStr) {
                                 const ordersForDay = searchLoadByDay[dateStr] || [];
-                                const totalItems = ordersForDay.reduce((sum, order) => sum + order.lines.reduce((s, l) => s + l.quantity, 0), 0);
+                                const totalItems = ordersForDay.reduce((sum, order) => sum + weightedLoad(order), 0);
 
                                 if (totalItems < 8) {
                                     suggestedDate = dateStr;

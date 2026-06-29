@@ -1,7 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDraftOrder } from '../hooks/useDraftOrder.js';
-import { createOrder, updateUser } from '../api.js';
+import { createOrder, updateUser, fetchOrder } from '../api.js';
+import { printWashLabels } from '../utils/printUtils.js';
+import { getPrintSettings } from '../utils/printSettings.js';
 
 const isValidSpanishPhone = (phone) => /^[6789]\d{8}$/.test(phone);
 
@@ -120,6 +122,29 @@ export default function DraftOrderBanner({ token, worker }) {
             const o = await createOrder(token, payload);
             clearDraft();
             setExpanded(false);
+
+            // Impresión automática al crear el pedido: SOLO las etiquetas de ropa
+            // (impresora de etiquetas lavables). El ticket de cliente se imprime
+            // al cobrar (o manualmente como justificante si aún no ha pagado).
+            if (getPrintSettings().onCreate) {
+                try {
+                    const full = await fetchOrder(token, o.id);
+                    const totalItems = (full.lines || []).reduce((sum, l) => {
+                        const labels = l.product?.labelCount || 1;
+                        return sum + (l.quantity || 1) * labels;
+                    }, 0);
+                    await printWashLabels({
+                        orderNum: full.orderNum,
+                        clientFirstName: full.client?.firstName || '',
+                        clientLastName: full.client?.lastName || '',
+                        totalItems,
+                        fechaLimite: full.fechaLimite,
+                    });
+                } catch (printErr) {
+                    console.warn('Impresión automática de etiquetas al crear falló:', printErr);
+                }
+            }
+
             navigate('/tareas', {
                 state: { filterOrderId: o.id, orderNumber: o.orderNum || o.id },
             });

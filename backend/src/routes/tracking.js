@@ -4,6 +4,7 @@ import { sendReadyNotification } from '../services/notify.js';
 
 // Verifica si todos los pasos de todas las líneas de un pedido están completados.
 // Si es así, marca el pedido como "ready" automáticamente y notifica al cliente.
+// Devuelve true si en esta llamada el pedido ha pasado a "ready".
 async function autoMarkOrderReady(prisma, orderId) {
     const pendingSteps = await prisma.orderLineStep.count({
         where: {
@@ -28,9 +29,11 @@ async function autoMarkOrderReady(prisma, orderId) {
 
                 // Notificar automáticamente al cliente (usa canal preferido)
                 await sendReadyNotification(prisma, orderId);
+                return true;
             }
         }
     }
+    return false;
 }
 
 // Helper: obtener stepKey, stepLabel, position, resourceKey, autoProgress y durationMin de un paso
@@ -612,11 +615,12 @@ export default async function (fastify, opts) {
             });
 
             // Auto-marcar pedido como "ready" si se completó
+            let orderBecameReady = false;
             if (action === 'complete') {
-                await autoMarkOrderReady(prisma, step.orderLine.orderId);
+                orderBecameReady = await autoMarkOrderReady(prisma, step.orderLine.orderId);
             }
 
-            return reply.send(updated);
+            return reply.send({ ...updated, orderBecameReady, orderId: step.orderLine.orderId });
         } catch (err) {
             console.error('Error en PATCH /tracking/steps/:stepId:', err);
             return reply.status(500).send({ error: 'Error actualizando paso' });
@@ -709,6 +713,7 @@ export default async function (fastify, opts) {
             });
 
             // Auto-marcar pedidos como "ready" si se completaron
+            const readyOrderIds = [];
             if (action === 'complete') {
                 const affectedSteps = await prisma.orderLineStep.findMany({
                     where: { id: { in: stepIds.map(Number) } },
@@ -716,11 +721,12 @@ export default async function (fastify, opts) {
                 });
                 const orderIds = [...new Set(affectedSteps.map(s => s.orderLine.orderId))];
                 for (const oid of orderIds) {
-                    await autoMarkOrderReady(prisma, oid);
+                    const became = await autoMarkOrderReady(prisma, oid);
+                    if (became) readyOrderIds.push(oid);
                 }
             }
 
-            return reply.send({ count: updated.count });
+            return reply.send({ count: updated.count, readyOrderIds });
         } catch (err) {
             console.error('Error en batch-complete:', err);
             return reply.status(500).send({ error: 'Error completando pasos' });

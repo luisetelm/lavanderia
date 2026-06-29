@@ -215,6 +215,17 @@ export function fetchOrder(token, orderId) {
     return request(`/orders/${orderId}`, token);
 }
 
+// Resuelve un pedido por su número (orderNum, p.ej. "TPV/2025/0095").
+// Usado por la página de búsqueda al escanear el QR de los tickets internos.
+export function findOrderByNum(token, num) {
+    return request(`/orders/find?num=${encodeURIComponent(num)}`, token);
+}
+
+// Obtiene el "magic link" del portal del cliente para un pedido (QR del ticket de cliente).
+export function fetchOrderPortalLink(token, orderId) {
+    return request(`/orders/${orderId}/portal-link`, token);
+}
+
 // Nuevas funciones de API para caja.
 // javascript
 // Caja: usar el helper request() y rutas relativas a API_BASE

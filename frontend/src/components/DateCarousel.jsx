@@ -63,6 +63,16 @@ export default function DateCarousel({
         </div>;
     }
 
+    // Carga ponderada: ignora productos que no computan y pondera por workloadWeight.
+    const orderWeighted = (o) => (o.lines || []).reduce((s, l) => {
+        const p = l.product || {};
+        if (p.countsForLoad === false) return s;
+        const w = (p.workloadWeight != null) ? Number(p.workloadWeight) : 1;
+        return s + (l.quantity || 0) * w;
+    }, 0);
+    const dayWeighted = (orders) => orders.reduce((s, o) => s + orderWeighted(o), 0);
+    const fmtLoad = (n) => (Math.round(n * 10) / 10).toString().replace('.', ',');
+
     return (<div className="uk-margin-medium-bottom">
         <h4 className="uk-margin-small-bottom">Fecha de entrega</h4>
 
@@ -78,7 +88,8 @@ export default function DateCarousel({
                 <div className="uk-child-width-1-5 uk-grid-small" uk-grid="true">
                     {dates.map((key) => {
                         const ordersForDay = loadByDay[key] || [];
-                        const colorClass = ordersForDay.length >= 5 ? 'uk-alert-danger' : ordersForDay.length >= 2 ? 'uk-alert-warning' : 'uk-alert-success';
+                        const load = dayWeighted(ordersForDay);
+                        const colorClass = load >= 8 ? 'uk-alert-danger' : load >= 4 ? 'uk-alert-warning' : 'uk-alert-success';
 
                         const isSuggested = key === suggestedDate;
 
@@ -95,6 +106,7 @@ export default function DateCarousel({
 
                                     </div>
                                     <div className="uk-text-small">Pedidos: {ordersForDay.length}</div>
+                                    <div className="uk-text-small uk-text-bold">Carga: {fmtLoad(load)}</div>
                                 </div>
 
                                 {/* Mantener el dropdown existente */}
@@ -125,13 +137,31 @@ export default function DateCarousel({
                                             <div className="uk-text-muted">
                                                 {order.client?.firstName} {order.client?.lastName}
                                             </div>
-                                            <div className="uk-text-muted">
-                                                Items: {order.lines?.reduce((sum, line) => sum + line.quantity, 0) || 0}
+                                            {/* Desglose de prendas del pedido */}
+                                            <ul className="uk-list uk-margin-remove" style={{fontSize: '0.78rem'}}>
+                                                {(order.lines || []).map((l) => {
+                                                    const noLoad = l.product?.countsForLoad === false;
+                                                    return (
+                                                        <li key={l.id}
+                                                            style={{color: noLoad ? '#9ca3af' : '#475569'}}>
+                                                            {l.quantity}× {l.product?.name || `#${l.productId}`}
+                                                            {noLoad && (
+                                                                <span className="uk-margin-small-left"
+                                                                      style={{fontSize: '0.68rem', color: '#9ca3af'}}>
+                                                                    (no computa)
+                                                                </span>
+                                                            )}
+                                                        </li>
+                                                    );
+                                                })}
+                                            </ul>
+                                            <div className="uk-text-muted" style={{fontSize: '0.72rem'}}>
+                                                Carga: {fmtLoad(orderWeighted(order))}
                                             </div>
                                         </li>))}
                                     </ul>
                                     <div className="uk-text-small uk-text-muted uk-margin-small-top">
-                                        Total: {ordersForDay.length} pedido{ordersForDay.length !== 1 ? 's' : ''}
+                                        Total: {ordersForDay.length} pedido{ordersForDay.length !== 1 ? 's' : ''} · Carga {fmtLoad(load)}
                                     </div>
                                 </div>)}
                             </div>

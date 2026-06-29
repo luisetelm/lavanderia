@@ -3,6 +3,7 @@ import { fetchTrackingBoard, updateStepStatus, batchCompleteSteps, undoStep } fr
 import { useNavigate } from 'react-router-dom';
 import UIkit from 'uikit';
 import PageToolbar from '../components/PageToolbar.jsx';
+import { printFinishedLabelForOrder } from '../utils/printUtils.js';
 
 const COLOR_HEX = {
     negro: '#1e1e1e', blanco: '#f5f5f5', gris: '#9ca3af', azul: '#3b82f6',
@@ -51,6 +52,15 @@ export default function TrackingBoard({ token }) {
         }
     }, [token]);
 
+    // Imprime la etiqueta de "finalizado" (recogida) de un pedido que acaba de
+    // pasar a "listo" al completar su tracking. Usa el helper central (respeta onReady).
+    const printFinishedLabel = useCallback(async (orderId) => {
+        const order = await printFinishedLabelForOrder(token, orderId);
+        if (order) {
+            UIkit.notification({ message: `Pedido ${order.orderNum} listo · etiqueta de finalizado impresa`, status: 'success', pos: 'top-right', timeout: 2500 });
+        }
+    }, [token]);
+
     useEffect(() => {
         loadBoard();
         const interval = setInterval(loadBoard, 30000);
@@ -60,9 +70,12 @@ export default function TrackingBoard({ token }) {
     const handleComplete = async (stepId) => {
         setActionLoading(stepId);
         try {
-            await updateStepStatus(token, stepId, { action: 'complete' });
+            const res = await updateStepStatus(token, stepId, { action: 'complete' });
             await loadBoard();
             UIkit.notification({ message: 'Paso completado', status: 'success', pos: 'top-right', timeout: 1500 });
+            if (res?.orderBecameReady) {
+                await printFinishedLabel(res.orderId);
+            }
         } catch (e) {
             console.error('Error completando paso:', e);
             UIkit.notification({ message: 'Error al completar', status: 'danger', pos: 'top-right', timeout: 2000 });
@@ -102,10 +115,13 @@ export default function TrackingBoard({ token }) {
 
     const handleBatchComplete = async (stepIds) => {
         try {
-            await batchCompleteSteps(token, stepIds);
+            const res = await batchCompleteSteps(token, stepIds);
             setBatchModal(null);
             await loadBoard();
             UIkit.notification({ message: `${stepIds.length} prendas completadas`, status: 'success', pos: 'top-right', timeout: 2000 });
+            for (const oid of (res?.readyOrderIds || [])) {
+                await printFinishedLabel(oid);
+            }
         } catch (e) {
             console.error('Error batch:', e);
         }
@@ -503,7 +519,7 @@ export default function TrackingBoard({ token }) {
                     data={batchModal}
                     onComplete={(stepIds) => {
                         const action = batchModal.action || 'complete';
-                        batchCompleteSteps(token, stepIds, action).then(() => {
+                        batchCompleteSteps(token, stepIds, action).then((res) => {
                             setBatchModal(null);
                             loadBoard();
                             UIkit.notification({
@@ -512,6 +528,9 @@ export default function TrackingBoard({ token }) {
                                     : `${stepIds.length} prendas completadas`,
                                 status: 'success', pos: 'top-right', timeout: 2000
                             });
+                            if (action === 'complete') {
+                                (res?.readyOrderIds || []).forEach(oid => printFinishedLabel(oid));
+                            }
                         }).catch(e => console.error('Error batch:', e));
                     }}
                     onClose={() => setBatchModal(null)}

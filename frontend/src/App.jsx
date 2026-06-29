@@ -24,6 +24,8 @@ import DraftOrderBanner from './components/DraftOrderBanner.jsx';
 import { DraftOrderProvider } from './context/DraftOrderContext.jsx';
 import { useDraftOrder } from './hooks/useDraftOrder.js';
 import ForgotPassword from './pages/ForgotPassword.jsx';
+import OrderLookup from './pages/OrderLookup.jsx';
+import PrintSettings from './pages/PrintSettings.jsx';
 
 // Wrapper for main content that adds padding when draft banner is visible
 function AppMain({ children }) {
@@ -137,7 +139,7 @@ export default function App() {
     const [adminMenuOpen, setAdminMenuOpen] = useState(false);
 
     // Mantener menú admin abierto si la ruta actual es de administración
-    const adminPaths = ['/ventas', '/estadisticas', '/resenas', '/caja', '/horario', '/itinerarios', '/recursos', '/accesos'];
+    const adminPaths = ['/ventas', '/estadisticas', '/resenas', '/caja', '/horario', '/itinerarios', '/recursos', '/impresion', '/accesos'];
     useEffect(() => {
         if (adminPaths.some(p => location.pathname.startsWith(p))) {
             setAdminMenuOpen(true);
@@ -323,6 +325,7 @@ export default function App() {
                                         <li><NavLink to="/horario"><span uk-icon="icon: calendar; ratio: 0.8"></span> Horario</NavLink></li>
                                         <li><NavLink to="/itinerarios"><span uk-icon="icon: settings; ratio: 0.8"></span> Itinerarios</NavLink></li>
                                         <li><NavLink to="/recursos"><span uk-icon="icon: cog; ratio: 0.8"></span> Recursos</NavLink></li>
+                                        <li><NavLink to="/impresion"><span uk-icon="icon: print; ratio: 0.8"></span> Impresión</NavLink></li>
                                         <li><NavLink to="/accesos"><span uk-icon="icon: sign-in; ratio: 0.8"></span> Accesos</NavLink></li>
                                     </ul>
                                 )}
@@ -360,6 +363,7 @@ export default function App() {
                     <Route path="/pos" element={<POS token={token} user={user}/>}/>
                     <Route path="/productos" element={<Inventory token={token}/>}/>
                     <Route path="/tareas" element={<Tasks token={token} user={user}/>}/>
+                    <Route path="/buscar-pedido" element={<OrderLookup token={token}/>}/>
                     <Route path="/tracking" element={<TrackingBoard token={token} user={user}/>}/>
                     <Route path="/usuarios" element={<Users token={token} user={user}/>}/>
                     <Route path="/usuarios/:id" element={<UserEdit token={token} user={user}/>}/>
@@ -372,6 +376,7 @@ export default function App() {
                     <Route path="/horario" element={<WorkSchedule token={token}/>}/>
                     <Route path="/itinerarios" element={<ItineraryConfig token={token}/>}/>
                     <Route path="/recursos" element={<ResourceConfig token={token}/>}/>
+                    <Route path="/impresion" element={<PrintSettings/>}/>
                     <Route path="/accesos" element={user.role === 'admin' ? <LoginLogs token={token}/> : <Navigate to="/dashboard" replace/>}/>
                     <Route path="*" element={<div style={{padding: 40, textAlign: 'center'}}>Ruta no encontrada</div>}/>
                     <Route path="/login" element={<Login onLogin={handleLogin}/>}/>

@@ -2,6 +2,8 @@
 import QRCode from 'qrcode';
 // Conexión a QZ Tray CON certificado + firma (evita el diálogo "anonymous request")
 import { connectQZ as connectQZSecure } from '../qzInit.js';
+import { fetchOrderPortalLink, fetchOrder } from '../api.js';
+import { getPrintSettings } from './printSettings.js';
 
 // configuración mínima de QZ Tray
 async function connectQZ() {
@@ -102,7 +104,11 @@ export async function printWashLabels({
 }
 
 
-export async function printSaleTicket(order, products = [], printerName) {
+export async function printSaleTicket(order, products = [], options = {}) {
+    // Compatibilidad: antes el 3er argumento era el nombre de impresora (string).
+    if (typeof options === 'string') options = {};
+    const { token = null } = options;
+
     const fechaHoy = new Date().toLocaleDateString('es-ES', {
         year: 'numeric', month: '2-digit', day: '2-digit',
     });
@@ -112,9 +118,27 @@ export async function printSaleTicket(order, products = [], printerName) {
     const client = order.client || {};
     const clientName = client.firstName ? `${client.firstName} ${client.lastName}`.trim() : 'Cliente rápido';
 
-    // Generar el código QR como data URL
-    const qrCodeDataUrl = await QRCode.toDataURL(`https://share.google/2s6o76QI8BlyONLeg`, {
-        width: 100, margin: 1, errorCorrectionLevel: 'M',
+    // QR del ticket de cliente: magic link al portal (auto-acceso a sus pedidos).
+    const origin = (typeof window !== 'undefined' && window.location?.origin)
+        ? window.location.origin
+        : 'https://app.tinteyburbuja.com';
+
+    let qrTarget = `${origin}/portal`;
+    try {
+        if (token && order.id != null) {
+            const { link } = await fetchOrderPortalLink(token, order.id);
+            if (link) qrTarget = link;
+        }
+    } catch (e) {
+        console.warn('No se pudo obtener el magic link del portal, usando /portal', e);
+    }
+    const qrCaption = 'Escanea para ver tus pedidos online';
+
+    // Generar el código QR como data URL.
+    // El magic link es un JWT largo → QR denso. Usamos corrección 'L' (menos
+    // módulos) y un tamaño de render grande para que sea legible al imprimir.
+    const qrCodeDataUrl = await QRCode.toDataURL(qrTarget, {
+        width: 320, margin: 1, errorCorrectionLevel: 'L',
     });
 
     // Logo de la empresa en Base64
@@ -123,7 +147,9 @@ export async function printSaleTicket(order, products = [], printerName) {
 
     const linesHtml = (order.lines || [])
         .map((l) => {
-            let name = l.productName;
+            // El nombre viene en l.product.name (detalle del pedido). Como respaldo,
+            // se usa l.productName o la lista `products`, y por último el id.
+            let name = l.product?.name || l.productName;
             if (!name) {
                 const prod = products.find((p) => p.id === l.productId);
                 name = prod ? prod.name : `#${l.productId}`;
@@ -300,7 +326,10 @@ export async function printSaleTicket(order, products = [], printerName) {
         }
         
         .qr-code {
-            max-width: 100px;
+            max-width: 48mm;
+            width: 48mm;
+            height: auto;
+            image-rendering: pixelated;
         }
         
         .qr-info {
@@ -379,7 +408,7 @@ export async function printSaleTicket(order, products = [], printerName) {
           <div class="footer">
             <div class="qr-container">
               <img src="${qrCodeDataUrl}" alt="QR Code" class="qr-code" />
-              <div class="qr-info">Consulte los horarios de apertura</div>
+              <div class="qr-info">${qrCaption}</div>
             </div>
             <div class="gracias">
               ¡Gracias por su confianza!
@@ -416,34 +445,22 @@ export async function printSaleTicket(order, products = [], printerName) {
 
 
 function getTicketPrinterName() {
-    // Obtener el nombre de impresora guardado en localStorage si existe
-    const savedPrinter = localStorage.getItem('posPrinterName');
+    // Impresora de papel normal: tickets de cliente y etiquetas de recogida (no lavables).
+    // Prioridad: 'printerTicket' (nueva) → 'posPrinterName' (legacy) → defecto por entorno.
+    const saved = localStorage.getItem('printerTicket') || localStorage.getItem('posPrinterName');
+    if (saved) return saved;
 
-    // Si hay un nombre guardado en localStorage, usar ese
-    if (savedPrinter) {
-        return savedPrinter;
-    }
-
-    // Detectar si estamos en localhost o en el servidor
     const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-
-    // Devolver el nombre de impresora según el entorno
     return isLocalhost ? 'Brother HL-L2445DW Printer' : 'CLIENTE';
 }
 
 function getTicketWasherName() {
-    // Obtener el nombre de impresora guardado en localStorage si existe
-    const savedPrinter = localStorage.getItem('posPrinterName');
+    // Impresora de etiquetas lavables (las que van con la ropa).
+    // Prioridad: 'printerWasher' (nueva) → defecto por entorno.
+    const saved = localStorage.getItem('printerWasher');
+    if (saved) return saved;
 
-    // Si hay un nombre guardado en localStorage, usar ese
-    if (savedPrinter) {
-        return savedPrinter;
-    }
-
-    // Detectar si estamos en localhost o en el servidor
     const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-
-    // Devolver el nombre de impresora según el entorno
     return isLocalhost ? 'Brother HL-L2445DW Printer' : 'LAVADORA';
 }
 
@@ -621,3 +638,136 @@ export async function printCashClosureTicket({closure, openingAmount, movements,
 
     await sendToPrinter(printerName, buildRawHtml(html));
 }
+
+// Etiqueta interna mínima para cuando el pedido ya está preparado.
+// Solo lo imprescindible para localizarlo en la estantería: número de pedido
+// en grande, cliente, fecha de entrega y un QR pequeño que abre el pedido.
+export async function printInternalLabel(order, options = {}) {
+    if (typeof options === 'string') options = {};
+
+    const origin = (typeof window !== 'undefined' && window.location?.origin)
+        ? window.location.origin
+        : 'https://app.tinteyburbuja.com';
+
+    const client = order.client || {};
+    const clientName = client.firstName
+        ? `${client.firstName} ${client.lastName || ''}`.trim()
+        : 'Cliente rápido';
+
+    const fechaEntrega = order.fechaLimite
+        ? new Date(order.fechaLimite).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })
+        : '';
+
+    // Separar el número de pedido: prefijo (TPV/2025) pequeño y nº secuencial (0095) grande.
+    const numParts = String(order.orderNum || '').split('/');
+    const bigNum = numParts.length > 1 ? numParts.pop() : (order.orderNum || '');
+    const prefix = numParts.join('/');
+
+    // QR que abre el pedido por su número (uso interno).
+    const qrTarget = `${origin}/buscar-pedido?num=${encodeURIComponent(order.orderNum)}`;
+    const qrCodeDataUrl = await QRCode.toDataURL(qrTarget, {
+        width: 160, margin: 0, errorCorrectionLevel: 'M',
+    });
+
+    const html = `
+    <html>
+      <head>
+        <meta charset="utf-8"/>
+        <style>
+          * { box-sizing: border-box; }
+          body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            width: 80mm;
+            color: #111;
+            -webkit-font-smoothing: antialiased;
+          }
+          .wrap { padding: 5mm 6mm 9mm; text-align: center; }
+
+          .prefix {
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            color: #6b7280;
+            margin: 0 0 1px;
+          }
+          .num {
+            font-size: 64px;
+            font-weight: 800;
+            line-height: 1;
+            letter-spacing: 1px;
+            margin: 0;
+            white-space: nowrap;
+          }
+
+          .rule {
+            border: none;
+            border-top: 1.5px solid #111;
+            width: 38mm;
+            margin: 8px auto 10px;
+          }
+
+          .cliente {
+            font-size: 17px;
+            font-weight: 700;
+            margin: 0 0 2px;
+          }
+          .fecha {
+            font-size: 12px;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            color: #6b7280;
+            margin: 0 0 10px;
+          }
+
+          .qr { margin-top: 6px; }
+          .qr img { width: 30mm; height: 30mm; }
+
+          .cut { page-break-after: always; }
+        </style>
+      </head>
+      <body>
+        <div class="wrap">
+          ${prefix ? `<div class="prefix">${prefix}</div>` : ''}
+          <div class="num">${bigNum}</div>
+          <hr class="rule" />
+          <div class="cliente">${clientName}</div>
+          ${fechaEntrega ? `<div class="fecha">Entrega · ${fechaEntrega}</div>` : ''}
+          <div class="qr"><img src="${qrCodeDataUrl}" alt="QR pedido" /></div>
+        </div>
+        <div class="cut"></div>
+      </body>
+    </html>
+  `;
+
+    try {
+        await sendToPrinter(getTicketPrinterName(), buildRawHtml(html));
+    } catch (e) {
+        console.warn('QZ Tray falló al imprimir etiqueta interna, recayendo a window.print()', e);
+        const w = window.open('', 'print_internal_label_fallback');
+        w.document.write(html);
+        w.document.close();
+        w.focus();
+        setTimeout(() => { w.print(); w.close(); }, 300);
+    }
+}
+
+// Helper centralizado: imprime la etiqueta de "finalizado" (recogida) de un
+// pedido que acaba de pasar a listo. Respeta el ajuste onReady. Carga el pedido
+// completo por su id y devuelve ese pedido (o null si no se imprimió), para que
+// quien lo llame pueda notificar al usuario.
+export async function printFinishedLabelForOrder(token, orderId) {
+    if (!orderId || !getPrintSettings().onReady) return null;
+    try {
+        const order = await fetchOrder(token, orderId);
+        await printInternalLabel(order, { token });
+        return order;
+    } catch (e) {
+        console.warn('No se pudo imprimir la etiqueta de finalizado:', e);
+        return null;
+    }
+}
+
+
