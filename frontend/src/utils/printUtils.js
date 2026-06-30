@@ -88,19 +88,18 @@ const SIZE_DOUBLE = '\x1B\x21\x30'        // ESC ! 0x30 → Doble ancho (0x20) +
 // CODE39 admite A-Z, 0-9 y los símbolos - . $ / + % y espacio, así que codifica
 // directamente el nº de pedido (p. ej. "TPV/2025/0095").
 const GS = '\x1D';
-// Genera el comando ESC/POS de un código de barras CODE39 siguiendo el ejemplo
-// oficial de QZ Tray. Usa la VARIANTE B de `GS k` (m = 69), que recibe un byte
-// de LONGITUD antes de los datos (en vez de terminar en NUL). Esta variante es
-// la que la TM-U220 dibuja de forma fiable. Todos los bytes del comando son
-// < 0x80, así que se puede enviar como texto plano sin que CP858 los altere.
+// Genera el comando ESC/POS de un código de barras CODE39 COPIANDO EXACTAMENTE
+// el ejemplo oficial de QZ Tray (sin añadidos):
+//   GS h n  → altura
+//   GS f n  → fuente del número HRI
+//   GS k 69 len data 0  → CODE39 (variante con byte de longitud + NUL final)
 function buildBarcode39(data, { height = 80 } = {}) {
     const chr = (n) => String.fromCharCode(n);
     // CODE39 admite A-Z, 0-9 y - . $ / + % y espacio (mayúsculas).
     const safe = String(data).toUpperCase().replace(/[^0-9A-Z\-.\$\/\+%\s]/g, '');
-    return GS + 'h' + chr(height) +            // GS h n  → altura del código
-        GS + 'f' + chr(0) +                    // GS f n  → fuente del número HRI
-        GS + 'H' + chr(2) +                    // GS H n  → HRI (2 = texto debajo)
-        GS + 'k' + chr(69) + chr(safe.length) + safe; // GS k 69 (CODE39, con byte de longitud)
+    return GS + 'h' + chr(height) +            // barcode height
+        GS + 'f' + chr(0) +                    // font for printed number
+        GS + 'k' + chr(69) + chr(safe.length) + safe + chr(0); // code39
 }
 
 // Genera un elemento de imagen QZ (QR) imprimible en ESC/POS mediante `ESC *`
@@ -153,6 +152,12 @@ export async function printWashLabels({
     // incorrectas o vacías).
     printData.push({ type: 'raw', format: 'plain', data: ESC_INIT + ESC_CODEPAGE_CP858 + ESC_INTL_SPAIN });
 
+    // Los códigos de barras (bytes GS binarios) se acumulan en un trabajo APARTE
+    // que se envía SIN `encoding`, porque la codificación CP858 puede alterar los
+    // bytes de la familia GS y romper el código de barras (igual que en el
+    // ejemplo oficial de QZ Tray, que se imprime sin opción de encoding).
+    const barcodeData = [];
+
     for (let i = 1; i <= totalItems; i++) {
         // Cabecera: nº de pedido en GRANDE y centrado (ESC ! + ESC a).
         const header =
@@ -164,15 +169,11 @@ export async function printWashLabels({
             (fecha ? `Fecha: ${fecha}${LF}` : '');
 
         printData.push({ type: 'raw', format: 'plain', data: header + lines });
-
-        // Código de barras CODE39 nativo (la TM-U220 lo soporta). Se envía como
-        // texto plano: los bytes del comando son < 0x80, así que CP858 no los
-        // altera. Variante GS k 69 (con byte de longitud), igual que el ejemplo
-        // oficial de QZ Tray.
-        printData.push({ type: 'raw', format: 'plain', data: ALIGN_CENTER + LF + buildBarcode39(orderNum) + LF + ALIGN_LEFT });
-
-        // Corte al borde
         printData.push({ type: 'raw', format: 'plain', data: buildCut({ feed: 1 }) });
+
+        // Código de barras en el trabajo aparte (sin encoding). Copia exacta del
+        // patrón del ejemplo oficial: salto de línea + barcode + salto + corte.
+        barcodeData.push({ type: 'raw', format: 'plain', data: ALIGN_CENTER + LF + buildBarcode39(orderNum) + LF + ALIGN_LEFT + buildCut({ feed: 1 }) });
     }
 
     // Etiqueta inicial para ajustar el papel
@@ -180,42 +181,39 @@ export async function printWashLabels({
 
     const impresora = getTicketWasherName();
     console.log(impresora);
-    // `encoding: 'CP858'` hace que QZ Tray convierta la cadena JS a los bytes de
-    // la página de códigos seleccionada con ESC t (acentos, ñ y €).
+    // Trabajo 1: texto CON `encoding: 'CP858'` (acentos, ñ y €).
     await sendToPrinter(impresora, printData, { encoding: 'CP858' });
+    // Trabajo 2: códigos de barras SIN encoding (bytes GS intactos).
+    if (barcodeData.length) await sendToPrinter(impresora, barcodeData);
 }
 
 // Imprime una etiqueta de PRUEBA/diagnóstico en la impresora de etiquetas
-// lavables (Epson TM-U220). Separa los comandos por familias para identificar
-// qué soporta el canal de impresión:
-//   - Familia ESC (init, code page, alineación, negrita, tamaño ESC !)
-//   - Familia GS  (código de barras GS k)
-// Si la sección ESC sale bien pero la GS (barras) sale como texto basura, la
-// impresora NO está recibiendo los bytes en crudo → usar driver Generic/Text Only.
+// lavables (Epson TM-U220). Aísla el código de barras enviándolo EXACTAMENTE
+// como el ejemplo oficial de QZ Tray: en su PROPIO trabajo de impresión, como
+// un único string plano y SIN `encoding` (la codificación CP858 puede alterar
+// los bytes binarios de GS y romper el código de barras).
 export async function printWasherTest(printerName) {
     const impresora = printerName || getTicketWasherName();
 
-    const printData = [
+    // --- Trabajo 1: comandos ESC (texto/acentos) CON code page CP858 ---
+    const escData = [
         { type: 'raw', format: 'plain', data: ESC_INIT + ESC_CODEPAGE_CP858 + ESC_INTL_SPAIN },
-
-        // --- Sección comandos ESC ---
         { type: 'raw', format: 'plain', data: ALIGN_CENTER + SIZE_DOUBLE + `*** TEST TM-U220 ***${LF}` + SIZE_NORMAL + ALIGN_LEFT },
         { type: 'raw', format: 'plain', data: `[ESC] Tamaño normal${LF}` },
         { type: 'raw', format: 'plain', data: SIZE_DOUBLE + `[ESC] Tamaño DOBLE${LF}` + SIZE_NORMAL },
         { type: 'raw', format: 'plain', data: BOLD_ON + `[ESC] Negrita${LF}` + BOLD_OFF },
         { type: 'raw', format: 'plain', data: `[ESC] Acentos: áéíóú ñ ü €${LF}` },
-        { type: 'raw', format: 'plain', data: ALIGN_CENTER + `[ESC] Centrado${LF}` + ALIGN_LEFT },
-
-        // --- Sección comandos GS (código de barras) ---
-        // Variante GS k 69 (CODE39 con byte de longitud), enviada como texto
-        // plano, igual que el ejemplo oficial de QZ Tray. Debería dibujar barras.
-        { type: 'raw', format: 'plain', data: `${LF}[GS] Código de barras:${LF}` + ALIGN_CENTER },
-        { type: 'raw', format: 'plain', data: buildBarcode39('TEST0001') + LF + ALIGN_LEFT },
-
-        { type: 'raw', format: 'plain', data: buildCut({ feed: 4 }) },
+        { type: 'raw', format: 'plain', data: `${LF}[GS] Barras abajo (sin encoding):${LF}` },
+        { type: 'raw', format: 'plain', data: buildCut({ feed: 2 }) },
     ];
+    await sendToPrinter(impresora, escData, { encoding: 'CP858' });
 
-    await sendToPrinter(impresora, printData, { encoding: 'CP858' });
+    // --- Trabajo 2: SOLO el código de barras, COPIA EXACTA del ejemplo oficial ---
+    // Equivale a: qz.print(config, ['\n\n\n\n\n' + barcode + '\n\n\n\n\n'])
+    // Sin opción `encoding`, para que los bytes GS lleguen intactos.
+    const barcode = buildBarcode39('TEST0001');
+    const barcodeJob = ['\x0A\x0A\x0A' + barcode + '\x0A\x0A\x0A' + CUT_ESC_I];
+    await sendToPrinter(impresora, barcodeJob);
 }
 
 

@@ -195,6 +195,7 @@ h1, h2, h3, h4, h5, h6 {
 /* Hamburger button - hidden on desktop */
 .sidebar-hamburger {
   display: none;
+  position: relative;
   background: none;
   border: none;
   color: #94a3b8;
@@ -204,6 +205,26 @@ h1, h2, h3, h4, h5, h6 {
   transition: color 0.15s;
 
   &:hover { color: #e2e8f0; }
+}
+
+/* Badge de mensajes sin leer sobre el botón hamburguesa (visible en móvil
+   cuando el menú está colapsado y el badge del nav no se ve). */
+.hamburger-badge {
+  position: absolute;
+  top: -2px;
+  right: -4px;
+  background: @color-danger;
+  color: #fff;
+  border-radius: 9px;
+  min-width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 0 4px;
+  line-height: 1;
 }
 
 /* Responsive: mobile */

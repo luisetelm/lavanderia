@@ -290,6 +290,11 @@ export default function App() {
                             type="button"
                         >
                             <span uk-icon={mobileMenuOpen ? 'icon: close; ratio: 1.2' : 'icon: menu; ratio: 1.2'}></span>
+                            {/* Badge visible solo en móvil cuando el menú está cerrado:
+                                avisa de mensajes sin leer aunque el sidebar esté colapsado. */}
+                            {unreadMsgCount > 0 && !mobileMenuOpen && (
+                                <span className="hamburger-badge">{unreadMsgCount}</span>
+                            )}
                         </button>
                     </div>
                     <ul className="sidebar-nav">
