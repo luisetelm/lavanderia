@@ -3,7 +3,7 @@ import { fetchTrackingBoard, updateStepStatus, batchCompleteSteps, undoStep } fr
 import { useNavigate } from 'react-router-dom';
 import UIkit from 'uikit';
 import PageToolbar from '../components/PageToolbar.jsx';
-import { printFinishedLabelForOrder } from '../utils/printUtils.js';
+import { printFinishedLabelForOrder, printGarmentFinishedLabel } from '../utils/printUtils.js';
 
 const COLOR_HEX = {
     negro: '#1e1e1e', blanco: '#f5f5f5', gris: '#9ca3af', azul: '#3b82f6',
@@ -61,6 +61,31 @@ export default function TrackingBoard({ token }) {
         }
     }, [token]);
 
+    // Busca un item (prenda) del tablero por su stepId actual.
+    const findItemByStepId = useCallback((stepId) => {
+        if (!data?.board) return null;
+        for (const col of data.board) {
+            const found = col.items.find(i => i.stepId === stepId);
+            if (found) return found;
+        }
+        return null;
+    }, [data]);
+
+    // Imprime la etiqueta "Finalizado" de una prenda concreta (respeta onGarmentReady).
+    const printGarmentLabelFor = useCallback(async (item) => {
+        if (!item) return;
+        const printed = await printGarmentFinishedLabel({
+            orderNum: item.orderNum,
+            clientName: item.clientName,
+            productName: item.productName,
+            quantity: item.quantity,
+            fechaLimite: item.fechaLimite,
+        });
+        if (printed) {
+            UIkit.notification({ message: `Prenda finalizada · etiqueta impresa (${item.orderNum})`, status: 'success', pos: 'top-right', timeout: 2000 });
+        }
+    }, []);
+
     useEffect(() => {
         loadBoard();
         const interval = setInterval(loadBoard, 30000);
@@ -69,10 +94,16 @@ export default function TrackingBoard({ token }) {
 
     const handleComplete = async (stepId) => {
         setActionLoading(stepId);
+        // Capturar los datos de la prenda ANTES de recargar el tablero (luego cambia de columna).
+        const item = findItemByStepId(stepId);
         try {
             const res = await updateStepStatus(token, stepId, { action: 'complete' });
             await loadBoard();
             UIkit.notification({ message: 'Paso completado', status: 'success', pos: 'top-right', timeout: 1500 });
+            // Si la prenda quedó totalmente finalizada, imprimir su etiqueta "Finalizado".
+            if (res?.lineBecameReady) {
+                await printGarmentLabelFor(item);
+            }
             if (res?.orderBecameReady) {
                 await printFinishedLabel(res.orderId);
             }
@@ -113,12 +144,16 @@ export default function TrackingBoard({ token }) {
         }
     };
 
-    const handleBatchComplete = async (stepIds) => {
+    const handleBatchComplete = async (stepIds, items = []) => {
         try {
             const res = await batchCompleteSteps(token, stepIds);
             setBatchModal(null);
             await loadBoard();
             UIkit.notification({ message: `${stepIds.length} prendas completadas`, status: 'success', pos: 'top-right', timeout: 2000 });
+            for (const lid of (res?.readyLineIds || [])) {
+                const it = items.find(i => i.orderLineId === lid);
+                if (it) await printGarmentLabelFor(it);
+            }
             for (const oid of (res?.readyOrderIds || [])) {
                 await printFinishedLabel(oid);
             }
@@ -519,6 +554,7 @@ export default function TrackingBoard({ token }) {
                     data={batchModal}
                     onComplete={(stepIds) => {
                         const action = batchModal.action || 'complete';
+                        const modalItems = batchModal.items || [];
                         batchCompleteSteps(token, stepIds, action).then((res) => {
                             setBatchModal(null);
                             loadBoard();
@@ -529,6 +565,11 @@ export default function TrackingBoard({ token }) {
                                 status: 'success', pos: 'top-right', timeout: 2000
                             });
                             if (action === 'complete') {
+                                // Etiqueta "Finalizado" por cada prenda que quedó totalmente terminada.
+                                (res?.readyLineIds || []).forEach(lid => {
+                                    const it = modalItems.find(i => i.orderLineId === lid);
+                                    if (it) printGarmentLabelFor(it);
+                                });
                                 (res?.readyOrderIds || []).forEach(oid => printFinishedLabel(oid));
                             }
                         }).catch(e => console.error('Error batch:', e));

@@ -6,7 +6,8 @@ const KEY = 'printAutoSettings';
 const DEFAULTS = {
     onCreate: true, // al crear el pedido: etiquetas de ropa + ticket de cliente
     onPay: true,    // al cobrar: ticket de cliente
-    onReady: true,  // al marcar listo: etiqueta interna (recogida)
+    onReady: true,  // al marcar listo (pedido completo): etiqueta interna (recogida)
+    onGarmentReady: true, // al completar cada prenda: etiqueta "Finalizado" por prenda
 };
 
 export function getPrintSettings() {

@@ -873,4 +873,77 @@ export async function printFinishedLabelForOrder(token, orderId) {
     }
 }
 
+// Etiqueta "Finalizado" POR PRENDA: se imprime cuando una prenda concreta
+// completa todos sus pasos de tracking, sin esperar a que el resto del pedido
+// termine. Se imprime en la impresora de tickets (papel normal), igual que la
+// etiqueta de recogida.
+export async function printGarmentLabel({ orderNum, clientName, productName, quantity = 1, fechaLimite = '' }) {
+    const fechaEntrega = fechaLimite
+        ? new Date(fechaLimite).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })
+        : '';
+
+    // Separar prefijo (TPV/2025) y nº secuencial (0095) para destacar el número.
+    const numParts = String(orderNum || '').split('/');
+    const bigNum = numParts.length > 1 ? numParts.pop() : (orderNum || '');
+    const prefix = numParts.join('/');
+    const qty = quantity > 1 ? `${quantity}× ` : '';
+
+    const html = `
+    <html>
+      <head>
+        <meta charset="utf-8"/>
+        <style>
+          * { box-sizing: border-box; }
+          body { font-family: 'Helvetica Neue', Arial, sans-serif; margin: 0; padding: 0; width: 80mm; color: #111; -webkit-font-smoothing: antialiased; }
+          .wrap { padding: 5mm 6mm 9mm; text-align: center; }
+          .done { font-size: 14px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; color: #15803d; margin: 0 0 4px; }
+          .prefix { font-size: 12px; font-weight: 600; letter-spacing: 3px; text-transform: uppercase; color: #6b7280; margin: 0; }
+          .num { font-size: 56px; font-weight: 800; line-height: 1; letter-spacing: 1px; margin: 0; white-space: nowrap; }
+          .rule { border: none; border-top: 1.5px solid #111; width: 38mm; margin: 8px auto 10px; }
+          .prenda { font-size: 18px; font-weight: 800; margin: 0 0 2px; }
+          .cliente { font-size: 15px; font-weight: 700; margin: 0 0 2px; }
+          .fecha { font-size: 12px; letter-spacing: 0.5px; text-transform: uppercase; color: #6b7280; margin: 0; }
+          .cut { page-break-after: always; }
+        </style>
+      </head>
+      <body>
+        <div class="wrap">
+          <div class="done">✓ Finalizado</div>
+          ${prefix ? `<div class="prefix">${prefix}</div>` : ''}
+          <div class="num">${bigNum}</div>
+          <hr class="rule" />
+          <div class="prenda">${qty}${productName || 'Prenda'}</div>
+          ${clientName ? `<div class="cliente">${clientName}</div>` : ''}
+          ${fechaEntrega ? `<div class="fecha">Entrega · ${fechaEntrega}</div>` : ''}
+        </div>
+        <div class="cut"></div>
+      </body>
+    </html>
+  `;
+
+    try {
+        await sendToPrinter(getTicketPrinterName(), buildRawHtml(html));
+    } catch (e) {
+        console.warn('QZ Tray falló al imprimir etiqueta de prenda, recayendo a window.print()', e);
+        const w = window.open('', 'print_garment_label_fallback');
+        w.document.write(html);
+        w.document.close();
+        w.focus();
+        setTimeout(() => { w.print(); w.close(); }, 300);
+    }
+}
+
+// Helper gated por el ajuste onGarmentReady. Imprime la etiqueta de una prenda
+// finalizada. Devuelve true si se imprimió, false si está desactivado o falló.
+export async function printGarmentFinishedLabel(garment) {
+    if (!getPrintSettings().onGarmentReady) return false;
+    try {
+        await printGarmentLabel(garment);
+        return true;
+    } catch (e) {
+        console.warn('No se pudo imprimir la etiqueta de prenda finalizada:', e);
+        return false;
+    }
+}
+
 

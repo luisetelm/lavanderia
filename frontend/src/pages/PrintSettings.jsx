@@ -70,7 +70,8 @@ export default function PrintSettings() {
     const rows = [
         { key: 'onCreate', title: 'Al confirmar el pedido', desc: 'Imprime solo las etiquetas de ropa (impresora de etiquetas lavables).' },
         { key: 'onPay', title: 'Al cobrar', desc: 'Imprime el ticket de cliente (papel normal).' },
-        { key: 'onReady', title: 'Al marcar como listo', desc: 'Imprime la etiqueta de recogida (papel normal).' },
+        { key: 'onReady', title: 'Al marcar como listo', desc: 'Imprime la etiqueta de recogida del pedido completo (papel normal).' },
+        { key: 'onGarmentReady', title: 'Al finalizar cada prenda', desc: 'Imprime una etiqueta "Finalizado" por cada prenda en cuanto completa su tracking, sin esperar al resto del pedido (papel normal).' },
     ];
 
     return (

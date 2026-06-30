@@ -36,6 +36,17 @@ async function autoMarkOrderReady(prisma, orderId) {
     return false;
 }
 
+// Verifica si TODOS los pasos de una línea (prenda) están completados.
+// Devuelve true si la prenda está totalmente finalizada (y tenía pasos).
+async function isLineFullyDone(prisma, orderLineId) {
+    const pending = await prisma.orderLineStep.count({
+        where: { status: { not: 'done' }, orderLineId }
+    });
+    if (pending > 0) return false;
+    const total = await prisma.orderLineStep.count({ where: { orderLineId } });
+    return total > 0;
+}
+
 // Helper: obtener stepKey, stepLabel, position, resourceKey, autoProgress y durationMin de un paso
 // Funciona tanto con itineraryStep (nuevo) como stepConfig (legacy) como _resolvedStep (fallback)
 function getStepInfo(step) {
@@ -616,11 +627,14 @@ export default async function (fastify, opts) {
 
             // Auto-marcar pedido como "ready" si se completó
             let orderBecameReady = false;
+            let lineBecameReady = false;
             if (action === 'complete') {
+                // ¿Esta prenda (línea) acaba de quedar totalmente finalizada?
+                lineBecameReady = await isLineFullyDone(prisma, step.orderLineId);
                 orderBecameReady = await autoMarkOrderReady(prisma, step.orderLine.orderId);
             }
 
-            return reply.send({ ...updated, orderBecameReady, orderId: step.orderLine.orderId });
+            return reply.send({ ...updated, orderBecameReady, lineBecameReady, orderId: step.orderLine.orderId, orderLineId: step.orderLineId });
         } catch (err) {
             console.error('Error en PATCH /tracking/steps/:stepId:', err);
             return reply.status(500).send({ error: 'Error actualizando paso' });
@@ -714,11 +728,18 @@ export default async function (fastify, opts) {
 
             // Auto-marcar pedidos como "ready" si se completaron
             const readyOrderIds = [];
+            const readyLineIds = [];
             if (action === 'complete') {
                 const affectedSteps = await prisma.orderLineStep.findMany({
                     where: { id: { in: stepIds.map(Number) } },
-                    include: { orderLine: { select: { orderId: true } } }
+                    include: { orderLine: { select: { id: true, orderId: true } } }
                 });
+                // Prendas (líneas) que han quedado totalmente finalizadas
+                const lineIds = [...new Set(affectedSteps.map(s => s.orderLineId))];
+                for (const lid of lineIds) {
+                    if (await isLineFullyDone(prisma, lid)) readyLineIds.push(lid);
+                }
+                // Pedidos que han pasado a "ready"
                 const orderIds = [...new Set(affectedSteps.map(s => s.orderLine.orderId))];
                 for (const oid of orderIds) {
                     const became = await autoMarkOrderReady(prisma, oid);
@@ -726,7 +747,7 @@ export default async function (fastify, opts) {
                 }
             }
 
-            return reply.send({ count: updated.count, readyOrderIds });
+            return reply.send({ count: updated.count, readyOrderIds, readyLineIds });
         } catch (err) {
             console.error('Error en batch-complete:', err);
             return reply.status(500).send({ error: 'Error completando pasos' });
