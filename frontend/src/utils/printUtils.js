@@ -54,6 +54,13 @@ const ESC_CODEPAGE_CP858 = ESC + 't' + '\x13';
 // símbolos (¿ ¡ ñ) en impresoras Epson.
 const ESC_INTL_SPAIN = ESC + 'R' + '\x07';
 
+// Alineación (ESC a n). La TM-U220 soporta ESC a (0=izq, 1=centro, 2=der).
+const ALIGN_LEFT = ESC + 'a' + '\x00';
+const ALIGN_CENTER = ESC + 'a' + '\x01';
+// Énfasis/negrita (ESC E n). Soportado por la TM-U220.
+const BOLD_ON = ESC + 'E' + '\x01';
+const BOLD_OFF = ESC + 'E' + '\x00';
+
 function buildCut({feed = 0, variant = 'auto', partial = false, feedAfter = 0} = {}) {
     const feedBlock = LF.repeat(Math.max(0, feed));
 
@@ -74,8 +81,8 @@ function buildCut({feed = 0, variant = 'auto', partial = false, feedAfter = 0} =
     return ESC_INIT + feedBlock + CUT_ESC_I;
 }
 
-const SIZE_NORMAL = '\x1D\x21\x00'        // Normal
-const SIZE_DOUBLE = '\x1D\x21\x11'        // Doble ancho y alto
+const SIZE_NORMAL = '\x1B\x21\x00'        // ESC ! 0  → Normal (más compatible que GS !)
+const SIZE_DOUBLE = '\x1B\x21\x30'        // ESC ! 0x30 → Doble ancho (0x20) + doble alto (0x10)
 
 // --- Código de barras CODE39 (ESC/POS GS k) para impresoras de impacto (TM-U220) ---
 // CODE39 admite A-Z, 0-9 y los símbolos - . $ / + % y espacio, así que codifica
@@ -106,22 +113,22 @@ export async function printWashLabels({
     printData.push({ type: 'raw', format: 'plain', data: ESC_INIT + ESC_CODEPAGE_CP858 + ESC_INTL_SPAIN });
 
     for (let i = 1; i <= totalItems; i++) {
+        // Cabecera: nº de pedido en GRANDE y centrado (ESC ! + ESC a).
+        const header =
+            ALIGN_CENTER + SIZE_DOUBLE + `${orderNum}${LF}` + SIZE_NORMAL + ALIGN_LEFT;
+
         const lines = `Cliente: ${clientName}${LF}` +
             `Pedido: ${orderNum}${LF}` +
             `Prendas: ${i} de ${totalItems}${LF}` +
             (fecha ? `Fecha: ${fecha}${LF}` : '');
 
-        // Usar tamaño DOUBLE (el más grande soportado)
-        printData.push({ type: 'raw', format: 'plain', data: SIZE_DOUBLE });
-        printData.push({ type: 'raw', format: 'plain', data: lines });
+        // Código de barras CODE39 (la TM-U220 lo soporta de forma nativa).
+        // Requiere envío RAW: si sale como texto basura, la impresora no está
+        // recibiendo los bytes en crudo (usar driver Generic / Text Only).
+        const barcode =
+            ALIGN_CENTER + LF + buildBarcode39(orderNum) + LF + ALIGN_LEFT;
 
-        // Restablecer a tamaño normal
-        printData.push({ type: 'raw', format: 'plain', data: SIZE_NORMAL });
-
-        // Código de barras CODE39 con el nº de pedido (escaneable para abrir el pedido)
-        printData.push({ type: 'raw', format: 'plain', data: LF });
-        printData.push({ type: 'raw', format: 'plain', data: buildBarcode39(orderNum) });
-        printData.push({ type: 'raw', format: 'plain', data: LF });
+        printData.push({ type: 'raw', format: 'plain', data: header + lines + barcode });
 
         // Corte al borde
         printData.push({ type: 'raw', format: 'plain', data: buildCut({ feed: 1 }) });
@@ -137,26 +144,31 @@ export async function printWashLabels({
     await sendToPrinter(impresora, printData, { encoding: 'CP858' });
 }
 
-// Imprime una etiqueta de PRUEBA en la impresora de etiquetas lavables.
-// Útil para validar la configuración raw (driver Generic/Text Only o Epson)
-// sin tener que crear un pedido real. Comprueba acentos, ñ, € y código de barras.
+// Imprime una etiqueta de PRUEBA/diagnóstico en la impresora de etiquetas
+// lavables (Epson TM-U220). Separa los comandos por familias para identificar
+// qué soporta el canal de impresión:
+//   - Familia ESC (init, code page, alineación, negrita, tamaño ESC !)
+//   - Familia GS  (código de barras GS k)
+// Si la sección ESC sale bien pero la GS (barras) sale como texto basura, la
+// impresora NO está recibiendo los bytes en crudo → usar driver Generic/Text Only.
 export async function printWasherTest(printerName) {
     const impresora = printerName || getTicketWasherName();
 
-    const sample =
-        `PRUEBA DE IMPRESION${LF}` +
-        `Acentos: áéíóú ÁÉÍÓÚ${LF}` +
-        `Especiales: ñ Ñ ü ¿? ¡! 12,50 €${LF}`;
-
     const printData = [
         { type: 'raw', format: 'plain', data: ESC_INIT + ESC_CODEPAGE_CP858 + ESC_INTL_SPAIN },
-        { type: 'raw', format: 'plain', data: SIZE_DOUBLE },
-        { type: 'raw', format: 'plain', data: `*** TEST LAVADORA ***${LF}` },
-        { type: 'raw', format: 'plain', data: SIZE_NORMAL },
-        { type: 'raw', format: 'plain', data: sample },
-        { type: 'raw', format: 'plain', data: LF },
-        { type: 'raw', format: 'plain', data: buildBarcode39('TEST/2026/0001') },
-        { type: 'raw', format: 'plain', data: LF },
+
+        // --- Sección comandos ESC ---
+        { type: 'raw', format: 'plain', data: ALIGN_CENTER + SIZE_DOUBLE + `*** TEST TM-U220 ***${LF}` + SIZE_NORMAL + ALIGN_LEFT },
+        { type: 'raw', format: 'plain', data: `[ESC] Tamaño normal${LF}` },
+        { type: 'raw', format: 'plain', data: SIZE_DOUBLE + `[ESC] Tamaño DOBLE${LF}` + SIZE_NORMAL },
+        { type: 'raw', format: 'plain', data: BOLD_ON + `[ESC] Negrita${LF}` + BOLD_OFF },
+        { type: 'raw', format: 'plain', data: `[ESC] Acentos: áéíóú ñ ü €${LF}` },
+        { type: 'raw', format: 'plain', data: ALIGN_CENTER + `[ESC] Centrado${LF}` + ALIGN_LEFT },
+
+        // --- Sección comandos GS (código de barras) ---
+        { type: 'raw', format: 'plain', data: `${LF}[GS] Codigo de barras:${LF}` },
+        { type: 'raw', format: 'plain', data: ALIGN_CENTER + buildBarcode39('TEST 0001') + LF + ALIGN_LEFT },
+
         { type: 'raw', format: 'plain', data: buildCut({ feed: 4 }) },
     ];
 
