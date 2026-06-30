@@ -88,13 +88,37 @@ const SIZE_DOUBLE = '\x1B\x21\x30'        // ESC ! 0x30 → Doble ancho (0x20) +
 // CODE39 admite A-Z, 0-9 y los símbolos - . $ / + % y espacio, así que codifica
 // directamente el nº de pedido (p. ej. "TPV/2025/0095").
 const GS = '\x1D';
-function buildBarcode39(data, { height = 70, width = 2, hri = 2 } = {}) {
-    // Saneamos a los caracteres válidos de CODE39 (mayúsculas).
+// Genera el comando ESC/POS de un código de barras CODE39 siguiendo el ejemplo
+// oficial de QZ Tray. Usa la VARIANTE B de `GS k` (m = 69), que recibe un byte
+// de LONGITUD antes de los datos (en vez de terminar en NUL). Esta variante es
+// la que la TM-U220 dibuja de forma fiable. Todos los bytes del comando son
+// < 0x80, así que se puede enviar como texto plano sin que CP858 los altere.
+function buildBarcode39(data, { height = 80 } = {}) {
+    const chr = (n) => String.fromCharCode(n);
+    // CODE39 admite A-Z, 0-9 y - . $ / + % y espacio (mayúsculas).
     const safe = String(data).toUpperCase().replace(/[^0-9A-Z\-.\$\/\+%\s]/g, '');
-    return GS + 'h' + String.fromCharCode(height) +   // GS h n  → altura del código
-        GS + 'w' + String.fromCharCode(width) +        // GS w n  → ancho de módulo
-        GS + 'H' + String.fromCharCode(hri) +          // GS H n  → HRI (2 = texto debajo)
-        GS + 'k' + String.fromCharCode(4) + safe + '\x00'; // GS k 4 (CODE39) ... NUL
+    return GS + 'h' + chr(height) +            // GS h n  → altura del código
+        GS + 'f' + chr(0) +                    // GS f n  → fuente del número HRI
+        GS + 'H' + chr(2) +                    // GS H n  → HRI (2 = texto debajo)
+        GS + 'k' + chr(69) + chr(safe.length) + safe; // GS k 69 (CODE39, con byte de longitud)
+}
+
+// Genera un elemento de imagen QZ (QR) imprimible en ESC/POS mediante `ESC *`
+// (bit-image). La TM-U220 ignora los comandos GS (código de barras nativo y
+// raster GS v), pero SÍ ejecuta ESC *, así que esta es la forma fiable de
+// imprimir un código escaneable en esta impresora.
+async function buildQrImageElement(text, { width = 160 } = {}) {
+    const dataUrl = await QRCode.toDataURL(text, { margin: 2, width, errorCorrectionLevel: 'M' });
+    const base64 = dataUrl.split(',')[1];
+    return {
+        type: 'raw',
+        format: 'image',
+        flavor: 'base64',
+        data: base64,
+        // dotDensity activa la ruta ESC * (bit-image), compatible con impresoras
+        // de impacto de 9 agujas como la TM-U220.
+        options: { language: 'ESCPOS', dotDensity: 'double' },
+    };
 }
 
 // Igual que buildBarcode39 pero devuelve los bytes como cadena HEXADECIMAL,
@@ -142,10 +166,10 @@ export async function printWashLabels({
         printData.push({ type: 'raw', format: 'plain', data: header + lines });
 
         // Código de barras CODE39 nativo (la TM-U220 lo soporta). Se envía como
-        // HEX para que los bytes GS lleguen exactos (sin codificación CP858).
-        printData.push({ type: 'raw', format: 'plain', data: ALIGN_CENTER + LF });
-        printData.push({ type: 'raw', format: 'hex', data: buildBarcode39Hex(orderNum) });
-        printData.push({ type: 'raw', format: 'plain', data: LF + ALIGN_LEFT });
+        // texto plano: los bytes del comando son < 0x80, así que CP858 no los
+        // altera. Variante GS k 69 (con byte de longitud), igual que el ejemplo
+        // oficial de QZ Tray.
+        printData.push({ type: 'raw', format: 'plain', data: ALIGN_CENTER + LF + buildBarcode39(orderNum) + LF + ALIGN_LEFT });
 
         // Corte al borde
         printData.push({ type: 'raw', format: 'plain', data: buildCut({ feed: 1 }) });
@@ -183,13 +207,10 @@ export async function printWasherTest(printerName) {
         { type: 'raw', format: 'plain', data: ALIGN_CENTER + `[ESC] Centrado${LF}` + ALIGN_LEFT },
 
         // --- Sección comandos GS (código de barras) ---
-        // 1) Vía texto plano (codificado CP858) — puede romper los bytes GS.
-        { type: 'raw', format: 'plain', data: `${LF}[GS-PLAIN] barras:${LF}` + ALIGN_CENTER },
-        { type: 'raw', format: 'plain', data: buildBarcode39('TEST 0001') + LF + ALIGN_LEFT },
-        // 2) Vía HEX — los bytes GS llegan EXACTOS. Esta es la que debería salir.
-        { type: 'raw', format: 'plain', data: `${LF}[GS-HEX] barras:${LF}` + ALIGN_CENTER },
-        { type: 'raw', format: 'hex', data: buildBarcode39Hex('TEST 0001') },
-        { type: 'raw', format: 'plain', data: LF + ALIGN_LEFT },
+        // Variante GS k 69 (CODE39 con byte de longitud), enviada como texto
+        // plano, igual que el ejemplo oficial de QZ Tray. Debería dibujar barras.
+        { type: 'raw', format: 'plain', data: `${LF}[GS] Código de barras:${LF}` + ALIGN_CENTER },
+        { type: 'raw', format: 'plain', data: buildBarcode39('TEST0001') + LF + ALIGN_LEFT },
 
         { type: 'raw', format: 'plain', data: buildCut({ feed: 4 }) },
     ];
