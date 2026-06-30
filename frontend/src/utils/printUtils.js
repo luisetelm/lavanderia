@@ -39,10 +39,20 @@ async function sendToPrinter(printerName, data, options = {}) {
 }
 
 // --- ESC/POS helpers ---
+const ESC = '\x1B';
 const LF = '\x0A';
 const ESC_INIT = '\x1B\x40';
 const CUT_ESC_I = '\x1B\x69';        // Corte (ESC i) -> muy fiable en TM-U220
 const CUT_GS_V_FULL = '\x1D\x56\x00'; // Alternativa GS V 0 (corte total)
+
+// Selección de página de códigos (ESC t n). CP858 (n=19/0x13) incluye los
+// acentos españoles (á, é, í, ó, ú, ñ, ü) y el símbolo del euro (€). Debe ir
+// acompañado del `encoding: 'CP858'` en la config de QZ para que la cadena JS se
+// codifique a los mismos bytes que espera la impresora.
+const ESC_CODEPAGE_CP858 = ESC + 't' + '\x13';
+// Juego de caracteres internacional España (ESC R n, n=7). Refuerza algunos
+// símbolos (¿ ¡ ñ) en impresoras Epson.
+const ESC_INTL_SPAIN = ESC + 'R' + '\x07';
 
 function buildCut({feed = 0, variant = 'auto', partial = false, feedAfter = 0} = {}) {
     const feedBlock = LF.repeat(Math.max(0, feed));
@@ -89,7 +99,11 @@ export async function printWashLabels({
         : '';
 
     const printData = [];
-    printData.push({ type: 'raw', format: 'command', data: ESC_INIT });
+    // Reset + selección de página de códigos para que los acentos/ñ salgan bien.
+    // Se envía como texto plano (los formatos válidos de QZ raw son plain/hex/
+    // base64/image/file/xml/pdf; 'command' NO es válido y provoca impresiones
+    // incorrectas o vacías).
+    printData.push({ type: 'raw', format: 'plain', data: ESC_INIT + ESC_CODEPAGE_CP858 + ESC_INTL_SPAIN });
 
     for (let i = 1; i <= totalItems; i++) {
         const lines = `Cliente: ${clientName}${LF}` +
@@ -98,27 +112,55 @@ export async function printWashLabels({
             (fecha ? `Fecha: ${fecha}${LF}` : '');
 
         // Usar tamaño DOUBLE (el más grande soportado)
-        printData.push({ type: 'raw', format: 'command', data: SIZE_DOUBLE });
-        printData.push({ type: 'raw', format: 'command', data: lines });
+        printData.push({ type: 'raw', format: 'plain', data: SIZE_DOUBLE });
+        printData.push({ type: 'raw', format: 'plain', data: lines });
 
         // Restablecer a tamaño normal
-        printData.push({ type: 'raw', format: 'command', data: SIZE_NORMAL });
+        printData.push({ type: 'raw', format: 'plain', data: SIZE_NORMAL });
 
         // Código de barras CODE39 con el nº de pedido (escaneable para abrir el pedido)
-        printData.push({ type: 'raw', format: 'command', data: LF });
-        printData.push({ type: 'raw', format: 'command', data: buildBarcode39(orderNum) });
-        printData.push({ type: 'raw', format: 'command', data: LF });
+        printData.push({ type: 'raw', format: 'plain', data: LF });
+        printData.push({ type: 'raw', format: 'plain', data: buildBarcode39(orderNum) });
+        printData.push({ type: 'raw', format: 'plain', data: LF });
 
         // Corte al borde
-        printData.push({ type: 'raw', format: 'command', data: buildCut({ feed: 1 }) });
+        printData.push({ type: 'raw', format: 'plain', data: buildCut({ feed: 1 }) });
     }
 
     // Etiqueta inicial para ajustar el papel
-    printData.push({ type: 'raw', format: 'command', data: buildCut({ feed: 6 }) });
+    printData.push({ type: 'raw', format: 'plain', data: buildCut({ feed: 6 }) });
 
     const impresora = getTicketWasherName();
     console.log(impresora);
-    await sendToPrinter(impresora, printData);
+    // `encoding: 'CP858'` hace que QZ Tray convierta la cadena JS a los bytes de
+    // la página de códigos seleccionada con ESC t (acentos, ñ y €).
+    await sendToPrinter(impresora, printData, { encoding: 'CP858' });
+}
+
+// Imprime una etiqueta de PRUEBA en la impresora de etiquetas lavables.
+// Útil para validar la configuración raw (driver Generic/Text Only o Epson)
+// sin tener que crear un pedido real. Comprueba acentos, ñ, € y código de barras.
+export async function printWasherTest(printerName) {
+    const impresora = printerName || getTicketWasherName();
+
+    const sample =
+        `PRUEBA DE IMPRESION${LF}` +
+        `Acentos: áéíóú ÁÉÍÓÚ${LF}` +
+        `Especiales: ñ Ñ ü ¿? ¡! 12,50 €${LF}`;
+
+    const printData = [
+        { type: 'raw', format: 'plain', data: ESC_INIT + ESC_CODEPAGE_CP858 + ESC_INTL_SPAIN },
+        { type: 'raw', format: 'plain', data: SIZE_DOUBLE },
+        { type: 'raw', format: 'plain', data: `*** TEST LAVADORA ***${LF}` },
+        { type: 'raw', format: 'plain', data: SIZE_NORMAL },
+        { type: 'raw', format: 'plain', data: sample },
+        { type: 'raw', format: 'plain', data: LF },
+        { type: 'raw', format: 'plain', data: buildBarcode39('TEST/2026/0001') },
+        { type: 'raw', format: 'plain', data: LF },
+        { type: 'raw', format: 'plain', data: buildCut({ feed: 4 }) },
+    ];
+
+    await sendToPrinter(impresora, printData, { encoding: 'CP858' });
 }
 
 
