@@ -97,6 +97,23 @@ function buildBarcode39(data, { height = 70, width = 2, hri = 2 } = {}) {
         GS + 'k' + String.fromCharCode(4) + safe + '\x00'; // GS k 4 (CODE39) ... NUL
 }
 
+// Igual que buildBarcode39 pero devuelve los bytes como cadena HEXADECIMAL,
+// para enviarlos con `format: 'hex'`. Así los bytes binarios de la familia GS
+// (0x1D...) llegan EXACTOS a la impresora, sin pasar por la codificación de
+// caracteres (CP858), que puede alterarlos y romper el código de barras.
+function buildBarcode39Hex(data, { height = 70, width = 2, hri = 2 } = {}) {
+    const safe = String(data).toUpperCase().replace(/[^0-9A-Z.$/+%\s-]/g, '');
+    const hx = (n) => (n & 0xff).toString(16).padStart(2, '0');
+    let out = '';
+    out += '1d68' + hx(height);   // GS h n  → altura
+    out += '1d77' + hx(width);    // GS w n  → ancho de módulo
+    out += '1d48' + hx(hri);      // GS H n  → posición HRI
+    out += '1d6b04';              // GS k 4  → CODE39 (terminado en NUL)
+    for (let i = 0; i < safe.length; i++) out += hx(safe.charCodeAt(i));
+    out += '00';                  // NUL terminador
+    return out;
+}
+
 export async function printWashLabels({
                                           orderNum, clientFirstName, clientLastName, totalItems, fechaLimite = ''
                                       }) {
@@ -122,13 +139,13 @@ export async function printWashLabels({
             `Prendas: ${i} de ${totalItems}${LF}` +
             (fecha ? `Fecha: ${fecha}${LF}` : '');
 
-        // Código de barras CODE39 (la TM-U220 lo soporta de forma nativa).
-        // Requiere envío RAW: si sale como texto basura, la impresora no está
-        // recibiendo los bytes en crudo (usar driver Generic / Text Only).
-        const barcode =
-            ALIGN_CENTER + LF + buildBarcode39(orderNum) + LF + ALIGN_LEFT;
+        printData.push({ type: 'raw', format: 'plain', data: header + lines });
 
-        printData.push({ type: 'raw', format: 'plain', data: header + lines + barcode });
+        // Código de barras CODE39 nativo (la TM-U220 lo soporta). Se envía como
+        // HEX para que los bytes GS lleguen exactos (sin codificación CP858).
+        printData.push({ type: 'raw', format: 'plain', data: ALIGN_CENTER + LF });
+        printData.push({ type: 'raw', format: 'hex', data: buildBarcode39Hex(orderNum) });
+        printData.push({ type: 'raw', format: 'plain', data: LF + ALIGN_LEFT });
 
         // Corte al borde
         printData.push({ type: 'raw', format: 'plain', data: buildCut({ feed: 1 }) });
@@ -166,8 +183,13 @@ export async function printWasherTest(printerName) {
         { type: 'raw', format: 'plain', data: ALIGN_CENTER + `[ESC] Centrado${LF}` + ALIGN_LEFT },
 
         // --- Sección comandos GS (código de barras) ---
-        { type: 'raw', format: 'plain', data: `${LF}[GS] Codigo de barras:${LF}` },
-        { type: 'raw', format: 'plain', data: ALIGN_CENTER + buildBarcode39('TEST 0001') + LF + ALIGN_LEFT },
+        // 1) Vía texto plano (codificado CP858) — puede romper los bytes GS.
+        { type: 'raw', format: 'plain', data: `${LF}[GS-PLAIN] barras:${LF}` + ALIGN_CENTER },
+        { type: 'raw', format: 'plain', data: buildBarcode39('TEST 0001') + LF + ALIGN_LEFT },
+        // 2) Vía HEX — los bytes GS llegan EXACTOS. Esta es la que debería salir.
+        { type: 'raw', format: 'plain', data: `${LF}[GS-HEX] barras:${LF}` + ALIGN_CENTER },
+        { type: 'raw', format: 'hex', data: buildBarcode39Hex('TEST 0001') },
+        { type: 'raw', format: 'plain', data: LF + ALIGN_LEFT },
 
         { type: 'raw', format: 'plain', data: buildCut({ feed: 4 }) },
     ];
