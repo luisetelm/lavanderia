@@ -61,25 +61,36 @@ const ALIGN_CENTER = ESC + 'a' + '\x01';
 const BOLD_ON = ESC + 'E' + '\x01';
 const BOLD_OFF = ESC + 'E' + '\x00';
 
+// IMPORTANTE (TM-U220): la cortadora está ~6 líneas POR ENCIMA del cabezal.
+// Por eso hay que avanzar (feed) varias líneas DESPUÉS del contenido para que la
+// última línea impresa pase la cortadora antes de cortar; si no, el corte cae
+// "hacia atrás" y parte del contenido se queda dentro de la impresora.
+// NOTA: ya NO incluimos ESC @ (init) aquí, porque reseteaba la página de códigos
+// entre etiquetas y rompía los acentos a partir de la 2ª.
 function buildCut({feed = 0, variant = 'auto', partial = false, feedAfter = 0} = {}) {
     const feedBlock = LF.repeat(Math.max(0, feed));
 
     if (variant === 'gs') {
         if (partial) {
             // Corte parcial estándar (GS V 1)
-            return ESC_INIT + feedBlock + '\x1D\x56\x01';
+            return feedBlock + '\x1D\x56\x01';
         }
         if (feedAfter > 0) {
             // GS V 66 n → corta y avanza n unidades
-            return ESC_INIT + feedBlock + '\x1D\x56\x42' + String.fromCharCode(feedAfter);
+            return feedBlock + '\x1D\x56\x42' + String.fromCharCode(feedAfter);
         }
         // Corte total GS V 0
-        return ESC_INIT + feedBlock + '\x1D\x56\x00';
+        return feedBlock + '\x1D\x56\x00';
     }
 
-    // Variante 'auto' → prueba ESC i (corte total clásico)
-    return ESC_INIT + feedBlock + CUT_ESC_I;
+    // Variante 'auto' → ESC i (corte total clásico, muy fiable en TM-U220)
+    return feedBlock + CUT_ESC_I;
 }
+
+// Nº de líneas a avanzar antes del corte para compensar el offset del cortador
+// de la TM-U220. Si el corte sigue quedándose corto, sube este valor; si deja
+// demasiado papel en blanco al final, bájalo.
+const WASHER_CUT_FEED = 6;
 
 const SIZE_NORMAL = '\x1B\x21\x00'        // ESC ! 0  → Normal (más compatible que GS !)
 const SIZE_DOUBLE = '\x1B\x21\x30'        // ESC ! 0x30 → Doble ancho (0x20) + doble alto (0x10)
@@ -154,7 +165,9 @@ export async function printWashLabels({
         //   - Nº de pedido en GRANDE y centrado
         //   - "Prenda i de N" centrado
         //   - Datos del cliente y fecha alineados a la izquierda
+        // Reaplicamos la code page por etiqueta por si algo la reseteó.
         const label =
+            ESC_CODEPAGE_CP858 + ESC_INTL_SPAIN +
             ALIGN_CENTER +
             SIZE_DOUBLE + `${orderNum}${LF}` + SIZE_NORMAL +
             `Prenda ${i} de ${totalItems}${LF}` +
@@ -163,8 +176,8 @@ export async function printWashLabels({
             (fecha ? `Fecha limite: ${fecha}${LF}` : '');
 
         printData.push({ type: 'raw', format: 'plain', data: label });
-        // Corte al final de cada etiqueta (con un pequeño avance de papel).
-        printData.push({ type: 'raw', format: 'plain', data: buildCut({ feed: 2 }) });
+        // Avance suficiente para que la última línea pase la cortadora + corte.
+        printData.push({ type: 'raw', format: 'plain', data: buildCut({ feed: WASHER_CUT_FEED }) });
     }
 
     const impresora = getTicketWasherName();
@@ -188,7 +201,7 @@ export async function printWasherTest(printerName) {
         { type: 'raw', format: 'plain', data: ALIGN_CENTER + SIZE_DOUBLE + `TEST/2026/0001${LF}` + SIZE_NORMAL + `Prenda 1 de 1${LF}` + ALIGN_LEFT + LF },
         { type: 'raw', format: 'plain', data: `Cliente: Áéíóú Ñ Güeñón${LF}` },
         { type: 'raw', format: 'plain', data: `Fecha limite: 30/06/2026${LF}` },
-        { type: 'raw', format: 'plain', data: buildCut({ feed: 2 }) },
+        { type: 'raw', format: 'plain', data: buildCut({ feed: WASHER_CUT_FEED }) },
     ];
     await sendToPrinter(impresora, printData, { encoding: 'CP858' });
 }
