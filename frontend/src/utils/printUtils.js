@@ -147,44 +147,30 @@ export async function printWashLabels({
 
     const printData = [];
     // Reset + selección de página de códigos para que los acentos/ñ salgan bien.
-    // Se envía como texto plano (los formatos válidos de QZ raw son plain/hex/
-    // base64/image/file/xml/pdf; 'command' NO es válido y provoca impresiones
-    // incorrectas o vacías).
     printData.push({ type: 'raw', format: 'plain', data: ESC_INIT + ESC_CODEPAGE_CP858 + ESC_INTL_SPAIN });
 
-    // Los códigos de barras (bytes GS binarios) se acumulan en un trabajo APARTE
-    // que se envía SIN `encoding`, porque la codificación CP858 puede alterar los
-    // bytes de la familia GS y romper el código de barras (igual que en el
-    // ejemplo oficial de QZ Tray, que se imprime sin opción de encoding).
-    const barcodeData = [];
-
     for (let i = 1; i <= totalItems; i++) {
-        // Cabecera: nº de pedido en GRANDE y centrado (ESC ! + ESC a).
-        const header =
-            ALIGN_CENTER + SIZE_DOUBLE + `${orderNum}${LF}` + SIZE_NORMAL + ALIGN_LEFT;
+        // Etiqueta limpia por prenda:
+        //   - Nº de pedido en GRANDE y centrado
+        //   - "Prenda i de N" centrado
+        //   - Datos del cliente y fecha alineados a la izquierda
+        const label =
+            ALIGN_CENTER +
+            SIZE_DOUBLE + `${orderNum}${LF}` + SIZE_NORMAL +
+            `Prenda ${i} de ${totalItems}${LF}` +
+            ALIGN_LEFT + LF +
+            `Cliente: ${clientName}${LF}` +
+            (fecha ? `Fecha limite: ${fecha}${LF}` : '');
 
-        const lines = `Cliente: ${clientName}${LF}` +
-            `Pedido: ${orderNum}${LF}` +
-            `Prendas: ${i} de ${totalItems}${LF}` +
-            (fecha ? `Fecha: ${fecha}${LF}` : '');
-
-        printData.push({ type: 'raw', format: 'plain', data: header + lines });
-        printData.push({ type: 'raw', format: 'plain', data: buildCut({ feed: 1 }) });
-
-        // Código de barras en el trabajo aparte (sin encoding). Copia exacta del
-        // patrón del ejemplo oficial: salto de línea + barcode + salto + corte.
-        barcodeData.push({ type: 'raw', format: 'plain', data: ALIGN_CENTER + LF + buildBarcode39(orderNum) + LF + ALIGN_LEFT + buildCut({ feed: 1 }) });
+        printData.push({ type: 'raw', format: 'plain', data: label });
+        // Corte al final de cada etiqueta (con un pequeño avance de papel).
+        printData.push({ type: 'raw', format: 'plain', data: buildCut({ feed: 2 }) });
     }
 
-    // Etiqueta inicial para ajustar el papel
-    printData.push({ type: 'raw', format: 'plain', data: buildCut({ feed: 6 }) });
-
     const impresora = getTicketWasherName();
-    console.log(impresora);
-    // Trabajo 1: texto CON `encoding: 'CP858'` (acentos, ñ y €).
+    // `encoding: 'CP858'` convierte la cadena JS a los bytes de la code page
+    // seleccionada con ESC t (acentos, ñ y €).
     await sendToPrinter(impresora, printData, { encoding: 'CP858' });
-    // Trabajo 2: códigos de barras SIN encoding (bytes GS intactos).
-    if (barcodeData.length) await sendToPrinter(impresora, barcodeData);
 }
 
 // Imprime una etiqueta de PRUEBA/diagnóstico en la impresora de etiquetas
@@ -195,25 +181,16 @@ export async function printWashLabels({
 export async function printWasherTest(printerName) {
     const impresora = printerName || getTicketWasherName();
 
-    // --- Trabajo 1: comandos ESC (texto/acentos) CON code page CP858 ---
-    const escData = [
+    // Prueba de impresión limpia (sin código de barras): replica el formato real
+    // de la etiqueta de lavado para verificar tamaño, acentos y corte.
+    const printData = [
         { type: 'raw', format: 'plain', data: ESC_INIT + ESC_CODEPAGE_CP858 + ESC_INTL_SPAIN },
-        { type: 'raw', format: 'plain', data: ALIGN_CENTER + SIZE_DOUBLE + `*** TEST TM-U220 ***${LF}` + SIZE_NORMAL + ALIGN_LEFT },
-        { type: 'raw', format: 'plain', data: `[ESC] Tamaño normal${LF}` },
-        { type: 'raw', format: 'plain', data: SIZE_DOUBLE + `[ESC] Tamaño DOBLE${LF}` + SIZE_NORMAL },
-        { type: 'raw', format: 'plain', data: BOLD_ON + `[ESC] Negrita${LF}` + BOLD_OFF },
-        { type: 'raw', format: 'plain', data: `[ESC] Acentos: áéíóú ñ ü €${LF}` },
-        { type: 'raw', format: 'plain', data: `${LF}[GS] Barras abajo (sin encoding):${LF}` },
+        { type: 'raw', format: 'plain', data: ALIGN_CENTER + SIZE_DOUBLE + `TEST/2026/0001${LF}` + SIZE_NORMAL + `Prenda 1 de 1${LF}` + ALIGN_LEFT + LF },
+        { type: 'raw', format: 'plain', data: `Cliente: Áéíóú Ñ Güeñón${LF}` },
+        { type: 'raw', format: 'plain', data: `Fecha limite: 30/06/2026${LF}` },
         { type: 'raw', format: 'plain', data: buildCut({ feed: 2 }) },
     ];
-    await sendToPrinter(impresora, escData, { encoding: 'CP858' });
-
-    // --- Trabajo 2: SOLO el código de barras, COPIA EXACTA del ejemplo oficial ---
-    // Equivale a: qz.print(config, ['\n\n\n\n\n' + barcode + '\n\n\n\n\n'])
-    // Sin opción `encoding`, para que los bytes GS lleguen intactos.
-    const barcode = buildBarcode39('TEST0001');
-    const barcodeJob = ['\x0A\x0A\x0A' + barcode + '\x0A\x0A\x0A' + CUT_ESC_I];
-    await sendToPrinter(impresora, barcodeJob);
+    await sendToPrinter(impresora, printData, { encoding: 'CP858' });
 }
 
 
