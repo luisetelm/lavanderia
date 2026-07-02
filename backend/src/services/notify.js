@@ -6,6 +6,20 @@ import { sendTextMessage as sendWhatsApp, sendTemplateMessage as sendWhatsAppTem
 import { findOrCreateConversation, touchConversation } from './conversation.js';
 import { normalizePhone } from '../utils/validatePhone.js';
 
+// ── Datos del negocio (configurables por variables de entorno) ──
+// Si no se define STORE_HOURS se mantiene el enlace de Google para no mostrar
+// un horario que pueda quedar desactualizado o incorrecto.
+const STORE_NAME = process.env.STORE_NAME || 'Tinte y Burbuja';
+const STORE_ADDRESS = process.env.STORE_ADDRESS || 'Carretera de Sabiote, 45, Úbeda';
+const STORE_HOURS = process.env.STORE_HOURS || null;
+const STORE_PHONE = process.env.STORE_PHONE || null;
+const SCHEDULE_URL = 'https://share.google/d4uMKGaiCaBywfRt2';
+
+// Formatea un importe en formato español: 12.5 -> "12,50 €"
+function formatAmount(value) {
+    return `${Number(value || 0).toFixed(2).replace('.', ',')} €`;
+}
+
 function resolveChannel(client, forceSendSMS) {
     if (forceSendSMS === false) return null;
     if (forceSendSMS === 'whatsapp') return 'whatsapp';
@@ -16,15 +30,22 @@ function resolveChannel(client, forceSendSMS) {
     return preferred;
 }
 
+// Capitaliza cada palabra del nombre: "MARI CARMEN" -> "Mari Carmen"
+function toTitleCase(str) {
+    return String(str || '')
+        .toLowerCase()
+        .replace(/(^|[\s'-])([a-zA-ZáéíóúüñÁÉÍÓÚÜÑ])/g, (_, sep, chr) => sep + chr.toUpperCase());
+}
+
 function buildOrderNotificationPayload(order, event) {
     const client = order.client;
-    const firstName = client.firstName || 'cliente';
-    const fullName = `${client.firstName || ''} ${client.lastName || ''}`.trim() || firstName;
+    // Usar solo el nombre de pila y capitalizarlo (nunca en mayúsculas ni con apellidos)
+    const firstName = toTitleCase(client.firstName) || 'cliente';
     const orderNum = order.orderNum || `#${order.id}`;
 
     if (event === 'collected') {
         return {
-            message: `Hola ${fullName}, esperamos que todo haya ido perfecto en Tinte y Burbuja. Si puedes, déjanos una reseña: https://g.page/r/Cau9_6UCpQ8ZEBI/review`,
+            message: `Hola ${firstName}, esperamos que todo haya ido perfecto en ${STORE_NAME}. Si puedes, déjanos una reseña: https://g.page/r/Cau9_6UCpQ8ZEBI/review`,
             templateName: 'pedido_recogido',
             templateComponents: [
                 {
@@ -35,8 +56,41 @@ function buildOrderNotificationPayload(order, event) {
         };
     }
 
+    // ── Datos extra para reforzar la confianza en el mensaje de "pedido listo" ──
+    // Nº de prendas (suma de cantidades de las líneas del pedido)
+    const totalItems = Array.isArray(order.lines)
+        ? order.lines.reduce((sum, l) => sum + (l.quantity || 0), 0)
+        : 0;
+    const itemsText = totalItems > 0
+        ? ` (${totalItems} ${totalItems === 1 ? 'prenda' : 'prendas'})`
+        : '';
+
+    // Estado de pago: importe ya cobrado vs total
+    const paidAmount = Array.isArray(order.payments)
+        ? order.payments
+            .filter((p) => p.status === 'completed')
+            .reduce((sum, p) => sum + Number(p.amount || 0), 0)
+        : 0;
+    const pending = Math.max(0, Number(order.total || 0) - paidAmount);
+    let paymentText = '';
+    if (order.paid || pending <= 0.009) {
+        paymentText = ' Ya está pagado.';
+    } else {
+        paymentText = ` Importe pendiente al recoger: ${formatAmount(pending)}.`;
+    }
+
+    // Horario: texto configurable o, si no existe, enlace de Google
+    const scheduleText = STORE_HOURS
+        ? `Horario: ${STORE_HOURS}.`
+        : `Consulta nuestro horario: ${SCHEDULE_URL}`;
+
+    // Teléfono de contacto (opcional)
+    const phoneText = STORE_PHONE ? ` ¿Dudas? Llámanos al ${STORE_PHONE}.` : '';
+
+    const message = `Hola ${firstName}, tu pedido ${orderNum}${itemsText} ya está listo para recoger en ${STORE_NAME}.${paymentText} Te esperamos en ${STORE_ADDRESS}. ${scheduleText}${phoneText}`;
+
     return {
-        message: `Hola ${firstName}, tu pedido ${orderNum} está listo para recoger. Consulta nuestro horario de apertura: https://share.google/d4uMKGaiCaBywfRt2`,
+        message,
         templateName: 'pedido_listo',
         templateComponents: [
             {
@@ -59,6 +113,12 @@ async function sendOrderNotification(prisma, orderId, event, forceSendSMS = null
             include: {
                 client: {
                     select: { id: true, firstName: true, lastName: true, phone: true, notifyChannel: true },
+                },
+                lines: {
+                    select: { quantity: true },
+                },
+                payments: {
+                    select: { amount: true, status: true },
                 },
             },
         });
@@ -215,4 +275,7 @@ export async function sendReadyNotification(prisma, orderId, forceSendSMS = null
 export async function sendCollectedNotification(prisma, orderId, forceSendSMS = null) {
     return sendOrderNotification(prisma, orderId, 'collected', forceSendSMS);
 }
+
+// Exportado para reutilizar en el servicio de reintentos (reminders.js)
+export { buildOrderNotificationPayload };
 

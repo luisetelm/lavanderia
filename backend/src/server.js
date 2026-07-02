@@ -20,11 +20,12 @@ import dashboardRoutes from './routes/dashboard.js';
 import trackingRoutes from './routes/tracking.js';
 import itineraryRoutes from './routes/itineraries.js';
 import qzRoutes from './routes/qz.js';
-import fastifyStatic from '@fastify/static';
-import multipart from '@fastify/multipart';
+import campaignsRoutes from './routes/campaigns.js';
+import fastifyStatic from '@fastify/static';import multipart from '@fastify/multipart';
 import path from 'path';
 import cron from 'node-cron';
 import { generateMonthlyInvoices } from './services/monthlyInvoicing.js';
+import { retryFailedNotifications, remindUncollectedOrders } from './services/reminders.js';
 
 
 dotenv.config();
@@ -109,6 +110,7 @@ app.register(dashboardRoutes, {prefix: '/api/dashboard'});
 app.register(trackingRoutes, {prefix: '/api/tracking'});
 app.register(itineraryRoutes, {prefix: '/api/itineraries'});
 app.register(qzRoutes, {prefix: '/api/qz'});
+app.register(campaignsRoutes, {prefix: '/api/campaigns'});
 
 // Servir la carpeta de PDFs de facturas de forma pública
 app.register(fastifyStatic, {
@@ -148,6 +150,53 @@ cron.schedule('0 8 5 * *', async () => {
         console.log('[Cron] Facturación mensual completada:', result);
     } catch (err) {
         console.error('[Cron] Error en facturación mensual:', err);
+    }
+});
+
+// Cron: reintento de notificaciones fallidas (backoff exponencial) - cada hora
+if (process.env.NOTIFY_RETRY_ENABLED !== 'false') {
+    cron.schedule('15 * * * *', async () => {
+        try {
+            await retryFailedNotifications(prisma);
+        } catch (err) {
+            console.error('[Cron] Error reintentando notificaciones:', err);
+        }
+    });
+}
+
+// Cron: recordatorio de pedidos listos no recogidos - cada día a las 10:00 AM
+if (process.env.NOTIFY_REMINDER_ENABLED !== 'false') {
+    cron.schedule('0 10 * * *', async () => {
+        try {
+            await remindUncollectedOrders(prisma);
+        } catch (err) {
+            console.error('[Cron] Error enviando recordatorios de pedidos:', err);
+        }
+    });
+}
+
+// Endpoints manuales (solo admin) para lanzar las tareas bajo demanda
+app.post('/api/notifications/retry-failed', async (req, reply) => {
+    if (req.user?.role !== 'admin') {
+        return reply.status(403).send({ error: 'Solo administradores' });
+    }
+    try {
+        const result = await retryFailedNotifications(prisma);
+        return reply.send(result);
+    } catch (err) {
+        return reply.status(500).send({ error: err.message || 'Error reintentando notificaciones' });
+    }
+});
+
+app.post('/api/notifications/remind-uncollected', async (req, reply) => {
+    if (req.user?.role !== 'admin') {
+        return reply.status(403).send({ error: 'Solo administradores' });
+    }
+    try {
+        const result = await remindUncollectedOrders(prisma);
+        return reply.send(result);
+    } catch (err) {
+        return reply.status(500).send({ error: err.message || 'Error enviando recordatorios' });
     }
 });
 

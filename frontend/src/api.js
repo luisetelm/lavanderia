@@ -415,6 +415,44 @@ export function fetchWhatsAppMessages(token, { clientId, page = 0, size = 50 } =
     return request(`/whatsapp/messages?${params}`, token);
 }
 
+// --- Campañas de marketing (WhatsApp) ---
+export function fetchCampaignTemplates(token) {
+    return request('/campaigns/templates', token);
+}
+
+export function previewCampaignAudience(token, filters) {
+    return request('/campaigns/audience/preview', token, {
+        method: 'POST',
+        body: JSON.stringify({ filters }),
+    });
+}
+
+export function fetchCampaigns(token) {
+    return request('/campaigns', token);
+}
+
+export function fetchCampaign(token, id) {
+    return request(`/campaigns/${id}`, token);
+}
+
+export function createCampaign(token, { name, templateName, language, filters }) {
+    return request('/campaigns', token, {
+        method: 'POST',
+        body: JSON.stringify({ name, templateName, language, filters }),
+    });
+}
+
+export function sendCampaign(token, id) {
+    return request(`/campaigns/${id}/send`, token, {
+        method: 'POST',
+        body: JSON.stringify({}),
+    });
+}
+
+export function deleteCampaign(token, id) {
+    return request(`/campaigns/${id}`, token, { method: 'DELETE' });
+}
+
 // --- Mensajería unificada ---
 export function fetchConversations(token) {
     return request('/messages/conversations', token);

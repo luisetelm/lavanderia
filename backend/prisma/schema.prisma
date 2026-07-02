@@ -64,6 +64,7 @@ model Order {
   status                String?         @default("pending")
   workerId              Int?
   observacionesInternas String?
+  readyReminderAt       DateTime?       @db.Timestamptz(6)
   CashMovement          CashMovement[]
   notification          Notification[]
   payments              Payment[]
@@ -255,6 +256,8 @@ model Notification {
   subid           String?       @db.VarChar(64)
   statusMessage   String?       @db.VarChar(255)
   conversationId  Int?
+  retryCount      Int           @default(0)
+  nextRetryAt     DateTime?     @db.Timestamptz(6)
   order           Order?        @relation(fields: [orderid], references: [id], map: "Notification_taskId_fkey")
   conversation    Conversation? @relation(fields: [conversationId], references: [id])
 }
@@ -380,6 +383,8 @@ model Message {
   status          String        @default("pending") // pending, sent, delivered, read, failed
   orderId         Int?
   conversationId  Int?
+  retryCount      Int           @default(0)
+  nextRetryAt     DateTime?     @db.Timestamptz(6)
   createdAt       DateTime      @default(now()) @db.Timestamptz(6)
   updatedAt       DateTime      @default(now()) @db.Timestamptz(6)
   client          User?         @relation("client_messages", fields: [clientId], references: [id])
@@ -407,6 +412,40 @@ model Payment {
   invoice         invoices? @relation(fields: [invoiceId], references: [id])
   client          User?     @relation("client_payments", fields: [clientId], references: [id])
   recorder        User?     @relation("recorder_payments", fields: [recordedBy], references: [id])
+}
+
+model Campaign {
+  id              Int                 @id @default(autoincrement())
+  name            String
+  templateName    String
+  language        String              @default("es")
+  status          String              @default("draft") // draft, sending, completed, canceled
+  filters         Json?
+  totalRecipients Int                 @default(0)
+  sentCount       Int                 @default(0)
+  failedCount     Int                 @default(0)
+  createdBy       Int?
+  createdAt       DateTime            @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime            @default(now()) @updatedAt @db.Timestamptz(6)
+  recipients      CampaignRecipient[]
+
+  @@map("campaign")
+}
+
+model CampaignRecipient {
+  id         Int       @id @default(autoincrement())
+  campaignId Int
+  clientId   Int?
+  phone      String
+  firstName  String?
+  status     String    @default("pending") // pending, sent, failed
+  externalId String?
+  error      String?   @db.VarChar(255)
+  sentAt     DateTime? @db.Timestamptz(6)
+  campaign   Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId])
+  @@map("campaign_recipient")
 }
 
 enum CashMovementType {

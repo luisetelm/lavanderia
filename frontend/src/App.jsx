@@ -19,6 +19,7 @@ import WorkSchedule from './pages/WorkSchedule.jsx';
 import Stats from './pages/Stats.jsx';
 import WorkerPerformance from './pages/WorkerPerformance.jsx';
 import LoginLogs from './pages/LoginLogs.jsx';
+import Campaigns from './pages/Campaigns.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
 import DraftOrderBanner from './components/DraftOrderBanner.jsx';
 import { DraftOrderProvider } from './context/DraftOrderContext.jsx';
@@ -140,7 +141,7 @@ export default function App() {
     const [adminMenuOpen, setAdminMenuOpen] = useState(false);
 
     // Mantener menú admin abierto si la ruta actual es de administración
-    const adminPaths = ['/ventas', '/estadisticas', '/resenas', '/caja', '/horario', '/itinerarios', '/recursos', '/impresion', '/accesos'];
+    const adminPaths = ['/ventas', '/estadisticas', '/resenas', '/caja', '/horario', '/itinerarios', '/recursos', '/impresion', '/accesos', '/campanas'];
     useEffect(() => {
         if (adminPaths.some(p => location.pathname.startsWith(p))) {
             setAdminMenuOpen(true);
@@ -328,6 +329,7 @@ export default function App() {
                                         <li><NavLink to="/estadisticas"><span uk-icon="icon: bolt; ratio: 0.8"></span> Estadísticas</NavLink></li>
                                         <li><NavLink to="/rendimiento"><span uk-icon="icon: users; ratio: 0.8"></span> Rendimiento</NavLink></li>
                                         <li><NavLink to="/resenas"><span uk-icon="icon: star; ratio: 0.8"></span> Reseñas</NavLink></li>
+                                        <li><NavLink to="/campanas"><span uk-icon="icon: bell; ratio: 0.8"></span> Campañas</NavLink></li>
                                         <li><NavLink to="/caja"><span uk-icon="icon: database; ratio: 0.8"></span> Caja</NavLink></li>
                                         <li><NavLink to="/horario"><span uk-icon="icon: calendar; ratio: 0.8"></span> Horario</NavLink></li>
                                         <li><NavLink to="/itinerarios"><span uk-icon="icon: settings; ratio: 0.8"></span> Itinerarios</NavLink></li>
@@ -379,6 +381,7 @@ export default function App() {
                     <Route path="/estadisticas" element={<Stats token={token}/>}/>
                     <Route path="/rendimiento" element={user.role === 'admin' ? <WorkerPerformance token={token}/> : <Navigate to="/dashboard" replace/>}/>
                     <Route path="/resenas" element={<Reviews token={token}/>}/>
+                    <Route path="/campanas" element={user.role === 'admin' ? <Campaigns token={token}/> : <Navigate to="/dashboard" replace/>}/>
                     <Route path="/caja" element={<CashAudit token={token}/>}/>
                     <Route path="/horario" element={<WorkSchedule token={token}/>}/>
                     <Route path="/itinerarios" element={<ItineraryConfig token={token}/>}/>
