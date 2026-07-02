@@ -34,8 +34,13 @@ function buildAudienceWhere(filters = {}) {
     };
 
     // Restringir a quienes tienen WhatsApp como canal (o sin preferencia explícita)
+    // Prisma no admite null dentro de `in`, así que usamos OR con equals/null.
     if (filters.onlyWhatsApp) {
-        where.notifyChannel = { in: ['whatsapp', null] };
+        delete where.notifyChannel;
+        where.OR = [
+            { notifyChannel: 'whatsapp' },
+            { notifyChannel: null },
+        ];
     }
 
     // Clientes con al menos un pedido en los últimos N meses
