@@ -57,8 +57,11 @@ export async function retryFailedNotifications(prisma) {
         retried++;
         try {
             let waResponse;
-            if (msg.templateName && msg.orderId) {
-                // Reconstruir los parámetros de la plantilla desde el pedido
+            // Si el mensaje está asociado a un pedido, reintentar SIEMPRE con la
+            // plantilla reconstruida desde el pedido (aunque en su día cayera a
+            // texto libre). El texto libre fuera de la ventana de 24h no se entrega,
+            // por lo que la plantilla es la única vía fiable de recuperación.
+            if (msg.orderId) {
                 const order = await prisma.order.findUnique({
                     where: { id: msg.orderId },
                     include: {
@@ -71,14 +74,20 @@ export async function retryFailedNotifications(prisma) {
                 const payload = order?.client
                     ? buildOrderNotificationPayload(order, event)
                     : null;
-                waResponse = await sendTemplateMessage(
-                    msg.phone,
-                    msg.templateName,
-                    'es',
-                    payload?.templateComponents || [],
-                );
+                if (payload?.templateName) {
+                    waResponse = await sendTemplateMessage(
+                        msg.phone,
+                        payload.templateName,
+                        'es',
+                        payload.templateComponents || [],
+                    );
+                } else {
+                    waResponse = await sendTextMessage(msg.phone, msg.content);
+                }
+            } else if (msg.templateName) {
+                waResponse = await sendTemplateMessage(msg.phone, msg.templateName, 'es', []);
             } else {
-                // Sin plantilla: reintentar como texto libre (probablemente fuera de ventana 24h)
+                // Sin plantilla ni pedido: reintentar como texto libre
                 waResponse = await sendTextMessage(msg.phone, msg.content);
             }
 
@@ -88,6 +97,8 @@ export async function retryFailedNotifications(prisma) {
                 data: {
                     status: 'sent',
                     externalId: waMessageId || msg.externalId,
+                    // Si recuperamos vía plantilla, dejar constancia del templateName
+                    templateName: msg.orderId ? (inferEvent(msg) === 'collected' ? 'pedido_recogido' : 'pedido_listo') : msg.templateName,
                     retryCount: msg.retryCount + 1,
                     nextRetryAt: null,
                     updatedAt: now,

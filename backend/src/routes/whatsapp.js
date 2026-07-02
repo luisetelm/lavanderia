@@ -279,6 +279,14 @@ export async function whatsappWebhookRoutes(fastify) {
             // Procesar actualizaciones de estado
             for (const status of statuses) {
                 if (status.waMessageId) {
+                    // Registrar el motivo cuando Meta reporta un fallo, para poder diagnosticar
+                    if (status.status === 'failed') {
+                        console.error(
+                            `[WhatsApp] Mensaje ${status.waMessageId} FALLIDO`,
+                            `→ code=${status.errorCode ?? 'N/A'}`,
+                            `msg="${status.errorMessage ?? 'sin detalle'}"`,
+                        );
+                    }
                     await prisma.message.updateMany({
                         where: { externalId: status.waMessageId },
                         data: {

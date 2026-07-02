@@ -10,10 +10,13 @@ import { normalizePhone } from '../utils/validatePhone.js';
 // Si no se define STORE_HOURS se mantiene el enlace de Google para no mostrar
 // un horario que pueda quedar desactualizado o incorrecto.
 const STORE_NAME = process.env.STORE_NAME || 'Tinte y Burbuja';
-const STORE_ADDRESS = process.env.STORE_ADDRESS || 'Carretera de Sabiote, 45, Úbeda';
+const STORE_ADDRESS = process.env.STORE_ADDRESS || 'Cronista Cazabán, 7';
 const STORE_HOURS = process.env.STORE_HOURS || null;
 const STORE_PHONE = process.env.STORE_PHONE || null;
 const SCHEDULE_URL = 'https://share.google/d4uMKGaiCaBywfRt2';
+// Imagen de la cabecera de la plantilla "pedido_listo" (header tipo IMAGE en Meta).
+// Debe ser una URL pública accesible. Configurable por ENV.
+const LISTO_HEADER_IMAGE = process.env.WHATSAPP_LISTO_HEADER_IMAGE || 'https://app.tinteyburbuja.com/fachada.jpg';
 
 // Formatea un importe en formato español: 12.5 -> "12,50 €"
 function formatAmount(value) {
@@ -89,18 +92,27 @@ function buildOrderNotificationPayload(order, event) {
 
     const message = `Hola ${firstName}, tu pedido ${orderNum}${itemsText} ya está listo para recoger en ${STORE_NAME}.${paymentText} Te esperamos en ${STORE_ADDRESS}. ${scheduleText}${phoneText}`;
 
+    // La plantilla "pedido_listo" tiene una cabecera de imagen: hay que enviar
+    // el parámetro de imagen además de las variables del cuerpo {{1}} y {{2}}.
+    const templateComponents = [];
+    if (LISTO_HEADER_IMAGE) {
+        templateComponents.push({
+            type: 'header',
+            parameters: [{ type: 'image', image: { link: LISTO_HEADER_IMAGE } }],
+        });
+    }
+    templateComponents.push({
+        type: 'body',
+        parameters: [
+            { type: 'text', text: firstName },
+            { type: 'text', text: orderNum },
+        ],
+    });
+
     return {
         message,
         templateName: 'pedido_listo',
-        templateComponents: [
-            {
-                type: 'body',
-                parameters: [
-                    { type: 'text', text: firstName },
-                    { type: 'text', text: orderNum },
-                ],
-            },
-        ],
+        templateComponents,
     };
 }
 
