@@ -16,7 +16,7 @@ import {
     recalculateTracking
 } from '../api.js';
 import UIkit from 'uikit';
-import {printSaleTicket, printWashLabels, printInternalLabel, printFinishedLabelForOrder} from '../utils/printUtils.js';
+import {printSaleTicket, printWashLabels, printInternalLabel, printFinishedLabelForOrder, printGarmentFinishedLabel} from '../utils/printUtils.js';
 import {getPrintSettings} from '../utils/printSettings.js';
 import {formatEUR} from '../utils/format.js';
 import StatusChangeModal from './StatusChangeModal.jsx';
@@ -245,8 +245,25 @@ export default function PaymentSection({token, orderId, onPaid, initialOrder = n
 
     const handleCompleteStep = async (stepId) => {
         try {
+            // Capturar los datos de la prenda ANTES de recargar (para su etiqueta de embolsado).
+            const line = (order?.lines || []).find(l => (l.steps || []).some(s => s.id === stepId));
             const res = await updateStepStatus(token, stepId, {});
             await loadOrder();
+            // Cada vez que una PRENDA queda totalmente finalizada: imprimir su etiqueta
+            // grande de embolsado (respeta el ajuste onGarmentReady).
+            if (res?.lineBecameReady && line) {
+                const clientName = order.client
+                    ? `${order.client.firstName || ''} ${order.client.lastName || ''}`.trim()
+                    : '';
+                const printed = await printGarmentFinishedLabel({
+                    orderNum: order.orderNum,
+                    clientName,
+                    productName: line.product?.name || line.productName || 'Prenda',
+                    quantity: line.quantity,
+                    fechaLimite: order.fechaLimite,
+                });
+                if (printed) notify('Prenda finalizada · etiqueta de embolsado impresa', 'success');
+            }
             if (res?.orderBecameReady) {
                 const printed = await printFinishedLabelForOrder(token, res.orderId);
                 if (printed) notify('Pedido listo · etiqueta de finalizado impresa', 'success');
@@ -1003,8 +1020,11 @@ export default function PaymentSection({token, orderId, onPaid, initialOrder = n
                         className={'uk-button uk-button-default uk-width-1-1@l'}
                         uk-icon={'print'}
                         onClick={handlePrintInternalTicket}
-                        disabled={!order || isPrinting || order.status !== 'ready'}
-                        title="Etiqueta de recogida con QR al pedido. Disponible cuando el pedido está listo."
+                        disabled={!order || isPrinting || !(
+                            order.status === 'ready' ||
+                            (order.lines || []).some(l => (l.steps?.length > 0) && l.steps.every(s => s.status === 'done'))
+                        )}
+                        title="Etiqueta de recogida/embolsado con QR al pedido. Disponible cuando el pedido está listo o alguna prenda ya finalizada."
                     >
                         {isPrinting ? 'Imprimiendo...' : 'Etiqueta finalizado'}
                     </button>

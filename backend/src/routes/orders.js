@@ -861,6 +861,11 @@ export default async function (fastify, opts) {
                     productName: l.product?.name || '',
                     product: {
                         id: l.product?.id, name: l.product?.name, basePrice: l.product?.basePrice,
+                        // Necesarios para la impresión de etiquetas de lavado en el frontend:
+                        // labelCount → nº de etiquetas por unidad (traje 2 piezas = 2)
+                        // printWashLabel → si false, no se generan etiquetas de lavado (auto ni manual)
+                        labelCount: l.product?.labelCount ?? 1,
+                        printWashLabel: l.product?.printWashLabel ?? true,
                     },
                     discount: l.discount,
                     steps: (l.steps || []).map((s, idx) => {
