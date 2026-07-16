@@ -66,9 +66,16 @@ export default async function cashRoutes(fastify) {
     });
 
     // GET /api/cash/income-report?from=&to=
-    // Ingresos reales por fecha de cobro (Payment.createdAt), no por fecha de pedido/factura.
-    // Pensado para reportar a gestoría: un pedido creado en un trimestre pero cobrado en el
-    // siguiente (o una factura mensual de cliente grande) aparece en el trimestre en que se cobró.
+    // Ingresos por fecha de devengo (entrega del servicio / emisión del ticket-factura), para
+    // reportar a gestoría. Se compone de dos fuentes:
+    //  1) Pagos completados (Payment.createdAt) — el pago se registra en el momento de la entrega,
+    //     así que en la inmensa mayoría de casos su fecha ES la fecha de devengo.
+    //  2) Facturas emitidas en el rango (invoices.issuedAt) que NO tienen ningún Payment asociado
+    //     (ni por invoiceId ni por el/los pedido/s que agrupan). Son "huérfanas": se emitió el
+    //     ticket/factura (entrega realizada) pero el cobro nunca quedó registrado — normalmente por
+    //     un fallo entre la creación de la factura y la transacción que crea el Payment, que son
+    //     pasos separados. Fiscalmente el devengo ya ocurrió, así que se incluyen igualmente,
+    //     marcadas para que se revisen (cobrar de verdad o corregir el dato).
     fastify.get('/income-report', async (req, reply) => {
         const {from, to} = req.query || {};
         if (!from || !to) {
@@ -93,13 +100,75 @@ export default async function cashRoutes(fastify) {
             },
         });
 
-        return payments.map(p => ({
-            ...p,
+        const paymentRows = payments.map(p => ({
+            id: p.id,
             amount: toNum(p.amount),
+            method: p.method,
+            createdAt: p.createdAt,
+            orderId: p.orderId,
+            order: p.order ? {id: p.order.id, orderNum: p.order.orderNum} : null,
             invoiceId: p.invoiceId != null ? String(p.invoiceId) : null,
-            invoice: p.invoice ? {...p.invoice, id: String(p.invoice.id)} : null,
             invoiceNumber: p.invoice?.number || p.order?.invoiceTickets?.invoices?.number || null,
+            client: p.client,
+            orphan: false,
         }));
+
+        // Facturas emitidas en el rango, con sus pedidos vinculados, para detectar huérfanas.
+        const invoicesInRange = await prisma.invoices.findMany({
+            where: {
+                issuedAt: {gte: fromDate, lte: toDate},
+            },
+            include: {
+                invoiceTickets: {select: {order: {select: {id: true, orderNum: true}}}},
+                User: {select: {id: true, firstName: true, lastName: true, denominacionsocial: true, email: true}},
+            },
+        });
+
+        if (invoicesInRange.length > 0) {
+            const invoiceIds = invoicesInRange.map(inv => inv.id);
+            const orderIds = invoicesInRange.flatMap(inv => inv.invoiceTickets.map(t => t.order?.id).filter(Boolean));
+
+            const relatedPayments = await prisma.payment.findMany({
+                where: {
+                    status: 'completed',
+                    OR: [
+                        {invoiceId: {in: invoiceIds}},
+                        ...(orderIds.length > 0 ? [{orderId: {in: orderIds}}] : []),
+                    ],
+                },
+                select: {invoiceId: true, orderId: true},
+            });
+            const paidInvoiceIds = new Set(relatedPayments.filter(p => p.invoiceId != null).map(p => String(p.invoiceId)));
+            const paidOrderIds = new Set(relatedPayments.filter(p => p.orderId != null).map(p => p.orderId));
+
+            const orphanInvoices = invoicesInRange.filter(inv => {
+                if (paidInvoiceIds.has(String(inv.id))) return false;
+                const linkedOrderIds = inv.invoiceTickets.map(t => t.order?.id).filter(Boolean);
+                return !linkedOrderIds.some(id => paidOrderIds.has(id));
+            });
+
+            const orphanRows = orphanInvoices.map(inv => {
+                const orders = inv.invoiceTickets.map(t => t.order).filter(Boolean);
+                return {
+                    id: `inv-${inv.id}`,
+                    amount: toNum(inv.totalGross),
+                    method: null,
+                    createdAt: inv.issuedAt,
+                    orderId: null,
+                    order: orders.length === 1 ? {id: orders[0].id, orderNum: orders[0].orderNum} : null,
+                    orderLabel: orders.length > 1 ? `${orders.length} pedidos` : (orders[0]?.orderNum || null),
+                    invoiceId: String(inv.id),
+                    invoiceNumber: inv.number,
+                    client: inv.User,
+                    orphan: true,
+                };
+            });
+
+            paymentRows.push(...orphanRows);
+        }
+
+        paymentRows.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+        return paymentRows;
     });
 
     // GET /api/cash/movements/unclosed

@@ -199,6 +199,8 @@ export default function Ventas({token}) {
         .filter(p => p.method !== 'cash')
         .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
     const totalIngresosEfectivo = totalIngresos - totalIngresosSinEfectivo;
+    const facturasHuerfanas = incomePayments.filter(p => p.orphan);
+    const totalFacturasHuerfanas = facturasHuerfanas.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
 
     // Exportar el listado de cobros (secuencial por fecha) a XLSX para gestoría
     const exportIngresosXLSX = () => {
@@ -217,6 +219,7 @@ export default function Ventas({token}) {
             {key: 'metodo', label: 'Método'},
             {key: 'importe', label: 'Importe (num)'},
             {key: 'importeFormatted', label: 'Importe'},
+            {key: 'aviso', label: 'Aviso'},
         ];
         const rows = incomePayments.map((p, i) => {
             const fecha = p.createdAt ? new Date(p.createdAt) : null;
@@ -226,11 +229,12 @@ export default function Ventas({token}) {
                 fechaFormateada: fecha ? fecha.toLocaleDateString('es-ES', {dateStyle: 'medium'}) : '',
                 cliente: nombreCliente(p.client),
                 clientEmail: p.client?.email || '',
-                pedido: p.order?.orderNum || '',
+                pedido: p.orderLabel || p.order?.orderNum || '',
                 facturaNum: p.invoiceNumber || '',
-                metodo: metodoLabel(p.method),
+                metodo: p.orphan ? '' : metodoLabel(p.method),
                 importe: Number(p.amount) || 0,
                 importeFormatted: formatEUR(Number(p.amount) || 0),
+                aviso: p.orphan ? 'Factura emitida sin pago registrado' : '',
             };
         });
 
@@ -242,6 +246,14 @@ export default function Ventas({token}) {
         aoa.push(rowToArray({metodo: 'Total', importe: totalIngresos, importeFormatted: formatEUR(totalIngresos)}));
         aoa.push(rowToArray({metodo: 'Total sin efectivo', importe: totalIngresosSinEfectivo, importeFormatted: formatEUR(totalIngresosSinEfectivo)}));
         aoa.push(rowToArray({metodo: 'Total efectivo', importe: totalIngresosEfectivo, importeFormatted: formatEUR(totalIngresosEfectivo)}));
+        if (facturasHuerfanas.length > 0) {
+            aoa.push(rowToArray({
+                metodo: 'De las cuales, sin pago registrado',
+                importe: totalFacturasHuerfanas,
+                importeFormatted: formatEUR(totalFacturasHuerfanas),
+                aviso: `${facturasHuerfanas.length} factura(s)`,
+            }));
+        }
 
         const ws = XLSX.utils.aoa_to_sheet(aoa);
         const wb = XLSX.utils.book_new();
@@ -530,10 +542,11 @@ export default function Ventas({token}) {
                 {label: 'Facturados', value: pedidosFacturados},
                 {label: 'Sin cobrar', value: formatEUR(totalSinCobrar), sub: `${facturasSinCobrar.length} facturas`, accent: totalSinCobrar > 0},
             ] : [
-                {label: 'Total cobrado', value: formatEUR(totalIngresos)},
+                {label: 'Total', value: formatEUR(totalIngresos)},
                 {label: 'Sin efectivo', value: formatEUR(totalIngresosSinEfectivo), sub: 'tarjeta, stripe, transferencia'},
                 {label: 'Efectivo', value: formatEUR(totalIngresosEfectivo)},
-                {label: 'Nº cobros', value: incomePayments.length},
+                {label: 'Nº registros', value: incomePayments.length},
+                {label: 'Sin pago registrado', value: formatEUR(totalFacturasHuerfanas), sub: `${facturasHuerfanas.length} facturas`, accent: facturasHuerfanas.length > 0},
             ]).map((kpi, i) => (
                 <div key={i} className="uk-card uk-card-default uk-card-body uk-text-center"
                      style={{padding: '14px 10px', borderTop: kpi.accent ? '3px solid #ef4444' : undefined}}>
@@ -637,7 +650,7 @@ export default function Ventas({token}) {
                 </div>) : (
                     <>
                         <div style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: 6 }}>
-                            {incomePayments.length} cobros, ordenados por fecha de cobro
+                            {incomePayments.length} registros, ordenados por fecha de devengo (cobro real, o emisión de factura si no hay cobro registrado)
                         </div>
                         <div className="uk-overflow-auto">
                             <table className="uk-table uk-table-divider uk-table-small" style={{minWidth: 700}}>
@@ -654,13 +667,17 @@ export default function Ventas({token}) {
                                 </thead>
                                 <tbody>
                                 {incomePayments.map((p, i) => (
-                                    <tr key={p.id}>
+                                    <tr key={p.id} style={p.orphan ? {background: 'rgba(239, 68, 68, 0.08)'} : undefined}>
                                         <td>{i + 1}</td>
                                         <td>{p.createdAt ? new Date(p.createdAt).toLocaleDateString('es-ES', {dateStyle: 'medium'}) : ''}</td>
                                         <td>{nombreCliente(p.client) || '—'}</td>
-                                        <td>{p.order?.orderNum || '—'}</td>
+                                        <td>{p.orderLabel || p.order?.orderNum || '—'}</td>
                                         <td>{p.invoiceNumber || '—'}</td>
-                                        <td>{metodoLabel(p.method)}</td>
+                                        <td>
+                                            {p.orphan
+                                                ? <span className="uk-badge uk-badge-danger" title="Factura emitida pero sin pago registrado">⚠ Sin pago registrado</span>
+                                                : metodoLabel(p.method)}
+                                        </td>
                                         <td>{formatEUR(Number(p.amount) || 0)}</td>
                                     </tr>
                                 ))}
