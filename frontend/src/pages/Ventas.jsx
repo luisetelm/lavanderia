@@ -5,7 +5,8 @@ import {
     createInvoice,
     fetchOrder,
     collectInvoicesBatch,
-    fetchIncomeReport
+    fetchIncomeReport,
+    fetchInvoicesReport
 } from '../api.js';
 import { formatEUR } from '../utils/format.js';
 import {useNavigate} from 'react-router-dom';
@@ -26,6 +27,10 @@ export default function Ventas({token}) {
     const [viewMode, setViewMode] = useState(() => localStorage.getItem('ventas_viewMode') || 'pedido');
     const [incomePayments, setIncomePayments] = useState([]);
     const [incomeLoading, setIncomeLoading] = useState(false);
+
+    // Vista 'facturas': listado simple de facturas emitidas en el rango, sin más
+    const [invoicesList, setInvoicesList] = useState([]);
+    const [invoicesLoading, setInvoicesLoading] = useState(false);
 
     const [ventas, setVentas] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -261,6 +266,58 @@ export default function Ventas({token}) {
         XLSX.writeFile(wb, `ingresos_${fechaInicio || ''}_${fechaFin || ''}.xlsx`);
     };
 
+    // Traer el listado simple de facturas emitidas en el rango (vista 'facturas')
+    const fetchInvoicesList = useCallback(async () => {
+        if (!fechaInicio || !fechaFin) return;
+        setInvoicesLoading(true);
+        try {
+            const data = await fetchInvoicesReport(token, {from: fechaInicio, to: fechaFin});
+            setInvoicesList(Array.isArray(data) ? data : []);
+        } catch (err) {
+            console.error('Error al cargar facturas:', err);
+        } finally {
+            setInvoicesLoading(false);
+        }
+    }, [token, fechaInicio, fechaFin]);
+
+    const totalFacturasGross = invoicesList.reduce((sum, f) => sum + (Number(f.totalGross) || 0), 0);
+    const totalFacturasNet = invoicesList.reduce((sum, f) => sum + (Number(f.totalNet) || 0), 0);
+    const totalFacturasTax = invoicesList.reduce((sum, f) => sum + (Number(f.totalTax) || 0), 0);
+
+    const exportFacturasXLSX = () => {
+        if (invoicesList.length === 0) {
+            alert('No hay facturas para exportar');
+            return;
+        }
+        const columns = [
+            {key: 'num', label: 'Nº'},
+            {key: 'factura', label: 'Nº Factura'},
+            {key: 'fecha', label: 'Fecha emisión'},
+            {key: 'cliente', label: 'Cliente'},
+            {key: 'base', label: 'Base imponible'},
+            {key: 'iva', label: 'IVA'},
+            {key: 'total', label: 'Total'},
+        ];
+        const rows = invoicesList.map((f, i) => ({
+            num: i + 1,
+            factura: f.number || '',
+            fecha: f.issuedAt ? new Date(f.issuedAt).toLocaleDateString('es-ES', {dateStyle: 'medium'}) : '',
+            cliente: nombreCliente(f.User),
+            base: Number(f.totalNet) || 0,
+            iva: Number(f.totalTax) || 0,
+            total: Number(f.totalGross) || 0,
+        }));
+        const aoa = [columns.map(c => c.label)];
+        rows.forEach(r => aoa.push(columns.map(c => (r[c.key] === null || r[c.key] === undefined) ? '' : r[c.key])));
+        aoa.push([]);
+        aoa.push(['', '', '', 'Total', totalFacturasNet, totalFacturasTax, totalFacturasGross]);
+
+        const ws = XLSX.utils.aoa_to_sheet(aoa);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Facturas');
+        XLSX.writeFile(wb, `facturas_${fechaInicio || ''}_${fechaFin || ''}.xlsx`);
+    };
+
     const navigate = useNavigate();
 
     const verPedido = (o) => {
@@ -349,10 +406,12 @@ export default function Ventas({token}) {
     useEffect(() => {
         if (viewMode === 'cobro') {
             fetchIncome();
+        } else if (viewMode === 'facturas') {
+            fetchInvoicesList();
         } else {
             fetchVentas();
         }
-    }, [viewMode, fetchVentas, fetchIncome]);
+    }, [viewMode, fetchVentas, fetchIncome, fetchInvoicesList]);
 
     const handleViewModeChange = (mode) => {
         setViewMode(mode);
@@ -531,6 +590,14 @@ export default function Ventas({token}) {
             >
                 Por fecha de cobro
             </button>
+            <button
+                type="button"
+                className={`uk-button uk-button-small ${viewMode === 'facturas' ? 'uk-button-primary' : 'uk-button-default'}`}
+                onClick={() => handleViewModeChange('facturas')}
+                title="Listado simple de facturas emitidas en el rango, por número"
+            >
+                Facturas
+            </button>
         </div>
 
         {/* KPIs */}
@@ -541,6 +608,11 @@ export default function Ventas({token}) {
                 {label: 'Pendientes', value: pedidosPendientes},
                 {label: 'Facturados', value: pedidosFacturados},
                 {label: 'Sin cobrar', value: formatEUR(totalSinCobrar), sub: `${facturasSinCobrar.length} facturas`, accent: totalSinCobrar > 0},
+            ] : viewMode === 'facturas' ? [
+                {label: 'Total facturado', value: formatEUR(totalFacturasGross)},
+                {label: 'Base imponible', value: formatEUR(totalFacturasNet)},
+                {label: 'IVA', value: formatEUR(totalFacturasTax)},
+                {label: 'Nº facturas', value: invoicesList.length},
             ] : [
                 {label: 'Total', value: formatEUR(totalIngresos)},
                 {label: 'Sin efectivo', value: formatEUR(totalIngresosSinEfectivo), sub: 'tarjeta, stripe, transferencia'},
@@ -581,12 +653,18 @@ export default function Ventas({token}) {
                             </button>
                         </>
                     )}
-                    {viewMode === 'pedido' ? (
+                    {viewMode === 'pedido' && (
                         <button className="uk-button uk-button-small uk-button-default" onClick={exportVentasXLSX} disabled={loading || ventasFiltradas.length === 0} type="button">
                             Exportar XLSX
                         </button>
-                    ) : (
+                    )}
+                    {viewMode === 'cobro' && (
                         <button className="uk-button uk-button-small uk-button-default" onClick={exportIngresosXLSX} disabled={incomeLoading || incomePayments.length === 0} type="button">
+                            Exportar XLSX
+                        </button>
+                    )}
+                    {viewMode === 'facturas' && (
+                        <button className="uk-button uk-button-small uk-button-default" onClick={exportFacturasXLSX} disabled={invoicesLoading || invoicesList.length === 0} type="button">
                             Exportar XLSX
                         </button>
                     )}
@@ -679,6 +757,46 @@ export default function Ventas({token}) {
                                                 : metodoLabel(p.method)}
                                         </td>
                                         <td>{formatEUR(Number(p.amount) || 0)}</td>
+                                    </tr>
+                                ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </>
+                )
+            ) : viewMode === 'facturas' ? (
+                invoicesLoading ? (<div className="uk-text-center uk-margin">
+                    <span className="uk-badge uk-badge-warning">Cargando facturas...</span>
+                </div>) : invoicesList.length === 0 ? (<div className="uk-text-center uk-margin">
+                    <span className="uk-badge uk-badge-muted">No hay facturas en el rango seleccionado.</span>
+                </div>) : (
+                    <>
+                        <div style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: 6 }}>
+                            {invoicesList.length} facturas, ordenadas por fecha de emisión
+                        </div>
+                        <div className="uk-overflow-auto">
+                            <table className="uk-table uk-table-divider uk-table-small" style={{minWidth: 700}}>
+                                <thead>
+                                <tr>
+                                    <th>Nº</th>
+                                    <th>Nº Factura</th>
+                                    <th>Fecha emisión</th>
+                                    <th>Cliente</th>
+                                    <th>Base imponible</th>
+                                    <th>IVA</th>
+                                    <th>Total</th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                {invoicesList.map((f, i) => (
+                                    <tr key={f.id}>
+                                        <td>{i + 1}</td>
+                                        <td>{f.number || '—'}</td>
+                                        <td>{f.issuedAt ? new Date(f.issuedAt).toLocaleDateString('es-ES', {dateStyle: 'medium'}) : ''}</td>
+                                        <td>{nombreCliente(f.User) || '—'}</td>
+                                        <td>{formatEUR(Number(f.totalNet) || 0)}</td>
+                                        <td>{formatEUR(Number(f.totalTax) || 0)}</td>
+                                        <td>{formatEUR(Number(f.totalGross) || 0)}</td>
                                     </tr>
                                 ))}
                                 </tbody>

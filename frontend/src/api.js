@@ -674,6 +674,15 @@ export function getPaymentLink(token, type, id) {
     return request(`/stripe/payment-link/${type}/${id}`, token);
 }
 
+// Listado simple de facturas emitidas en el rango (por número), para exportar a gestoría
+export function fetchInvoicesReport(token, { from, to } = {}) {
+    const params = new URLSearchParams();
+    if (from) params.set('from', from);
+    if (to) params.set('to', to);
+    const qs = params.toString();
+    return request(`/invoices/report${qs ? `?${qs}` : ''}`, token, { method: 'GET' });
+}
+
 export function createInvoice(token, { orderIds, type = 'normal', invoiceData = {} }) {
     return request('/invoices', token, {
         method: 'POST',

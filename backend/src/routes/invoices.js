@@ -770,6 +770,34 @@ export default async function (fastify) {
     });
 
     // Facturas pendientes de cobro (para POS / trabajadores)
+    // GET /api/invoices/report?from=&to=
+    // Listado simple de facturas emitidas en el periodo (por issuedAt), ordenadas
+    // correlativamente por número. Para exportar a gestoría.
+    fastify.get('/report', async (req, reply) => {
+        try {
+            const {from, to} = req.query || {};
+            if (!from || !to) {
+                return reply.code(400).send({error: 'Debe indicar from y to'});
+            }
+            const onlyDate = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s);
+            const fromDate = onlyDate(from) ? new Date(`${from}T00:00:00.000`) : new Date(from);
+            const toDate = onlyDate(to) ? new Date(`${to}T23:59:59.999`) : new Date(to);
+
+            const invoices = await prisma.invoices.findMany({
+                where: {issuedAt: {gte: fromDate, lte: toDate}},
+                orderBy: {issuedAt: 'asc'},
+                include: {
+                    User: {select: {id: true, firstName: true, lastName: true, denominacionsocial: true, email: true}},
+                },
+            });
+
+            return reply.send(convertBigIntToString(invoices));
+        } catch (e) {
+            console.error('Error listando facturas del periodo:', e);
+            return reply.code(500).send({error: 'Error listando facturas del periodo'});
+        }
+    });
+
     fastify.get('/unpaid', async (req, reply) => {
         try {
             const q = (req.query.q || '').trim();
