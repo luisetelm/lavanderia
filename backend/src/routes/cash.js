@@ -85,7 +85,9 @@ export default async function cashRoutes(fastify) {
             },
             orderBy: {createdAt: 'asc'},
             include: {
-                order: {select: {id: true, orderNum: true}},
+                // El pago de un pedido con tarjeta genera factura simplificada automática
+                // vinculada al pedido (no al Payment), por eso hace falta bajar hasta invoiceTickets.
+                order: {select: {id: true, orderNum: true, invoiceTickets: {select: {invoices: {select: {number: true}}}}}},
                 invoice: {select: {id: true, number: true, invoiceYear: true}},
                 client: {select: {id: true, firstName: true, lastName: true, denominacionsocial: true, email: true}},
             },
@@ -96,6 +98,7 @@ export default async function cashRoutes(fastify) {
             amount: toNum(p.amount),
             invoiceId: p.invoiceId != null ? String(p.invoiceId) : null,
             invoice: p.invoice ? {...p.invoice, id: String(p.invoice.id)} : null,
+            invoiceNumber: p.invoice?.number || p.order?.invoiceTickets?.invoices?.number || null,
         }));
     });
 

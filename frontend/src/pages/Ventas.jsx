@@ -212,23 +212,22 @@ export default function Ventas({token}) {
             {key: 'fechaFormateada', label: 'Fecha cobro'},
             {key: 'cliente', label: 'Cliente'},
             {key: 'clientEmail', label: 'Email cliente'},
-            {key: 'referencia', label: 'Pedido/Factura'},
+            {key: 'pedido', label: 'Pedido'},
+            {key: 'facturaNum', label: 'Nº Factura'},
             {key: 'metodo', label: 'Método'},
             {key: 'importe', label: 'Importe (num)'},
             {key: 'importeFormatted', label: 'Importe'},
         ];
         const rows = incomePayments.map((p, i) => {
             const fecha = p.createdAt ? new Date(p.createdAt) : null;
-            const referencia = p.invoice?.number
-                ? `Factura ${p.invoice.number}`
-                : (p.order?.orderNum ? `Pedido ${p.order.orderNum}` : '');
             return {
                 num: i + 1,
                 fecha: p.createdAt || '',
                 fechaFormateada: fecha ? fecha.toLocaleDateString('es-ES', {dateStyle: 'medium'}) : '',
                 cliente: nombreCliente(p.client),
                 clientEmail: p.client?.email || '',
-                referencia,
+                pedido: p.order?.orderNum || '',
+                facturaNum: p.invoiceNumber || '',
                 metodo: metodoLabel(p.method),
                 importe: Number(p.amount) || 0,
                 importeFormatted: formatEUR(Number(p.amount) || 0),
@@ -236,12 +235,13 @@ export default function Ventas({token}) {
         });
 
         const aoa = [columns.map(c => c.label)];
-        rows.forEach(r => aoa.push(columns.map(c => (r[c.key] === null || r[c.key] === undefined) ? '' : r[c.key])));
+        const rowToArray = (r) => columns.map(c => (r[c.key] === null || r[c.key] === undefined) ? '' : r[c.key]);
+        rows.forEach(r => aoa.push(rowToArray(r)));
         // Fila de totales al final
         aoa.push([]);
-        aoa.push(['', '', '', '', '', 'Total', '', totalIngresos, formatEUR(totalIngresos)]);
-        aoa.push(['', '', '', '', '', 'Total sin efectivo', '', totalIngresosSinEfectivo, formatEUR(totalIngresosSinEfectivo)]);
-        aoa.push(['', '', '', '', '', 'Total efectivo', '', totalIngresosEfectivo, formatEUR(totalIngresosEfectivo)]);
+        aoa.push(rowToArray({metodo: 'Total', importe: totalIngresos, importeFormatted: formatEUR(totalIngresos)}));
+        aoa.push(rowToArray({metodo: 'Total sin efectivo', importe: totalIngresosSinEfectivo, importeFormatted: formatEUR(totalIngresosSinEfectivo)}));
+        aoa.push(rowToArray({metodo: 'Total efectivo', importe: totalIngresosEfectivo, importeFormatted: formatEUR(totalIngresosEfectivo)}));
 
         const ws = XLSX.utils.aoa_to_sheet(aoa);
         const wb = XLSX.utils.book_new();
@@ -646,7 +646,8 @@ export default function Ventas({token}) {
                                     <th>Nº</th>
                                     <th>Fecha de cobro</th>
                                     <th>Cliente</th>
-                                    <th>Pedido/Factura</th>
+                                    <th>Pedido</th>
+                                    <th>Nº Factura</th>
                                     <th>Método</th>
                                     <th>Importe</th>
                                 </tr>
@@ -657,11 +658,8 @@ export default function Ventas({token}) {
                                         <td>{i + 1}</td>
                                         <td>{p.createdAt ? new Date(p.createdAt).toLocaleDateString('es-ES', {dateStyle: 'medium'}) : ''}</td>
                                         <td>{nombreCliente(p.client) || '—'}</td>
-                                        <td>
-                                            {p.invoice?.number
-                                                ? `Factura ${p.invoice.number}`
-                                                : (p.order?.orderNum ? `Pedido ${p.order.orderNum}` : '—')}
-                                        </td>
+                                        <td>{p.order?.orderNum || '—'}</td>
+                                        <td>{p.invoiceNumber || '—'}</td>
                                         <td>{metodoLabel(p.method)}</td>
                                         <td>{formatEUR(Number(p.amount) || 0)}</td>
                                     </tr>
