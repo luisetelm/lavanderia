@@ -242,6 +242,18 @@ export function fetchLastClosure(token) {
     return request('/cash/last-closure', token, { method: 'GET' });
 }
 
+// Ingresos reales por fecha de cobro (Payment.createdAt), para reportar a gestoría.
+// A diferencia de fetchOrders (que filtra por fecha de creación del pedido), esto
+// refleja el dinero efectivamente cobrado dentro del rango, sin importar cuándo se
+// creó el pedido o se emitió la factura.
+export function fetchIncomeReport(token, { from, to } = {}) {
+    const params = new URLSearchParams();
+    if (from) params.set('from', from);
+    if (to) params.set('to', to);
+    const qs = params.toString();
+    return request(`/cash/income-report${qs ? `?${qs}` : ''}`, token, { method: 'GET' });
+}
+
 export function createCashMovement(token, payload) {
     return request('/cash/movements', token, {
         method: 'POST',

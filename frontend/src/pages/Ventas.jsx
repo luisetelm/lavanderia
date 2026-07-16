@@ -4,7 +4,8 @@ import {
     fetchOrders,
     createInvoice,
     fetchOrder,
-    collectInvoicesBatch
+    collectInvoicesBatch,
+    fetchIncomeReport
 } from '../api.js';
 import { formatEUR } from '../utils/format.js';
 import {useNavigate} from 'react-router-dom';
@@ -19,6 +20,12 @@ export default function Ventas({token}) {
     const [fechaInicio, setFechaInicio] = useState(() => localStorage.getItem('ventas_fechaInicio') || getPrimerDiaMes());
     const [fechaFin, setFechaFin] = useState(() => localStorage.getItem('ventas_fechaFin') || getUltimoDiaMes());
 
+    // Vista: 'pedido' = fecha de creación del pedido (como hasta ahora), 'cobro' = fecha real de cobro
+    // (Payment.createdAt). Un pedido o factura mensual cobrado en un trimestre distinto al que se
+    // creó/emitió sólo aparece en el trimestre correcto en la vista 'cobro'. Pensado para gestoría.
+    const [viewMode, setViewMode] = useState(() => localStorage.getItem('ventas_viewMode') || 'pedido');
+    const [incomePayments, setIncomePayments] = useState([]);
+    const [incomeLoading, setIncomeLoading] = useState(false);
 
     const [ventas, setVentas] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -164,6 +171,84 @@ export default function Ventas({token}) {
     };
 
 
+    // Traer cobros reales del rango (vista 'cobro')
+    const fetchIncome = useCallback(async () => {
+        if (!fechaInicio || !fechaFin) return;
+        setIncomeLoading(true);
+        try {
+            const data = await fetchIncomeReport(token, {from: fechaInicio, to: fechaFin});
+            setIncomePayments(Array.isArray(data) ? data : []);
+        } catch (err) {
+            console.error('Error al cargar ingresos:', err);
+        } finally {
+            setIncomeLoading(false);
+        }
+    }, [token, fechaInicio, fechaFin]);
+
+    const nombreCliente = (c) => c?.denominacionsocial || (c?.firstName ? `${c.firstName} ${c.lastName || ''}`.trim() : '') || '';
+
+    const metodoLabel = (m) => (
+        m === 'cash' ? 'Efectivo' :
+            m === 'card_pos' ? 'Tarjeta' :
+                m === 'stripe' ? 'Stripe' :
+                    m === 'transfer' ? 'Transferencia' : (m || '')
+    );
+
+    const totalIngresos = incomePayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+    const totalIngresosSinEfectivo = incomePayments
+        .filter(p => p.method !== 'cash')
+        .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+    const totalIngresosEfectivo = totalIngresos - totalIngresosSinEfectivo;
+
+    // Exportar el listado de cobros (secuencial por fecha) a XLSX para gestoría
+    const exportIngresosXLSX = () => {
+        if (incomePayments.length === 0) {
+            alert('No hay cobros para exportar');
+            return;
+        }
+        const columns = [
+            {key: 'num', label: 'Nº'},
+            {key: 'fecha', label: 'Fecha cobro (ISO)'},
+            {key: 'fechaFormateada', label: 'Fecha cobro'},
+            {key: 'cliente', label: 'Cliente'},
+            {key: 'clientEmail', label: 'Email cliente'},
+            {key: 'referencia', label: 'Pedido/Factura'},
+            {key: 'metodo', label: 'Método'},
+            {key: 'importe', label: 'Importe (num)'},
+            {key: 'importeFormatted', label: 'Importe'},
+        ];
+        const rows = incomePayments.map((p, i) => {
+            const fecha = p.createdAt ? new Date(p.createdAt) : null;
+            const referencia = p.invoice?.number
+                ? `Factura ${p.invoice.number}`
+                : (p.order?.orderNum ? `Pedido ${p.order.orderNum}` : '');
+            return {
+                num: i + 1,
+                fecha: p.createdAt || '',
+                fechaFormateada: fecha ? fecha.toLocaleDateString('es-ES', {dateStyle: 'medium'}) : '',
+                cliente: nombreCliente(p.client),
+                clientEmail: p.client?.email || '',
+                referencia,
+                metodo: metodoLabel(p.method),
+                importe: Number(p.amount) || 0,
+                importeFormatted: formatEUR(Number(p.amount) || 0),
+            };
+        });
+
+        const aoa = [columns.map(c => c.label)];
+        rows.forEach(r => aoa.push(columns.map(c => (r[c.key] === null || r[c.key] === undefined) ? '' : r[c.key])));
+        // Fila de totales al final
+        aoa.push([]);
+        aoa.push(['', '', '', '', '', 'Total', '', totalIngresos, formatEUR(totalIngresos)]);
+        aoa.push(['', '', '', '', '', 'Total sin efectivo', '', totalIngresosSinEfectivo, formatEUR(totalIngresosSinEfectivo)]);
+        aoa.push(['', '', '', '', '', 'Total efectivo', '', totalIngresosEfectivo, formatEUR(totalIngresosEfectivo)]);
+
+        const ws = XLSX.utils.aoa_to_sheet(aoa);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Ingresos');
+        XLSX.writeFile(wb, `ingresos_${fechaInicio || ''}_${fechaFin || ''}.xlsx`);
+    };
+
     const navigate = useNavigate();
 
     const verPedido = (o) => {
@@ -250,8 +335,17 @@ export default function Ventas({token}) {
 
 
     useEffect(() => {
-        fetchVentas();
-    }, [fetchVentas]);
+        if (viewMode === 'cobro') {
+            fetchIncome();
+        } else {
+            fetchVentas();
+        }
+    }, [viewMode, fetchVentas, fetchIncome]);
+
+    const handleViewModeChange = (mode) => {
+        setViewMode(mode);
+        localStorage.setItem('ventas_viewMode', mode);
+    };
 
     // Cobrar facturas seleccionadas en batch
     const handleBatchCollect = async () => {
@@ -396,10 +490,10 @@ export default function Ventas({token}) {
     return (<div>
         <PageToolbar
             title="Ventas"
-            filters={toolbarFilters}
+            filters={viewMode === 'pedido' ? toolbarFilters : []}
             actions={
                 <>
-                    {hasActiveFilters && (
+                    {viewMode === 'pedido' && hasActiveFilters && (
                         <button className="uk-button uk-button-small uk-button-default" onClick={clearFilters} type="button">
                             Limpiar filtros
                         </button>
@@ -407,15 +501,40 @@ export default function Ventas({token}) {
                 </>
             }
         />
+
+        {/* Vista: por pedido (fecha de creación) vs por cobro (fecha real de dinero recibido) */}
+        <div className="uk-button-group" style={{marginBottom: 12}}>
+            <button
+                type="button"
+                className={`uk-button uk-button-small ${viewMode === 'pedido' ? 'uk-button-primary' : 'uk-button-default'}`}
+                onClick={() => handleViewModeChange('pedido')}
+            >
+                Por fecha de pedido
+            </button>
+            <button
+                type="button"
+                className={`uk-button uk-button-small ${viewMode === 'cobro' ? 'uk-button-primary' : 'uk-button-default'}`}
+                onClick={() => handleViewModeChange('cobro')}
+                title="Ingresos por fecha real de cobro (Payment.createdAt) — para gestoría"
+            >
+                Por fecha de cobro
+            </button>
+        </div>
+
         {/* KPIs */}
         <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8, marginBottom: 16}}>
-            {[
+            {(viewMode === 'pedido' ? [
                 {label: 'Total', value: formatEUR(totalVentas)},
                 {label: 'Pedidos', value: cantidadPedidos},
                 {label: 'Pendientes', value: pedidosPendientes},
                 {label: 'Facturados', value: pedidosFacturados},
                 {label: 'Sin cobrar', value: formatEUR(totalSinCobrar), sub: `${facturasSinCobrar.length} facturas`, accent: totalSinCobrar > 0},
-            ].map((kpi, i) => (
+            ] : [
+                {label: 'Total cobrado', value: formatEUR(totalIngresos)},
+                {label: 'Sin efectivo', value: formatEUR(totalIngresosSinEfectivo), sub: 'tarjeta, stripe, transferencia'},
+                {label: 'Efectivo', value: formatEUR(totalIngresosEfectivo)},
+                {label: 'Nº cobros', value: incomePayments.length},
+            ]).map((kpi, i) => (
                 <div key={i} className="uk-card uk-card-default uk-card-body uk-text-center"
                      style={{padding: '14px 10px', borderTop: kpi.accent ? '3px solid #ef4444' : undefined}}>
                     <div style={{fontSize: '0.75rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase'}}>{kpi.label}</div>
@@ -439,7 +558,7 @@ export default function Ventas({token}) {
             <div style={{display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 10}}>
                 <div style={{flex: 1}}></div>
                 <div style={{display: 'flex', flexWrap: 'wrap', gap: 4}}>
-                    {selectedOrders.length > 0 && (
+                    {viewMode === 'pedido' && selectedOrders.length > 0 && (
                         <>
                             <button className="uk-button uk-button-small uk-button-primary" onClick={handleGenerateInvoices} disabled={loading} type="button">
                                 Facturar todos
@@ -449,13 +568,19 @@ export default function Ventas({token}) {
                             </button>
                         </>
                     )}
-                    <button className="uk-button uk-button-small uk-button-default" onClick={exportVentasXLSX} disabled={loading || ventasFiltradas.length === 0} type="button">
-                        Exportar XLSX
-                    </button>
+                    {viewMode === 'pedido' ? (
+                        <button className="uk-button uk-button-small uk-button-default" onClick={exportVentasXLSX} disabled={loading || ventasFiltradas.length === 0} type="button">
+                            Exportar XLSX
+                        </button>
+                    ) : (
+                        <button className="uk-button uk-button-small uk-button-default" onClick={exportIngresosXLSX} disabled={incomeLoading || incomePayments.length === 0} type="button">
+                            Exportar XLSX
+                        </button>
+                    )}
                 </div>
             </div>
 
-            {showBatchCollect && selectedOrders.length > 0 && (
+            {viewMode === 'pedido' && showBatchCollect && selectedOrders.length > 0 && (
                 <div style={{
                     background: '#f8f8f8',
                     border: '1px solid #e5e5e5',
@@ -504,7 +629,49 @@ export default function Ventas({token}) {
                 </div>
             )}
 
-            {loading ? (<div className="uk-text-center uk-margin">
+            {viewMode === 'cobro' ? (
+                incomeLoading ? (<div className="uk-text-center uk-margin">
+                    <span className="uk-badge uk-badge-warning">Cargando cobros...</span>
+                </div>) : incomePayments.length === 0 ? (<div className="uk-text-center uk-margin">
+                    <span className="uk-badge uk-badge-muted">No hay cobros en el rango seleccionado.</span>
+                </div>) : (
+                    <>
+                        <div style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: 6 }}>
+                            {incomePayments.length} cobros, ordenados por fecha de cobro
+                        </div>
+                        <div className="uk-overflow-auto">
+                            <table className="uk-table uk-table-divider uk-table-small" style={{minWidth: 700}}>
+                                <thead>
+                                <tr>
+                                    <th>Nº</th>
+                                    <th>Fecha de cobro</th>
+                                    <th>Cliente</th>
+                                    <th>Pedido/Factura</th>
+                                    <th>Método</th>
+                                    <th>Importe</th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                {incomePayments.map((p, i) => (
+                                    <tr key={p.id}>
+                                        <td>{i + 1}</td>
+                                        <td>{p.createdAt ? new Date(p.createdAt).toLocaleDateString('es-ES', {dateStyle: 'medium'}) : ''}</td>
+                                        <td>{nombreCliente(p.client) || '—'}</td>
+                                        <td>
+                                            {p.invoice?.number
+                                                ? `Factura ${p.invoice.number}`
+                                                : (p.order?.orderNum ? `Pedido ${p.order.orderNum}` : '—')}
+                                        </td>
+                                        <td>{metodoLabel(p.method)}</td>
+                                        <td>{formatEUR(Number(p.amount) || 0)}</td>
+                                    </tr>
+                                ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </>
+                )
+            ) : loading ? (<div className="uk-text-center uk-margin">
                 <span className="uk-badge uk-badge-warning">Cargando ventas...</span>
             </div>) : ventasFiltradas.length === 0 ? (<div className="uk-text-center uk-margin">
                 <span className="uk-badge uk-badge-muted">No hay ventas en el rango seleccionado.</span>

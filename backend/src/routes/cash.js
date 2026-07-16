@@ -65,6 +65,40 @@ export default async function cashRoutes(fastify) {
         return prisma.cashClosure.findFirst({orderBy: {closedat: 'desc'}});
     });
 
+    // GET /api/cash/income-report?from=&to=
+    // Ingresos reales por fecha de cobro (Payment.createdAt), no por fecha de pedido/factura.
+    // Pensado para reportar a gestoría: un pedido creado en un trimestre pero cobrado en el
+    // siguiente (o una factura mensual de cliente grande) aparece en el trimestre en que se cobró.
+    fastify.get('/income-report', async (req, reply) => {
+        const {from, to} = req.query || {};
+        if (!from || !to) {
+            return reply.code(400).send({error: 'Debe indicar from y to'});
+        }
+        const onlyDate = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s);
+        const fromDate = onlyDate(from) ? new Date(`${from}T00:00:00.000`) : new Date(from);
+        const toDate = onlyDate(to) ? new Date(`${to}T23:59:59.999`) : new Date(to);
+
+        const payments = await prisma.payment.findMany({
+            where: {
+                status: 'completed',
+                createdAt: {gte: fromDate, lte: toDate},
+            },
+            orderBy: {createdAt: 'asc'},
+            include: {
+                order: {select: {id: true, orderNum: true}},
+                invoice: {select: {id: true, number: true, invoiceYear: true}},
+                client: {select: {id: true, firstName: true, lastName: true, denominacionsocial: true, email: true}},
+            },
+        });
+
+        return payments.map(p => ({
+            ...p,
+            amount: toNum(p.amount),
+            invoiceId: p.invoiceId != null ? String(p.invoiceId) : null,
+            invoice: p.invoice ? {...p.invoice, id: String(p.invoice.id)} : null,
+        }));
+    });
+
     // GET /api/cash/movements/unclosed
     // Mantenemos el array de movimientos en efectivo (compatibilidad con el frontend actual).
     fastify.get('/movements/unclosed', async () => {
