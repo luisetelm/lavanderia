@@ -343,6 +343,13 @@ export default async function (fastify, opts) {
                 color: l.color || null,
                 annotations: l.annotations ? (typeof l.annotations === 'string' ? JSON.parse(l.annotations) : l.annotations) : [],
                 productName: l.product?.name || '',
+                // Igual que en GET /:id: el TPV recibe estos pedidos como
+                // initialOrder, así que sin estos campos las líneas anuladas
+                // parecerían activas (se podrían volver a anular, y no saldrían
+                // tachadas).
+                invoicedInId: l.invoicedInId != null ? String(l.invoicedInId) : null,
+                voidedAt: l.voidedAt || null,
+                voidReason: l.voidReason || null,
             })),
         };
 
@@ -603,6 +610,12 @@ export default async function (fastify, opts) {
                     annotations: true,
                     discount: true,
                     color: true,
+                    // El TPV usa estos pedidos como initialOrder: sin estos
+                    // campos, una línea anulada parecería activa y se podría
+                    // intentar anular otra vez.
+                    invoicedInId: true,
+                    voidedAt: true,
+                    voidReason: true,
                     product: {
                         select: {id: true, name: true, basePrice: true, serviceOptions: true, labelCount: true, printWashLabel: true}
                     },
