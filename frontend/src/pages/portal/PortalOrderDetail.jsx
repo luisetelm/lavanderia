@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { lineasActivas } from '../../utils/lineas.js';
 import { useParams, Link } from 'react-router-dom';
 import { portalFetchOrder, portalPay } from '../../api.js';
 import { formatEUR } from '../../utils/format.js';
@@ -72,7 +73,7 @@ export default function PortalOrderDetail({ token }) {
 
                 {/* Lines */}
                 <div style={{ borderTop: '1px solid #eee', paddingTop: 12 }}>
-                    {(order.lines || []).map(l => {
+                    {lineasActivas(order.lines).map(l => {
                         const subtotal = Number(l.unitPrice) * Number(l.quantity);
                         const discountAmt = subtotal * ((l.discount || 0) / 100);
                         const lineTotal = subtotal - discountAmt;

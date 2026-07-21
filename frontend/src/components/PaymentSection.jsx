@@ -16,6 +16,8 @@ import {
     recalculateTracking
 } from '../api.js';
 import AdjustOrderModal from './AdjustOrderModal.jsx';
+import { esAnulada, lineasActivas } from '../utils/lineas.js';
+import OrderHistory from './OrderHistory.jsx';
 import UIkit from 'uikit';
 import {printSaleTicket, printWashLabels, printInternalLabel, printFinishedLabelForOrder, printGarmentFinishedLabel} from '../utils/printUtils.js';
 import {getPrintSettings} from '../utils/printSettings.js';
@@ -78,6 +80,7 @@ export default function PaymentSection({token, orderId, onPaid, initialOrder = n
     // Ajuste de un pedido ya cobrado (añadir/anular líneas). Mueve dinero y
     // emite documentos fiscales, así que se limita a admin y caja.
     const [showAdjustModal, setShowAdjustModal] = useState(false);
+    const [historyKey, setHistoryKey] = useState(0);
     const rolActual = (() => {
         try { return JSON.parse(localStorage.getItem('user') || 'null')?.role || ''; }
         catch { return ''; }
@@ -365,7 +368,7 @@ export default function PaymentSection({token, orderId, onPaid, initialOrder = n
         if (!order) return;
         setIsPrinting(true);
         try {
-            const totalItems = (order.lines || []).reduce((sum, l) => {
+            const totalItems = lineasActivas(order.lines).reduce((sum, l) => {
                 if (l.product?.printWashLabel === false) return sum; // no genera etiquetas de lavado
                 const labels = l.product?.labelCount || l.labelCount || 1;
                 return sum + (l.quantity || 1) * labels;
@@ -624,7 +627,7 @@ export default function PaymentSection({token, orderId, onPaid, initialOrder = n
                 })()}
                 {(() => {
                     // "Listo": último paso de tracking completado (dato ya disponible)
-                    const completedDates = (order.lines || [])
+                    const completedDates = lineasActivas(order.lines)
                         .flatMap(l => l.steps || [])
                         .filter(s => s.status === 'done' && s.completedAt)
                         .map(s => new Date(s.completedAt).getTime());
@@ -702,17 +705,30 @@ export default function PaymentSection({token, orderId, onPaid, initialOrder = n
                     const discountAmount = (subtotal * (l.discount || 0)) / 100;
                     const lineTotal = subtotal - discountAmount;
                     const isEditing = editingLineId === l.id;
-                    const canEdit = !order.paid && order.status !== 'cancelled';
+                    // Una línea anulada en un ajuste sigue mostrándose, tachada y con
+                    // su motivo: es lo que explica que el total del pedido bajara.
+                    // No cuenta para el importe ni se puede editar.
+                    const anulada = esAnulada(l);
+                    const canEdit = !order.paid && order.status !== 'cancelled' && !anulada;
 
                     return (<div
                         key={l.id}
                         style={{
                             marginBottom: 8,
                             padding: '6px 0',
-                            borderBottom: '1px solid #e5e5e5'
+                            borderBottom: '1px solid #e5e5e5',
+                            ...(anulada ? {opacity: 0.6, background: '#fff5f5'} : {}),
                         }}
                     >
-                        <div style={{display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4}}>
+                        {anulada && (
+                            <div style={{fontSize: 11, color: '#d32f2f', fontWeight: 600, marginBottom: 2}}>
+                                ANULADA — {l.voidReason || 'sin motivo indicado'}
+                            </div>
+                        )}
+                        <div style={{
+                            display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4,
+                            ...(anulada ? {textDecoration: 'line-through'} : {}),
+                        }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                                 {l.color && COLOR_HEX[l.color] && (
                                     <span style={{
@@ -1032,7 +1048,7 @@ export default function PaymentSection({token, orderId, onPaid, initialOrder = n
                         onClick={handlePrintInternalTicket}
                         disabled={!order || isPrinting || !(
                             order.status === 'ready' ||
-                            (order.lines || []).some(l => (l.steps?.length > 0) && l.steps.every(s => s.status === 'done'))
+                            lineasActivas(order.lines).some(l => (l.steps?.length > 0) && l.steps.every(s => s.status === 'done'))
                         )}
                         title="Etiqueta de recogida/embolsado con QR al pedido. Disponible cuando el pedido está listo o alguna prenda ya finalizada."
                     >
@@ -1041,7 +1057,7 @@ export default function PaymentSection({token, orderId, onPaid, initialOrder = n
 
                     {/* Recalcular tracking: visible si alguna línea no tiene pasos y el pedido está activo */}
                     {order.status !== 'collected' && order.status !== 'cancelled' && (() => {
-                        const linesWithoutSteps = (order.lines || []).filter(l => !l.steps || l.steps.length === 0);
+                        const linesWithoutSteps = lineasActivas(order.lines).filter(l => !l.steps || l.steps.length === 0);
                         return linesWithoutSteps.length > 0 ? (
                             <button
                                 type="button"
@@ -1059,7 +1075,7 @@ export default function PaymentSection({token, orderId, onPaid, initialOrder = n
                     })()}
 
                     {order.status === 'pending' && (() => {
-                        const allSteps = (order.lines || []).flatMap(l => l.steps || []);
+                        const allSteps = lineasActivas(order.lines).flatMap(l => l.steps || []);
                         const hasTracking = allSteps.length > 0;
                         const allDone = hasTracking ? allSteps.every(s => s.status === 'done') : true;
                         const canMarkReady = !hasTracking || allDone;
@@ -1121,6 +1137,10 @@ export default function PaymentSection({token, orderId, onPaid, initialOrder = n
                     )}
 
 
+                    {order.id && (
+                        <OrderHistory token={token} orderId={order.id} refreshKey={historyKey}/>
+                    )}
+
                     {/* Ajustar un pedido ya cobrado: añadir lo que falte o anular lo
                         cobrado por error. Emite rectificativa y/o factura nueva. */}
                     {order.paid && order.status !== 'cancelled' && puedeAjustar && (
@@ -1153,6 +1173,7 @@ export default function PaymentSection({token, orderId, onPaid, initialOrder = n
                                     timeout: 6000,
                                 });
                                 loadOrder();
+                                setHistoryKey((k) => k + 1);
                             }}
                         />
                     )}

@@ -760,11 +760,17 @@ export async function nextInvoiceNum(prisma, year = new Date().getFullYear(), pr
 //
 //   invoiceId → factura a rectificar
 //   reason    → motivo, obligatorio; se guarda en notes
-//   lineIds   → líneas concretas a rectificar; si se omite, la factura entera
+//   lineIds   → líneas de la factura a rectificar
+//   conceptos → importes concretos a rectificar, cuando no se corresponden con
+//               líneas enteras de la factura (invoiceLines agrupa por producto,
+//               así que anular una línea de pedido no equivale a anular una
+//               línea de factura). Formato: [{description, quantity, grossAmount}]
+//
+// Si no se indica ni lineIds ni conceptos se rectifica la factura entera.
 //
 // Que una factura esté rectificada no se guarda en ninguna columna: se deduce
 // de que exista otra con `rectifiesInvoiceId` apuntándole.
-export async function crearRectificativa(prisma, {invoiceId, reason, lineIds}) {
+export async function crearRectificativa(prisma, {invoiceId, reason, lineIds, conceptos}) {
     if (!invoiceId) throw httpError(400, 'Debes indicar la factura a rectificar.');
     if (!reason || !String(reason).trim()) {
         throw httpError(400, 'Debes indicar el motivo de la rectificación.');
@@ -779,13 +785,33 @@ export async function crearRectificativa(prisma, {invoiceId, reason, lineIds}) {
         throw httpError(400, 'No se puede rectificar una factura rectificativa.');
     }
 
-    // Líneas a rectificar: las indicadas, o todas si no se concreta.
-    let lines = original.invoiceLines;
-    if (Array.isArray(lineIds) && lineIds.length) {
-        const wanted = lineIds.map(Number);
-        lines = lines.filter((l) => wanted.includes(Number(l.id)));
-        if (lines.length !== wanted.length) {
-            throw httpError(400, 'Alguna de las líneas no pertenece a esta factura.');
+    // Qué se rectifica: conceptos sueltos, líneas concretas o la factura entera.
+    let lines;
+    if (Array.isArray(conceptos) && conceptos.length) {
+        const IVA = 21;
+        lines = conceptos.map((c) => {
+            const gross = Math.abs(Number(c.grossAmount || 0));
+            const qty = Number(c.quantity) || 1;
+            const net = gross / (1 + IVA / 100);
+            return {
+                description: c.description || 'Concepto rectificado',
+                quantity: qty,
+                unitPrice: qty ? gross / qty : 0,
+                discountPct: 0,
+                taxRatePct: IVA,
+                netAmount: +net.toFixed(2),
+                taxAmount: +(gross - net).toFixed(2),
+                grossAmount: +gross.toFixed(2),
+            };
+        });
+    } else {
+        lines = original.invoiceLines;
+        if (Array.isArray(lineIds) && lineIds.length) {
+            const wanted = lineIds.map(Number);
+            lines = lines.filter((l) => wanted.includes(Number(l.id)));
+            if (lines.length !== wanted.length) {
+                throw httpError(400, 'Alguna de las líneas no pertenece a esta factura.');
+            }
         }
     }
     if (!lines.length) throw httpError(400, 'La factura no tiene líneas que rectificar.');

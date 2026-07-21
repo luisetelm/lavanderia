@@ -717,6 +717,102 @@ export default async function (fastify, opts) {
         }
     });
 
+    // ─── GET /api/orders/:id/history ─────────────────────────────────────────
+    // Historial económico del pedido: cobros, devoluciones, facturas emitidas y
+    // líneas anuladas, en orden cronológico.
+    //
+    // Devuelve además el saldo, que es lo que dice si hay algo pendiente:
+    //   saldo = suma de pagos - total del pedido
+    //     > 0  se cobró de más  → hay que DEVOLVER esa diferencia
+    //     < 0  falta por cobrar → hay que COBRAR esa diferencia
+    // Se calcula, no se guarda: así no puede quedar desincronizado.
+    fastify.get('/:id/history', async (req, reply) => {
+        const prisma = fastify.prisma;
+        const orderId = Number(req.params.id);
+        if (isNaN(orderId)) return reply.status(400).send({error: 'ID de pedido inválido'});
+
+        try {
+            const order = await prisma.order.findUnique({
+                where: {id: orderId},
+                select: {id: true, orderNum: true, total: true, paid: true},
+            });
+            if (!order) return reply.status(404).send({error: 'Pedido no encontrado'});
+
+            const [pagos, tickets, lineas] = await Promise.all([
+                prisma.payment.findMany({
+                    where: {orderId, status: 'completed'},
+                    include: {recorder: {select: {id: true, firstName: true}}},
+                    orderBy: {createdAt: 'asc'},
+                }),
+                prisma.invoiceTickets.findMany({
+                    where: {ticketId: orderId},
+                    include: {invoices: {include: {invoices: {select: {number: true}}}}},
+                }),
+                prisma.orderLine.findMany({
+                    where: {orderId, voidedAt: {not: null}},
+                    include: {product: {select: {name: true}}},
+                }),
+            ]);
+
+            const eventos = [];
+
+            for (const p of pagos) {
+                const importe = Number(p.amount);
+                eventos.push({
+                    tipo: importe < 0 ? 'devolucion' : 'cobro',
+                    fecha: p.createdAt,
+                    importe,
+                    metodo: p.method,
+                    nota: p.note || null,
+                    usuario: p.recorder?.firstName || null,
+                });
+            }
+
+            for (const t of tickets) {
+                const inv = t.invoices;
+                eventos.push({
+                    tipo: inv.isRectifying ? 'rectificativa' : 'factura',
+                    fecha: inv.issuedAt,
+                    importe: Number(inv.totalGross),
+                    numero: inv.number,
+                    rectificaA: inv.invoices?.number || null,
+                    pagada: inv.paid === true,
+                    nota: inv.notes || null,
+                });
+            }
+
+            for (const l of lineas) {
+                const autor = l.voidedBy
+                    ? await prisma.user.findUnique({where: {id: l.voidedBy}, select: {firstName: true}})
+                    : null;
+                eventos.push({
+                    tipo: 'anulacion',
+                    fecha: l.voidedAt,
+                    importe: -Number(l.totalPrice || 0),
+                    concepto: `${l.quantity}× ${l.product?.name || `Producto ${l.productId}`}`,
+                    nota: l.voidReason || null,
+                    usuario: autor?.firstName || null,
+                });
+            }
+
+            eventos.sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+
+            const pagado = pagos.reduce((s, p) => s + Number(p.amount), 0);
+            const saldo = +(pagado - Number(order.total || 0)).toFixed(2);
+
+            return reply.send(convertBigIntToString({
+                order: {id: order.id, orderNum: order.orderNum, total: order.total, paid: order.paid},
+                pagado: +pagado.toFixed(2),
+                saldo,
+                pendiente: saldo > 0.005 ? 'devolver' : (saldo < -0.005 ? 'cobrar' : null),
+                eventos,
+            }));
+        } catch (err) {
+            req.log.error(err);
+            return reply.status(500).send({error: 'Error obteniendo el historial del pedido'});
+        }
+    });
+
     // ─── POST /api/orders/:id/adjustments ────────────────────────────────────
     // Ajusta un pedido ya cobrado: añade productos o servicios y/o anula líneas
     // cobradas por error. Ver docs/ajustes-pedidos-facturados.md.
@@ -750,7 +846,8 @@ export default async function (fastify, opts) {
         try {
             const order = await prisma.order.findUnique({
                 where: {id: orderId},
-                include: {lines: true, client: true},
+                // El producto hace falta para describir los conceptos rectificados.
+                include: {lines: {include: {product: true}}, client: true},
             });
             if (!order) return reply.status(404).send({error: 'Pedido no encontrado'});
             if (order.status === 'cancelled') {
@@ -825,12 +922,21 @@ export default async function (fastify, opts) {
             for (const l of lineasAnuladas) {
                 if (l.invoicedInId == null) continue;
                 const k = String(l.invoicedInId);
-                porFactura.set(k, (porFactura.get(k) || 0) + Number(l.totalPrice || 0));
+                if (!porFactura.has(k)) porFactura.set(k, []);
+                porFactura.get(k).push(l);
             }
-            for (const [invoiceId] of porFactura) {
+            for (const [invoiceId, lineasDeEsaFactura] of porFactura) {
+                // Se rectifica sólo lo anulado, no la factura entera: se pasan los
+                // conceptos concretos porque las líneas de factura están agrupadas
+                // por producto y no equivalen a las líneas del pedido.
                 documentos.rectificativa = await crearRectificativa(prisma, {
                     invoiceId: Number(invoiceId),
                     reason: `Ajuste pedido ${order.orderNum}: ${String(reason).trim()}`,
+                    conceptos: lineasDeEsaFactura.map((l) => ({
+                        description: l.product?.name || `Producto ${l.productId}`,
+                        quantity: l.quantity,
+                        grossAmount: l.totalPrice,
+                    })),
                 });
             }
 

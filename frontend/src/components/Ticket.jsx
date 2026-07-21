@@ -1,4 +1,5 @@
 import React from 'react';
+import { lineasActivas } from '../utils/lineas.js';
 
 export default function Ticket({ order }) {
     return (
@@ -15,7 +16,7 @@ export default function Ticket({ order }) {
             <div><strong>Tel:</strong> {order.clientPhone}</div>
             <hr />
             <div>
-                {order.lines.map(l => (
+                {lineasActivas(order.lines).map(l => (
                     <div key={l.id}>
                         {l.productId ? (
                             <>

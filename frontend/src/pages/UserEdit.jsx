@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { lineasActivas } from '../utils/lineas.js';
 import { useParams, useNavigate } from 'react-router-dom';
 import UIkit from 'uikit';
 import { fetchUser } from '../api.js';
@@ -82,7 +83,7 @@ export default function UserEdit({ token, user: loggedUser }) {
       const orderTotal = Number(order.total) || 0;
       acc.totalIngresos += orderTotal;
       if (order.lines) {
-        order.lines.forEach((line) => {
+        lineasActivas(order.lines).forEach((line) => {
           const subtotalSinDescuento = (Number(line.unitPrice) || 0) * (Number(line.quantity) || 1);
           const totalConDescuento = Number(line.totalPrice) || 0;
           acc.totalDescuentos += subtotalSinDescuento - totalConDescuento;

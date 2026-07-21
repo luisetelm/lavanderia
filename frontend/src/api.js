@@ -219,6 +219,12 @@ export function findOrderByNum(token, num) {
     return request(`/orders/find?num=${encodeURIComponent(num)}`, token);
 }
 
+// Historial económico de un pedido: cobros, devoluciones, facturas y
+// anulaciones, con el saldo pendiente de cobrar o devolver.
+export function fetchOrderHistory(token, orderId) {
+    return request(`/orders/${orderId}/history`, token);
+}
+
 // Ajusta un pedido ya cobrado: añade productos/servicios y/o anula líneas
 // cobradas por error. Emite los documentos fiscales que correspondan y liquida
 // la diferencia. Ver docs/ajustes-pedidos-facturados.md.

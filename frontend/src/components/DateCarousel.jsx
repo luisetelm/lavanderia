@@ -1,4 +1,5 @@
 import React, {useState, useEffect} from 'react';
+import { lineasActivas } from '../utils/lineas.js';
 import {fetchDates} from '../api';
 import {Link} from 'react-router-dom';
 
@@ -64,7 +65,7 @@ export default function DateCarousel({
     }
 
     // Carga ponderada: ignora productos que no computan y pondera por workloadWeight.
-    const orderWeighted = (o) => (o.lines || []).reduce((s, l) => {
+    const orderWeighted = (o) => lineasActivas(o.lines).reduce((s, l) => {
         const p = l.product || {};
         if (p.countsForLoad === false) return s;
         const w = (p.workloadWeight != null) ? Number(p.workloadWeight) : 1;
@@ -156,7 +157,7 @@ export default function DateCarousel({
                                                     </div>
                                                     {/* Prendas en una sola línea que envuelve */}
                                                     <div style={{ fontSize: '0.72rem', marginTop: 2, lineHeight: 1.35 }}>
-                                                        {(order.lines || []).map((l, i) => {
+                                                        {lineasActivas(order.lines).map((l, i) => {
                                                             const noLoad = l.product?.countsForLoad === false;
                                                             return (
                                                                 <span key={l.id} style={{ color: noLoad ? '#9ca3af' : '#475569' }}>
