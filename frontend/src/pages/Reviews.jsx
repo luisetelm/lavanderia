@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { avisar } from '../utils/dialogo.js';
 import { fetchGoogleStatus, fetchGoogleReviews, replyGoogleReview } from '../api.js';
 import PageToolbar from '../components/PageToolbar.jsx';
 
@@ -48,7 +49,7 @@ export default function Reviews({ token }) {
             const data = await fetchGoogleReviews(token);
             setReviews(data);
         } catch (err) {
-            alert(err.error || 'Error respondiendo');
+            avisar(err.error || 'Error respondiendo', 'danger');
         } finally {
             setSending(false);
         }

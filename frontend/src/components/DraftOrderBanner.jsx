@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { confirmar } from '../utils/dialogo.js';
 import { useNavigate } from 'react-router-dom';
 import { useDraftOrder } from '../hooks/useDraftOrder.js';
 import { createOrder, updateUser, fetchOrder } from '../api.js';
@@ -181,8 +182,8 @@ export default function DraftOrderBanner({ token, worker }) {
         }
     };
 
-    const handleDiscard = () => {
-        if (confirm('¿Descartar el pedido en curso?')) {
+    const handleDiscard = async () => {
+        if (await confirmar('¿Descartar el pedido en curso?', {peligroso: true, textoConfirmar: 'Descartar'})) {
             clearDraft();
             setExpanded(false);
             setError('');

@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { confirmar } from '../utils/dialogo.js';
 import { fetchTrackingResources, createTrackingResource, updateTrackingResource, deleteTrackingResource } from '../api.js';
 import PageToolbar from '../components/PageToolbar.jsx';
 import UIkit from 'uikit';
@@ -93,8 +94,12 @@ export default function ResourceConfig({ token }) {
     };
 
     const handleDelete = async (id, label) => {
+        const ok = await confirmar(
+            `¿Eliminar el recurso "${label}"?\n\nLos itinerarios que lo usen quedarán sin recurso asignado.`,
+            {peligroso: true, textoConfirmar: 'Eliminar'}
+        );
+        if (!ok) return;
         try {
-            await UIkit.modal.confirm(`¿Eliminar el recurso "${label}"? Los itinerarios que lo usen quedarán sin recurso asignado.`);
             await deleteTrackingResource(token, id);
             UIkit.notification({ message: 'Recurso eliminado', status: 'success', pos: 'top-right', timeout: 2000 });
             await load();

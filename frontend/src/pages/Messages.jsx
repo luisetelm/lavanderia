@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { avisar } from '../utils/dialogo.js';
 import { fetchConversations, fetchMessages, sendMessage, sendMediaMessage, markConversationAsRead, fetchWhatsAppTemplates, sendWhatsAppMessage, setupDefaultTemplates } from '../api.js';
 import PageToolbar from '../components/PageToolbar.jsx';
 
@@ -341,7 +342,7 @@ export default function Messages({ token, onUnreadCount }) {
     const handleFileSelect = (file) => {
         if (!file) return;
         if (!ACCEPTED_TYPES.includes(file.type)) {
-            alert(`Tipo de archivo no soportado: ${file.type}`);
+            avisar(`Tipo de archivo no soportado: ${file.type}`, 'danger');
             return;
         }
         setAttachedFile(file);
@@ -374,7 +375,7 @@ export default function Messages({ token, onUnreadCount }) {
                 clearAttachment();
                 await loadMessages(selectedConvId);
             } catch (err) {
-                alert(err.error || 'Error enviando archivo');
+                avisar(err.error || 'Error enviando archivo', 'danger');
             } finally {
                 setSending(false);
             }
@@ -392,7 +393,7 @@ export default function Messages({ token, onUnreadCount }) {
             setNewMessage('');
             await loadMessages(selectedConvId);
         } catch (err) {
-            alert(err.error || 'Error enviando mensaje');
+            avisar(err.error || 'Error enviando mensaje', 'danger');
         } finally {
             setSending(false);
         }
@@ -410,7 +411,7 @@ export default function Messages({ token, onUnreadCount }) {
             setShowTemplates(true);
         } catch (err) {
             console.error('Error cargando plantillas:', err);
-            alert('Error al cargar las plantillas de WhatsApp');
+            avisar('Error al cargar las plantillas de WhatsApp', 'danger');
         } finally {
             setTemplatesLoading(false);
         }
@@ -420,7 +421,7 @@ export default function Messages({ token, onUnreadCount }) {
         if (!selectedConvId) return;
         const conv = conversations.find(c => c.id === selectedConvId);
         if (!conv?.phone) {
-            alert('El cliente no tiene teléfono');
+            avisar('El cliente no tiene teléfono', 'danger');
             return;
         }
         setSending(true);
@@ -434,7 +435,7 @@ export default function Messages({ token, onUnreadCount }) {
             setShowTemplates(false);
             await loadMessages(selectedConvId);
         } catch (err) {
-            alert(err.error || 'Error enviando plantilla');
+            avisar(err.error || 'Error enviando plantilla', 'danger');
         } finally {
             setSending(false);
         }
@@ -748,13 +749,13 @@ export default function Messages({ token, onUnreadCount }) {
                                                         if (fail.length > 0) {
                                                             msg += '\n\n⚠️ Errores:\n' + fail.map(f => `${f.name}: ${f.error}`).join('\n');
                                                         }
-                                                        alert(msg);
+                                                        avisar(msg, 'primary');
                                                         // Recargar plantillas (resetear cache para forzar fetch)
                                                         setTemplates([]);
                                                         setShowTemplates(false);
                                                         setTimeout(() => loadTemplates(), 300);
                                                     } catch (err) {
-                                                        alert(err.error || 'Error creando plantillas');
+                                                        avisar(err.error || 'Error creando plantillas', 'danger');
                                                     } finally {
                                                         setSending(false);
                                                     }

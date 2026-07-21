@@ -1,5 +1,6 @@
 // javascript
 import React, {useCallback, useEffect, useState} from 'react';
+import { avisar } from '../utils/dialogo.js';
 import {
     fetchOrders,
     createInvoice,
@@ -96,7 +97,7 @@ export default function Ventas({token}) {
     const exportVentasXLSX = () => {
         const ventasFiltradas = getVentasFiltradas();
         if (!Array.isArray(ventasFiltradas) || ventasFiltradas.length === 0) {
-            alert('No hay datos para exportar');
+            avisar('No hay datos para exportar', 'warning');
             return;
         }
 
@@ -210,7 +211,7 @@ export default function Ventas({token}) {
     // Exportar el listado de cobros (secuencial por fecha) a XLSX para gestoría
     const exportIngresosXLSX = () => {
         if (incomePayments.length === 0) {
-            alert('No hay cobros para exportar');
+            avisar('No hay cobros para exportar', 'warning');
             return;
         }
         const columns = [
@@ -286,7 +287,7 @@ export default function Ventas({token}) {
 
     const exportFacturasXLSX = () => {
         if (invoicesList.length === 0) {
-            alert('No hay facturas para exportar');
+            avisar('No hay facturas para exportar', 'warning');
             return;
         }
         const columns = [
@@ -433,7 +434,7 @@ export default function Ventas({token}) {
             .map(v => v.factura.id);
 
         if (invoiceIds.length === 0) {
-            alert('No hay facturas sin cobrar en la selección');
+            avisar('No hay facturas sin cobrar en la selección', 'warning');
             return;
         }
         setLoading(true);
@@ -444,7 +445,7 @@ export default function Ventas({token}) {
             setSelectionCriteria(null);
             await fetchVentas();
         } catch (e) {
-            alert(e.error || 'Error cobrando facturas');
+            avisar(e.error || 'Error cobrando facturas', 'danger');
         } finally {
             setLoading(false);
         }
@@ -460,7 +461,7 @@ export default function Ventas({token}) {
             setSelectedOrders([]);
             setSelectionCriteria(null);
         } catch (e) {
-            alert(e.error || 'Error generando facturas');
+            avisar(e.error || 'Error generando facturas', 'danger');
         } finally {
             setLoading(false);
         }

@@ -1,4 +1,5 @@
 import React, {useEffect, useMemo, useState} from 'react';
+import { confirmar, avisar } from '../utils/dialogo.js';
 import {
     fetchProducts,
     fetchUsers,
@@ -220,9 +221,10 @@ export default function POS({token, user}) {
         // Aviso si quedan cobros con tarjeta sin conciliar antes de cerrar
         const tpvPending = tpvPayments.filter(p => !p.reconciled);
         if (tpvPending.length > 0) {
-            const ok = window.confirm(
+            const ok = await confirmar(
                 `Quedan ${tpvPending.length} cobro(s) con tarjeta sin conciliar.\n\n` +
-                `¿Cerrar caja igualmente? Podrás conciliarlos después en Auditoría.`
+                `¿Cerrar caja igualmente? Podrás conciliarlos después en Auditoría.`,
+                {titulo: 'Cerrar caja', textoConfirmar: 'Cerrar igualmente'}
             );
             if (!ok) return;
         }
@@ -243,7 +245,7 @@ export default function POS({token, user}) {
             setCloseNotes('');
             setShowCloseModal(false);
             await loadCash();
-            alert(`Caja cerrada. Descuadre efectivo: ${closure.diff} €`);
+            avisar(`Caja cerrada. Descuadre efectivo: ${closure.diff} €`, 'success');
         } catch (e) {
             setCashErr(e.message || 'Error al cerrar caja');
         }
@@ -300,7 +302,7 @@ export default function POS({token, user}) {
         }
     };
     const removeMove = async (id) => {
-        if (!confirm('¿Borrar movimiento?')) return;
+        if (!await confirmar('¿Borrar movimiento?', {peligroso: true, textoConfirmar: 'Borrar'})) return;
         try {
             await deleteCashMovement(token, id);
             await loadCash();

@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { confirmar } from '../utils/dialogo.js';
 import UIkit from 'uikit';
 import PageToolbar from '../components/PageToolbar.jsx';
 import {
@@ -113,9 +114,10 @@ export default function Campaigns({ token }) {
     };
 
     const handleSend = async (campaign) => {
-        const ok = await UIkit.modal.confirm(
-            `Vas a enviar la campaña "${campaign.name}" a ${campaign.totalRecipients} destinatarios por WhatsApp. ¿Continuar?`
-        ).then(() => true).catch(() => false);
+        const ok = await confirmar(
+            `Vas a enviar la campaña "${campaign.name}" a ${campaign.totalRecipients} destinatarios por WhatsApp.\n\n¿Continuar?`,
+            {titulo: 'Enviar campaña', textoConfirmar: 'Enviar'}
+        );
         if (!ok) return;
         try {
             await sendCampaign(token, campaign.id);
@@ -127,7 +129,8 @@ export default function Campaigns({ token }) {
     };
 
     const handleDelete = async (campaign) => {
-        const ok = await UIkit.modal.confirm(`¿Eliminar la campaña "${campaign.name}"?`).then(() => true).catch(() => false);
+        const ok = await confirmar(`¿Eliminar la campaña "${campaign.name}"?`,
+            {peligroso: true, textoConfirmar: 'Eliminar'});
         if (!ok) return;
         try {
             await deleteCampaign(token, campaign.id);

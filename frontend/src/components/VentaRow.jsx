@@ -1,6 +1,7 @@
 // javascript
 // Archivo: `frontend/src/components/VentaRow.jsx`
 import React, { useState, useEffect } from 'react';
+import { avisar } from '../utils/dialogo.js';
 import { createInvoice, downloadInvoicePDF, fetchOrder, collectInvoice, getPaymentLink } from '../api.js';
 import { formatEUR } from '../utils/format.js';
 
@@ -97,10 +98,10 @@ export default function VentaRow({
         try {
             const { url } = await getPaymentLink(token, 'invoice', invoiceObj.id);
             await navigator.clipboard.writeText(url);
-            alert('Enlace de pago copiado al portapapeles:\n' + url);
+            avisar('Enlace de pago copiado al portapapeles:\n' + url, 'success');
         } catch (err) {
             console.error('Error generando enlace de pago:', err);
-            alert('Error al generar enlace: ' + (err.error || err.message || err));
+            avisar('Error al generar enlace: ' + (err.error || err.message || err), 'danger');
         } finally {
             setRowLoading(false);
         }
@@ -116,7 +117,7 @@ export default function VentaRow({
             await refetchOrderDetail();
         } catch (err) {
             console.error('Error cobrando factura:', err);
-            alert('Error al cobrar la factura: ' + (err.error || err.message || err));
+            avisar('Error al cobrar la factura: ' + (err.error || err.message || err), 'danger');
         } finally {
             setRowLoading(false);
         }
@@ -137,7 +138,7 @@ export default function VentaRow({
 
         if (rowLoading || isZeroAmount) {
             if (isZeroAmount) {
-                alert('No se puede facturar: importe 0 €');
+                avisar('No se puede facturar: importe 0 €', 'danger');
             }
             return;
         }
@@ -158,9 +159,9 @@ export default function VentaRow({
 
             if (resp?.emailError) {
                 console.warn('Factura creada pero fallo envío de email:', resp.emailError);
-                alert('Factura creada, pero no se pudo enviar el email: ' + resp.emailError);
+                avisar('Factura creada, pero no se pudo enviar el email: ' + resp.emailError, 'warning');
             } else {
-                alert('Factura simplificada creada exitosamente');
+                avisar('Factura simplificada creada exitosamente', 'success');
             }
 
             // Actualizar solo esta fila sin recargar toda la página
@@ -168,7 +169,7 @@ export default function VentaRow({
             await refetchOrderDetail();
         } catch (err) {
             console.error('Error al generar factura simplificada', err);
-            alert('No se pudo generar la factura simplificada: ' + (err.error || err.message || err));
+            avisar('No se pudo generar la factura simplificada: ' + (err.error || err.message || err), 'danger');
         } finally {
             setRowLoading(false);
         }
@@ -182,7 +183,7 @@ export default function VentaRow({
 
         if (rowLoading || isZeroAmount) {
             if (isZeroAmount) {
-                alert('No se puede facturar: importe 0 €');
+                avisar('No se puede facturar: importe 0 €', 'danger');
             }
             return;
         }
@@ -197,16 +198,16 @@ export default function VentaRow({
 
             if (resp?.emailError) {
                 console.warn('Factura creada pero fallo envío de email:', resp.emailError);
-                alert('Factura creada, pero no se pudo enviar el email: ' + resp.emailError);
+                avisar('Factura creada, pero no se pudo enviar el email: ' + resp.emailError, 'warning');
             } else {
-                alert('Factura normal creada exitosamente');
+                avisar('Factura normal creada exitosamente', 'success');
             }
 
             await onRefresh(venta.id);
             await refetchOrderDetail();
         } catch (err) {
             console.error('Error al generar factura normal', err);
-            alert('No se pudo generar la factura normal: ' + (err.error || err.message || err));
+            avisar('No se pudo generar la factura normal: ' + (err.error || err.message || err), 'danger');
         } finally {
             setRowLoading(false);
         }
@@ -230,16 +231,16 @@ export default function VentaRow({
 
             if (resp?.emailError) {
                 console.warn('Factura convertida pero fallo envío de email:', resp.emailError);
-                alert('Factura convertida, pero no se pudo enviar el email: ' + resp.emailError);
+                avisar('Factura convertida, pero no se pudo enviar el email: ' + resp.emailError, 'warning');
             } else {
-                alert('Factura convertida a normal exitosamente');
+                avisar('Factura convertida a normal exitosamente', 'success');
             }
 
             await onRefresh(venta.id);
             await refetchOrderDetail();
         } catch (err) {
             console.error('Error al convertir a factura normal', err);
-            alert('No se pudo convertir la factura a normal: ' + (err.error || err.message || err));
+            avisar('No se pudo convertir la factura a normal: ' + (err.error || err.message || err), 'danger');
         } finally {
             setRowLoading(false);
         }

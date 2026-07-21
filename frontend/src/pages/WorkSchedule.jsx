@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { confirmar } from '../utils/dialogo.js';
 import { fetchWorkSchedule, updateWorkSchedule, addScheduleException, deleteScheduleException } from '../api.js';
 import UIkit from 'uikit';
 import PageToolbar from '../components/PageToolbar.jsx';
@@ -54,7 +55,7 @@ export default function WorkSchedule({ token }) {
     };
 
     const handleDeleteException = async (id) => {
-        if (!window.confirm('¿Eliminar esta excepción?')) return;
+        if (!await confirmar('¿Eliminar esta excepción?', {peligroso: true, textoConfirmar: 'Eliminar'})) return;
         try {
             await deleteScheduleException(token, id);
             setExceptions(prev => prev.filter(e => e.id !== id));

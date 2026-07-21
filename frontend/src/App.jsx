@@ -28,6 +28,7 @@ import ForgotPassword from './pages/ForgotPassword.jsx';
 import OrderLookup from './pages/OrderLookup.jsx';
 import PrintSettings from './pages/PrintSettings.jsx';
 import ScanCapture from './components/ScanCapture.jsx';
+import DialogHost from './components/DialogHost.jsx';
 
 // Wrapper for main content that adds padding when draft banner is visible
 function AppMain({ children }) {
@@ -66,7 +67,8 @@ function PortalApp() {
         localStorage.removeItem('portalUser');
     };
 
-    return (
+    return (<>
+        <DialogHost />
         <Routes>
             <Route path="login" element={<PortalLogin />} />
             <Route path="verify/:token" element={<PortalVerify onAuth={handlePortalAuth} />} />
@@ -81,6 +83,7 @@ function PortalApp() {
                 <Route path="*" element={<Navigate to="/portal/login" replace />} />
             )}
         </Routes>
+        </>
     );
 }
 
@@ -281,6 +284,7 @@ export default function App() {
         <DraftOrderProvider>
         <div className="app-layout">
             <ScanCapture />
+            <DialogHost />
             <nav className={`app-sidebar ${mobileMenuOpen ? 'sidebar-open' : ''}`}>
                 <div className="sidebar-inner">
                     <div className="sidebar-logo">

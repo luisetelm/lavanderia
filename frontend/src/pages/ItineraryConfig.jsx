@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { confirmar } from '../utils/dialogo.js';
 import { fetchItineraries, createItinerary, updateItinerary, deleteItinerary, fetchItineraryResources } from '../api.js';
 import PageToolbar from '../components/PageToolbar.jsx';
 import UIkit from 'uikit';
@@ -44,7 +45,7 @@ export default function ItineraryConfig({ token }) {
     useEffect(() => { load(); }, [load]);
 
     const handleDelete = async (id, name) => {
-        if (!confirm(`¿Eliminar el itinerario "${name}"?`)) return;
+        if (!await confirmar(`¿Eliminar el itinerario "${name}"?`, {peligroso: true, textoConfirmar: 'Eliminar'})) return;
         try {
             await deleteItinerary(token, id);
             UIkit.notification({ message: 'Itinerario eliminado', status: 'success', pos: 'top-right', timeout: 2000 });

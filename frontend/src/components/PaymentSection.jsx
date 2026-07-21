@@ -1,4 +1,5 @@
 import React, {useState, useEffect, useCallback} from 'react';
+import { confirmar, avisar } from '../utils/dialogo.js';
 import {
     createInvoice,
     fetchOrder,
@@ -41,18 +42,14 @@ const STATUS_META = {
     cancelled: { label: 'Cancelado', bg: '#fee2e2', color: '#991b1b' },
 };
 
-// Feedback unificado (sustituye a alert/confirm nativos y errores inline dispersos)
+// Feedback unificado (sustituye a alert/confirm nativos y errores inline dispersos).
+// Se conserva el nombre local; por debajo es el aviso único de utils/dialogo.js.
 const notify = (message, status = 'primary', timeout = 3000) =>
-    UIkit.notification({ message, status, pos: 'top-right', timeout });
+    avisar(message, status, timeout);
 
-const confirmModal = async (message) => {
-    try {
-        await UIkit.modal.confirm(message, { labels: { ok: 'Confirmar', cancel: 'Cancelar' } });
-        return true;
-    } catch {
-        return false;
-    }
-};
+// Se mantiene el nombre para no tocar las llamadas existentes, pero por debajo
+// usa ya el diálogo unificado (utils/dialogo.js).
+const confirmModal = (message) => confirmar(message);
 
 export default function PaymentSection({token, orderId, onPaid, initialOrder = null, workers: workersProp = null}) {
     const [order, setOrder] = useState(initialOrder);

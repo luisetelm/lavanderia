@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { avisar } from '../../utils/dialogo.js';
 import { Link } from 'react-router-dom';
 import { portalFetchInvoices, portalPay } from '../../api.js';
 import { formatEUR } from '../../utils/format.js';
@@ -23,7 +24,7 @@ export default function PortalInvoices({ token }) {
             const { url } = await portalPay(token, { type: 'invoice', id: inv.id });
             window.location.href = url;
         } catch (err) {
-            alert(err.error || 'Error al iniciar el pago');
+            avisar(err.error || 'Error al iniciar el pago', 'danger');
             setPayingId(null);
         }
     };
@@ -42,7 +43,7 @@ export default function PortalInvoices({ token }) {
             link.click();
             URL.revokeObjectURL(link.href);
         } catch {
-            alert('No se pudo descargar la factura');
+            avisar('No se pudo descargar la factura', 'danger');
         }
     };
 
