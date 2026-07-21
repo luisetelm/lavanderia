@@ -271,7 +271,7 @@ export default function PaymentSection({token, orderId, onPaid, initialOrder = n
                     productName: line.product?.name || line.productName || 'Prenda',
                     quantity: line.quantity,
                     fechaLimite: order.fechaLimite,
-                });
+                }, token);
                 if (printed) notify('Prenda finalizada · etiqueta de embolsado impresa', 'success');
             }
             if (res?.orderBecameReady) {

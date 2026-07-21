@@ -80,11 +80,11 @@ export default function TrackingBoard({ token }) {
             productName: item.productName,
             quantity: item.quantity,
             fechaLimite: item.fechaLimite,
-        });
+        }, token);
         if (printed) {
             UIkit.notification({ message: `Prenda finalizada · etiqueta impresa (${item.orderNum})`, status: 'success', pos: 'top-right', timeout: 2000 });
         }
-    }, []);
+    }, [token]);
 
     useEffect(() => {
         loadBoard();

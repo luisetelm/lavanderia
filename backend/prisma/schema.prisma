@@ -74,6 +74,27 @@ model Order {
   // Un pedido puede acumular varias facturas: la original, las rectificativas
   // por lo que se quita y las nuevas por lo que se añade. Ver sql/009.
   invoiceTickets        invoiceTickets[]
+  printJobs             print_job[]
+}
+
+// Cola de impresión: encargos que deja un dispositivo sin impresora (la tablet
+// del taller) para que los imprima el puesto que sí la tiene. Ver sql/010.
+model print_job {
+  id        Int       @id @default(autoincrement())
+  type      String    @db.VarChar(40)   // finished_label | garment_label
+  orderId   Int?
+  payload   Json?
+  status    String    @default("pending") @db.VarChar(20)
+  createdBy Int?
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+  claimedBy String?   @db.VarChar(80)
+  claimedAt DateTime? @db.Timestamptz(6)
+  doneAt    DateTime? @db.Timestamptz(6)
+  attempts  Int       @default(0)
+  error     String?
+  order     Order?    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
 }
 
 model OrderLine {

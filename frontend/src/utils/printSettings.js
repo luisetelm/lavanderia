@@ -8,6 +8,13 @@ const DEFAULTS = {
     onPay: true,    // al cobrar: ticket de cliente
     onReady: true,  // al marcar listo (pedido completo): etiqueta interna (recogida)
     onGarmentReady: true, // al completar cada prenda: etiqueta "Finalizado" por prenda
+
+    // ── Cola de impresión (ver sql/010) ──
+    // Un dispositivo sin impresora (la tablet del taller) no imprime: deja el
+    // encargo en la cola del servidor. El puesto que tiene la impresora es el
+    // que la vacía.
+    tieneImpresora: true,   // false en la tablet: encola en vez de imprimir
+    nombrePuesto: '',       // etiqueta del puesto, para saber quién imprimió qué
 };
 
 export function getPrintSettings() {

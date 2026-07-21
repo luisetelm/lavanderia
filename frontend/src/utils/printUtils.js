@@ -2,7 +2,7 @@
 import QRCode from 'qrcode';
 // Conexión a QZ Tray CON certificado + firma (evita el diálogo "anonymous request")
 import { connectQZ as connectQZSecure } from '../qzInit.js';
-import { fetchOrderPortalLink, fetchOrder } from '../api.js';
+import { fetchOrderPortalLink, fetchOrder, encolarImpresion } from '../api.js';
 import { getPrintSettings } from './printSettings.js';
 import { lineasActivas } from './lineas.js';
 
@@ -866,6 +866,20 @@ export async function printInternalLabel(order, options = {}) {
 // quien lo llame pueda notificar al usuario.
 export async function printFinishedLabelForOrder(token, orderId) {
     if (!orderId || !getPrintSettings().onReady) return null;
+
+    // Dispositivo sin impresora (la tablet del taller): no imprime, deja el
+    // encargo para el puesto que sí la tiene. Ver sql/010 y PrintQueueWatcher.
+    if (!getPrintSettings().tieneImpresora) {
+        try {
+            const order = await fetchOrder(token, orderId);
+            await encolarImpresion(token, { type: 'finished_label', orderId });
+            return order;
+        } catch (e) {
+            console.warn('No se pudo encolar la etiqueta de finalizado:', e);
+            return null;
+        }
+    }
+
     try {
         const order = await fetchOrder(token, orderId);
         await printInternalLabel(order, { token });
@@ -938,8 +952,24 @@ export async function printGarmentLabel({ orderNum, clientName, productName, qua
 
 // Helper gated por el ajuste onGarmentReady. Imprime la etiqueta de una prenda
 // finalizada. Devuelve true si se imprimió, false si está desactivado o falló.
-export async function printGarmentFinishedLabel(garment) {
+export async function printGarmentFinishedLabel(garment, token = null) {
     if (!getPrintSettings().onGarmentReady) return false;
+
+    // Sin impresora en este dispositivo: a la cola (ver printFinishedLabelForOrder).
+    if (!getPrintSettings().tieneImpresora) {
+        if (!token) {
+            console.warn('No se puede encolar la etiqueta de prenda: falta el token');
+            return false;
+        }
+        try {
+            await encolarImpresion(token, { type: 'garment_label', payload: garment });
+            return true;
+        } catch (e) {
+            console.warn('No se pudo encolar la etiqueta de prenda finalizada:', e);
+            return false;
+        }
+    }
+
     try {
         await printGarmentLabel(garment);
         return true;

@@ -219,6 +219,38 @@ export function findOrderByNum(token, num) {
     return request(`/orders/find?num=${encodeURIComponent(num)}`, token);
 }
 
+// ── Cola de impresión ──
+// Un dispositivo sin impresora encola el encargo; el puesto que la tiene lo
+// reclama, lo imprime y confirma. Ver docs y sql/010.
+export function encolarImpresion(token, {type, orderId = null, payload = null}) {
+    return request('/print-jobs', token, {
+        method: 'POST',
+        body: JSON.stringify({type, orderId, payload}),
+    });
+}
+
+export function reclamarImpresiones(token, {puesto, max = 5}) {
+    return request('/print-jobs/claim', token, {
+        method: 'POST',
+        body: JSON.stringify({puesto, max}),
+    });
+}
+
+export function marcarImpresionHecha(token, id) {
+    return request(`/print-jobs/${id}/done`, token, {method: 'POST'});
+}
+
+export function marcarImpresionFallida(token, id, error) {
+    return request(`/print-jobs/${id}/failed`, token, {
+        method: 'POST',
+        body: JSON.stringify({error: String(error || '').slice(0, 500)}),
+    });
+}
+
+export function fetchColaImpresion(token, status) {
+    return request(`/print-jobs${status ? `?status=${encodeURIComponent(status)}` : ''}`, token);
+}
+
 // Historial económico de un pedido: cobros, devoluciones, facturas y
 // anulaciones, con el saldo pendiente de cobrar o devolver.
 export function fetchOrderHistory(token, orderId) {

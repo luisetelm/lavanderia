@@ -113,6 +113,49 @@ export default function PrintSettings() {
                     </ul>
                 </div>
 
+                {/* Cola de impresión: un dispositivo sin impresora manda sus
+                    encargos al puesto que sí la tiene (ver sql/010). */}
+                <div className="uk-card uk-card-default uk-card-body uk-margin">
+                    <h4 className="uk-margin-small-top">Este dispositivo</h4>
+
+                    <label className="uk-flex uk-flex-middle" style={{ gap: 8 }}>
+                        <input
+                            className="uk-checkbox"
+                            type="checkbox"
+                            checked={settings.tieneImpresora !== false}
+                            onChange={() => toggle('tieneImpresora')}
+                        />
+                        <span>
+                            <strong>Tiene impresora conectada</strong>
+                            <div className="uk-text-muted" style={{ fontSize: '0.85rem' }}>
+                                Desactívalo en la tablet del taller: en vez de imprimir, sus
+                                etiquetas se envían a la cola y las imprime el ordenador
+                                principal. Si lo desactivas en todos los equipos, no se
+                                imprimirá nada.
+                            </div>
+                        </span>
+                    </label>
+
+                    <div className="uk-margin-small">
+                        <label className="uk-form-label" style={{ fontWeight: 600 }}>
+                            Nombre de este puesto
+                        </label>
+                        <input
+                            className="uk-input uk-form-small"
+                            style={{ maxWidth: 280 }}
+                            placeholder="Ej.: Mostrador, Tablet taller"
+                            value={settings.nombrePuesto || ''}
+                            onChange={(e) => {
+                                const next = setPrintSettings({ nombrePuesto: e.target.value });
+                                setSettings(next);
+                            }}
+                        />
+                        <div className="uk-text-muted" style={{ fontSize: '0.8rem', marginTop: 4 }}>
+                            Sirve para saber qué puesto imprimió cada cosa si algo falla.
+                        </div>
+                    </div>
+                </div>
+
                 <div className="uk-card uk-card-default uk-card-body uk-margin">
                     <h4 className="uk-margin-small-top">Impresoras de este equipo</h4>
                     <p className="uk-text-muted" style={{ fontSize: '0.85rem' }}>
