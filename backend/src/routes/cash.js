@@ -3,6 +3,7 @@
 // Prefijo ya lo añade server: '/api/cash' => aquí solo '/movements', '/close', etc.
 
 import puppeteer from 'puppeteer';
+import { facturaDe } from '../utils/facturaDe.js';
 
 const ALLOWED_TYPES = ['sale_cash_in', 'withdrawal', 'deposit', 'refund_cash_out', 'opening', 'correction'];
 // Tipos que se pueden crear manualmente desde el frontend. 'sale_cash_in' queda excluido:
@@ -94,7 +95,7 @@ export default async function cashRoutes(fastify) {
             include: {
                 // El pago de un pedido con tarjeta genera factura simplificada automática
                 // vinculada al pedido (no al Payment), por eso hace falta bajar hasta invoiceTickets.
-                order: {select: {id: true, orderNum: true, invoiceTickets: {select: {invoices: {select: {number: true}}}}}},
+                order: {select: {id: true, orderNum: true, invoiceTickets: {select: {invoices: {select: {number: true, isRectifying: true}}}}}},
                 invoice: {select: {id: true, number: true, invoiceYear: true}},
                 client: {select: {id: true, firstName: true, lastName: true, denominacionsocial: true, email: true}},
             },
@@ -108,7 +109,7 @@ export default async function cashRoutes(fastify) {
             orderId: p.orderId,
             order: p.order ? {id: p.order.id, orderNum: p.order.orderNum} : null,
             invoiceId: p.invoiceId != null ? String(p.invoiceId) : null,
-            invoiceNumber: p.invoice?.number || p.order?.invoiceTickets?.invoices?.number || null,
+            invoiceNumber: p.invoice?.number || facturaDe(p.order)?.number || null,
             client: p.client,
             orphan: false,
         }));
@@ -142,6 +143,12 @@ export default async function cashRoutes(fastify) {
             const paidOrderIds = new Set(relatedPayments.filter(p => p.orderId != null).map(p => p.orderId));
 
             const orphanInvoices = invoicesInRange.filter(inv => {
+                // Las rectificativas nunca son huérfanas. Este bloque busca
+                // facturas cobradas cuyo pago no está registrado; una
+                // rectificativa es lo contrario: documenta una devolución, que
+                // ya aparece como Payment negativo. Incluirla aquí restaría el
+                // importe dos veces.
+                if (inv.isRectifying) return false;
                 if (paidInvoiceIds.has(String(inv.id))) return false;
                 const linkedOrderIds = inv.invoiceTickets.map(t => t.order?.id).filter(Boolean);
                 return !linkedOrderIds.some(id => paidOrderIds.has(id));

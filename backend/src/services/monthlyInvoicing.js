@@ -43,8 +43,9 @@ export async function generateMonthlyInvoices(prisma) {
                         lte: endOfLastMonth,
                     },
                     total: { gt: 0 },
-                    // Excluir pedidos que ya tienen factura
-                    invoiceTickets: null,
+                    // Excluir pedidos que ya tienen factura. Con la relación 1:N
+                    // (sql/009) el filtro es "ninguna factura vinculada".
+                    invoiceTickets: { none: {} },
                     // Excluir cancelados
                     status: { not: 'cancelled' },
                 },

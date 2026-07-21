@@ -1,4 +1,3 @@
-import twilio from 'twilio';
 import dotenv from 'dotenv';
 import LabsMobileClient from 'labsmobile-sms/src/LabsMobileClient.js';
 import LabsMobileModelTextMessage from 'labsmobile-sms/src/LabsMobileModelTextMessage.js';
@@ -8,7 +7,6 @@ import RestException from 'labsmobile-sms/src/Exception/RestException.js';
 dotenv.config();
 
 
-const client = twilio(process.env.TWILIO_SID, process.env.TWILIO_TOKEN);
 
 const formatToE164 = (phoneNumber) => {
     const cleaned = phoneNumber.replace(/\D/g, '');
@@ -55,29 +53,6 @@ export async function sendSMScustomer(to, body, senderName = 'LAVANDERIA') {
             console.error(`[SMS] Error REST LabsMobile: ${error.status} - ${error.message}`);
         } else {
             console.error('[SMS] Error inesperado enviando SMS:', error.message || error);
-        }
-        throw error;
-    }
-}
-
-export async function sendSMSOLD(to, body, senderName = 'LAVANDERIA') {
-    const formattedNumber = formatToE164(to);
-    console.log('Enviando SMS a:', formattedNumber);
-    const messageConfig = {
-        body, to: formattedNumber, // Usar el nombre personalizado si está disponible, si no, usar el número de Twilio
-        from: senderName || process.env.TWILIO_PHONE, // Opcionalmente, puedes incluir el nombre en el cuerpo del mensaje
-        // body: `${senderName}: ${body}`
-    };
-
-    try {
-        return await client.messages.create(messageConfig);
-    } catch (error) {
-        // Si falla con el nombre personalizado, intentar con el número por defecto
-        if (senderName && error.code === 21612) { // Código de error de Sender ID no permitido
-            console.warn('Sender ID no permitido, usando número por defecto');
-            return await client.messages.create({
-                ...messageConfig, from: process.env.TWILIO_PHONE
-            });
         }
         throw error;
     }

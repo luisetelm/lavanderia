@@ -237,51 +237,62 @@ export async function crearFactura(prisma, {orderIds, type, invoiceData}) {
         throw httpError(400, 'Tipo de factura inválido.');
     }
 
-    // Si alguno de los OrderIds ya está en la tabla de facturas, verificamos si podemos convertir
-    const existingInvoiceTicket = await prisma.invoiceTickets.findFirst({
-        where: {
-            ticketId: {in: orderIds}
-        },
-        include: {
-            invoices: true
-        }
-    });
-
-    // Si existe factura y estamos pidiendo normal, verificamos si es simplificada para convertir
-    if (existingInvoiceTicket) {
-        const existingInvoice = existingInvoiceTicket.invoices;
-
-        // Si ya es normal o rectificativa, no se puede volver a facturar
-        if (existingInvoice.type === 'n') {
-            throw httpError(400, 'Algún pedido ya tiene factura normal.');
-        }
-        if (existingInvoice.type === 'rectificativa') {
-            throw httpError(400, 'Algún pedido ya tiene factura rectificativa.');
-        }
-
-        // Si es simplificada y pedimos normal, convertimos
-        if (existingInvoice.type === 's' && type === 'n') {
-            // Convertir de simplificada a normal
-            return await convertirSimplificadaANormal(prisma, existingInvoice.id, orderIds);
-        }
-
-        // Si es simplificada y pedimos otra simplificada, error
-        if (existingInvoice.type === 's' && type === 's') {
-            throw httpError(400, 'Algún pedido ya tiene factura simplificada.');
-        }
-
-        throw httpError(400, 'Algún pedido ya está facturado.');
-    }
-
-    // 1) Obtener pedidos
-    const orders = await prisma.order.findMany({
+    // 1) Obtener pedidos con TODAS sus líneas: hacen falta las pendientes para
+    //    facturar y las ya facturadas para saber si es la primera factura.
+    const ordersRaw = await prisma.order.findMany({
         where: {id: {in: orderIds}}, include: {
             lines: {include: {product: true}}, // si tus líneas están en order.lines
         },
     });
 
-    if (orders.length !== orderIds.length) {
+    if (ordersRaw.length !== orderIds.length) {
         throw httpError(400, 'Algún pedido no existe.');
+    }
+
+    // Sólo se factura lo que está pendiente y no anulado. Un pedido puede
+    // facturarse varias veces si se le añaden líneas después (ver sql/009 y
+    // docs/ajustes-pedidos-facturados.md).
+    const orders = ordersRaw.map((o) => ({
+        ...o,
+        lines: o.lines.filter((l) => l.invoicedInId === null && l.voidedAt === null),
+    }));
+
+    // ¿Es la primera factura del pedido, es decir, cubre todo lo facturable?
+    // En ese caso el importe se toma de order.total, como se ha hecho siempre.
+    const esFacturaCompleta = ordersRaw.every(
+        (o) => o.lines.filter((l) => l.voidedAt === null).every((l) => l.invoicedInId === null)
+    );
+
+    const hayPendientes = orders.some((o) => o.lines.length > 0);
+
+    // Sin nada pendiente, el pedido ya está facturado: se mantiene el
+    // comportamiento anterior (convertir de simplificada a normal, o rechazar).
+    if (!hayPendientes) {
+        const existingInvoiceTicket = await prisma.invoiceTickets.findFirst({
+            where: {ticketId: {in: orderIds}},
+            include: {invoices: true},
+        });
+
+        if (!existingInvoiceTicket) {
+            throw httpError(400, 'Los pedidos no tienen líneas que facturar.');
+        }
+
+        const existingInvoice = existingInvoiceTicket.invoices;
+
+        if (existingInvoice.isRectifying) {
+            throw httpError(400, 'Algún pedido ya tiene factura rectificativa.');
+        }
+        if (existingInvoice.type === 'n') {
+            throw httpError(400, 'Algún pedido ya tiene factura normal.');
+        }
+        if (existingInvoice.type === 's' && type === 'n') {
+            return await convertirSimplificadaANormal(prisma, existingInvoice.id, orderIds);
+        }
+        if (existingInvoice.type === 's' && type === 's') {
+            throw httpError(400, 'Algún pedido ya tiene factura simplificada.');
+        }
+
+        throw httpError(400, 'Algún pedido ya está facturado.');
     }
 
     // 2) Validaciones de coherencia0.
@@ -356,7 +367,13 @@ export async function crearFactura(prisma, {orderIds, type, invoiceData}) {
     }
 
     // 3) Cálculo de importes (simple: 21% sobre total bruto)
-    const totalGross = orders.reduce((sum, o) => sum + Number(o.total || 0), 0);
+    // Primera factura del pedido → el importe es el del pedido, como siempre.
+    // Facturación parcial (líneas añadidas tras haber facturado) → sólo lo
+    // pendiente, sumado desde las propias líneas que se van a emitir.
+    const grouped = aggregateOrderLines(orders);
+    const totalGross = esFacturaCompleta
+        ? orders.reduce((sum, o) => sum + Number(o.total || 0), 0)
+        : +grouped.reduce((sum, g) => sum + Number(g.grossAmount), 0).toFixed(2);
     const totalNet = +(totalGross / 1.21).toFixed(2);
     const totalTax = +(totalGross - totalNet).toFixed(2);
 
@@ -422,7 +439,6 @@ export async function crearFactura(prisma, {orderIds, type, invoiceData}) {
                 }
 
                 // Crear invoiceLines agrupadas por producto (una línea por producto con cantidades y totales sumados)
-                const grouped = aggregateOrderLines(orders);
                 for (const line of grouped) {
                     await tx.invoiceLines.create({
                         data: {
@@ -437,6 +453,16 @@ export async function crearFactura(prisma, {orderIds, type, invoiceData}) {
                             taxAmount: line.taxAmount,
                             grossAmount: line.grossAmount,
                         },
+                    });
+                }
+
+                // Marcar como facturadas las líneas que cubre esta factura, para
+                // que una facturación posterior sólo vea lo que se añada después.
+                const lineIds = orders.flatMap((o) => o.lines.map((l) => l.id));
+                if (lineIds.length) {
+                    await tx.orderLine.updateMany({
+                        where: {id: {in: lineIds}},
+                        data: {invoicedInId: inv.id},
                     });
                 }
 
@@ -550,7 +576,7 @@ export async function crearFactura(prisma, {orderIds, type, invoiceData}) {
 }
 
 // Mantén tu convertBigIntToString tal cual
-function convertBigIntToString(obj) {
+export function convertBigIntToString(obj) {
     if (obj === null || obj === undefined) return obj;
     if (typeof obj === 'bigint') return obj.toString();
     if (obj instanceof Date) return obj.toISOString();
@@ -709,16 +735,140 @@ function buildInvoiceHtml({invoice, cliente}) {
 }
 
 // Genera el siguiente número (usa el año pasado como arg)
-export async function nextInvoiceNum(prisma, year = new Date().getFullYear()) {
+// Serie propia para las rectificativas, para que no se intercalen en la
+// numeración de facturas. Pendiente de confirmar con la gestoría: si deben ir
+// correlativas con las facturas, basta con poner 'FAC' aquí.
+export const RECTIFYING_SERIES = 'REC';
+
+export async function nextInvoiceNum(prisma, year = new Date().getFullYear(), prefix = 'FAC') {
     const lastInvoice = await prisma.invoices.findFirst({
-        where: {number: {startsWith: `FAC/${year}/`}}, orderBy: {id: 'desc'}, select: {number: true},
+        where: {number: {startsWith: `${prefix}/${year}/`}}, orderBy: {id: 'desc'}, select: {number: true},
     });
     let nextNumber = 1;
     if (lastInvoice?.number) {
         const match = lastInvoice.number.match(/(\d{4})$/);
         if (match) nextNumber = parseInt(match[1], 10) + 1;
     }
-    return `FAC/${year}/${String(nextNumber).padStart(4, '0')}`;
+    return `${prefix}/${year}/${String(nextNumber).padStart(4, '0')}`;
+}
+
+// ─── Factura rectificativa ───────────────────────────────────────────────────
+// Emite una rectificativa sobre una factura ya emitida. Una factura no se
+// modifica ni se borra nunca: se corrige con este documento, que la referencia
+// mediante `rectifiesInvoiceId` y lleva los importes en negativo (rectificación
+// por diferencias).
+//
+//   invoiceId → factura a rectificar
+//   reason    → motivo, obligatorio; se guarda en notes
+//   lineIds   → líneas concretas a rectificar; si se omite, la factura entera
+//
+// Que una factura esté rectificada no se guarda en ninguna columna: se deduce
+// de que exista otra con `rectifiesInvoiceId` apuntándole.
+export async function crearRectificativa(prisma, {invoiceId, reason, lineIds}) {
+    if (!invoiceId) throw httpError(400, 'Debes indicar la factura a rectificar.');
+    if (!reason || !String(reason).trim()) {
+        throw httpError(400, 'Debes indicar el motivo de la rectificación.');
+    }
+
+    const original = await prisma.invoices.findUnique({
+        where: {id: Number(invoiceId)},
+        include: {invoiceLines: true},
+    });
+    if (!original) throw httpError(404, 'Factura original no encontrada.');
+    if (original.isRectifying) {
+        throw httpError(400, 'No se puede rectificar una factura rectificativa.');
+    }
+
+    // Líneas a rectificar: las indicadas, o todas si no se concreta.
+    let lines = original.invoiceLines;
+    if (Array.isArray(lineIds) && lineIds.length) {
+        const wanted = lineIds.map(Number);
+        lines = lines.filter((l) => wanted.includes(Number(l.id)));
+        if (lines.length !== wanted.length) {
+            throw httpError(400, 'Alguna de las líneas no pertenece a esta factura.');
+        }
+    }
+    if (!lines.length) throw httpError(400, 'La factura no tiene líneas que rectificar.');
+
+    const neg = (v) => -Math.abs(Number(v));
+    const sumAbs = (campo) => +lines.reduce((s, l) => s + Math.abs(Number(l[campo])), 0).toFixed(2);
+    const totalNet = sumAbs('netAmount');
+    const totalTax = sumAbs('taxAmount');
+    const totalGross = sumAbs('grossAmount');
+
+    // Con rectificativas parciales puede haber varias sobre la misma factura,
+    // pero entre todas no pueden superar lo que se facturó.
+    const previas = await prisma.invoices.aggregate({
+        where: {rectifiesInvoiceId: original.id},
+        _sum: {totalGross: true},
+    });
+    const yaRectificado = Math.abs(Number(previas._sum.totalGross || 0));
+    const facturado = Math.abs(Number(original.totalGross));
+    if (yaRectificado + totalGross > facturado + 0.005) {
+        throw httpError(400,
+            `Se rectificarían ${(yaRectificado + totalGross).toFixed(2)} € de una factura de ` +
+            `${facturado.toFixed(2)} € (ya rectificados: ${yaRectificado.toFixed(2)} €).`);
+    }
+
+    const year = new Date().getFullYear();
+    const rectificativa = await prisma.$transaction(async (tx) => {
+        const inv = await tx.invoices.create({
+            data: {
+                number: await nextInvoiceNum(tx, year, RECTIFYING_SERIES),
+                invoiceYear: year,
+                issuedAt: new Date(),
+                // La operación es la de la factura original, no la de hoy.
+                operationDate: original.operationDate ?? original.issuedAt,
+                currency: original.currency || 'EUR',
+                sellerName: original.sellerName,
+                sellerTaxId: original.sellerTaxId,
+                sellerAddress: original.sellerAddress,
+                clientId: original.clientId,
+                type: original.type,               // hereda 's' o 'n'
+                isRectifying: true,
+                rectifiesInvoiceId: original.id,
+                totalNet: neg(totalNet),
+                totalTax: neg(totalTax),
+                totalGross: neg(totalGross),
+                docStatus: 'draft',
+                // Nace pendiente: se marcará pagada cuando se devuelva el dinero.
+                paid: false,
+                paymentStatus: 'unpaid',
+                notes: String(reason).trim(),
+            },
+        });
+
+        for (const [i, l] of lines.entries()) {
+            await tx.invoiceLines.create({
+                data: {
+                    invoiceId: inv.id,
+                    position: i + 1,
+                    description: l.description,
+                    quantity: neg(l.quantity),
+                    unitPrice: l.unitPrice,        // el precio unitario no cambia de signo
+                    discountPct: l.discountPct,
+                    taxRatePct: l.taxRatePct,
+                    netAmount: neg(l.netAmount),
+                    taxAmount: neg(l.taxAmount),
+                    grossAmount: neg(l.grossAmount),
+                },
+            });
+        }
+
+        // La rectificativa se vincula al mismo pedido que la original, ahora que
+        // un pedido puede tener varias facturas (sql/009).
+        const pedidos = await tx.invoiceTickets.findMany({where: {invoiceId: original.id}});
+        for (const t of pedidos) {
+            await tx.invoiceTickets.create({data: {invoiceId: inv.id, ticketId: t.ticketId}});
+        }
+
+        return inv;
+    });
+
+    return prisma.invoices.findUnique({
+        where: {id: rectificativa.id},
+        include: {invoiceLines: true},
+    });
 }
 
 export default async function (fastify) {
@@ -737,37 +887,28 @@ export default async function (fastify) {
     });
 
     // Crear factura rectificativa
+    // ─── POST /api/invoices/rectificativa ────────────────────────────────────
+    // Emite una rectificativa sobre una factura ya emitida. Una factura no se
+    // modifica ni se borra nunca: se corrige con este documento, que la
+    // referencia mediante `rectifiesInvoiceId` y lleva los importes en negativo
+    // (rectificación por diferencias).
+    //
+    // Body: { invoiceId, reason, lineIds? }
+    //   lineIds → líneas concretas a rectificar. Si se omite, se rectifica la
+    //             factura entera.
+    //
+    // Que una factura esté rectificada no se guarda en ninguna columna: se
+    // deduce de que exista otra con `rectifiesInvoiceId` apuntándole.
     fastify.post('/rectificativa', async (req, reply) => {
         try {
-            const {originalInvoiceId, rectificationData} = req.body;
-            if (!originalInvoiceId) throw httpError(400, 'Debes indicar la factura original.');
-
-            const original = await prisma.invoices.findUnique({
-                where: {id: Number(originalInvoiceId)},
-            });
-            if (!original) throw httpError(404, 'Factura original no encontrada.');
-            if (original.type === 'rectificativa') {
-                throw httpError(400, 'No se puede rectificar una factura rectificativa.');
-            }
-
-            const rectificativa = await prisma.invoices.create({
-                data: {
-                    clientId: original.clientId,
-                    type: 'rectificativa',
-                    issuedAt: new Date(),
-                    operationDate: new Date(),
-                    currency: original.currency || 'EUR',
-                    originalInvoiceId: original.id, ...rectificationData,
-                },
-            });
-
-            await prisma.invoices.update({where: {id: original.id}, data: {rectified: true}});
-            return reply.send(convertBigIntToString(rectificativa));
+            const rect = await crearRectificativa(prisma, req.body || {});
+            return reply.send(convertBigIntToString(rect));
         } catch (e) {
             const code = e.statusCode || 500;
             return reply.code(code).send({error: e.message || 'Error creando la factura rectificativa.'});
         }
     });
+
 
     // Facturas pendientes de cobro (para POS / trabajadores)
     // GET /api/invoices/report?from=&to=
@@ -788,6 +929,9 @@ export default async function (fastify) {
                 orderBy: {issuedAt: 'asc'},
                 include: {
                     User: {select: {id: true, firstName: true, lastName: true, denominacionsocial: true, email: true}},
+                    // Si es rectificativa, la factura que corrige: la gestoría
+                    // necesita la referencia, no sólo el importe en negativo.
+                    invoices: {select: {id: true, number: true}},
                 },
             });
 

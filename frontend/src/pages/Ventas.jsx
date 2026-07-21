@@ -292,6 +292,8 @@ export default function Ventas({token}) {
         const columns = [
             {key: 'num', label: 'Nº'},
             {key: 'factura', label: 'Nº Factura'},
+            {key: 'tipo', label: 'Tipo'},
+            {key: 'rectifica', label: 'Rectifica a'},
             {key: 'fecha', label: 'Fecha emisión'},
             {key: 'cliente', label: 'Cliente'},
             {key: 'base', label: 'Base imponible'},
@@ -301,6 +303,10 @@ export default function Ventas({token}) {
         const rows = invoicesList.map((f, i) => ({
             num: i + 1,
             factura: f.number || '',
+            // La gestoría necesita distinguir las rectificativas y a qué factura
+            // corrigen; sus importes van en negativo y restan del total.
+            tipo: f.isRectifying ? 'Rectificativa' : (f.type === 'n' ? 'Normal' : 'Simplificada'),
+            rectifica: f.isRectifying ? (f.invoices?.number || '') : '',
             fecha: f.issuedAt ? new Date(f.issuedAt).toLocaleDateString('es-ES', {dateStyle: 'medium'}) : '',
             cliente: nombreCliente(f.User),
             base: Number(f.totalNet) || 0,
@@ -310,7 +316,7 @@ export default function Ventas({token}) {
         const aoa = [columns.map(c => c.label)];
         rows.forEach(r => aoa.push(columns.map(c => (r[c.key] === null || r[c.key] === undefined) ? '' : r[c.key])));
         aoa.push([]);
-        aoa.push(['', '', '', 'Total', totalFacturasNet, totalFacturasTax, totalFacturasGross]);
+        aoa.push(['', '', '', '', '', 'Total', totalFacturasNet, totalFacturasTax, totalFacturasGross]);
 
         const ws = XLSX.utils.aoa_to_sheet(aoa);
         const wb = XLSX.utils.book_new();
@@ -780,6 +786,7 @@ export default function Ventas({token}) {
                                 <tr>
                                     <th>Nº</th>
                                     <th>Nº Factura</th>
+                                    <th>Tipo</th>
                                     <th>Fecha emisión</th>
                                     <th>Cliente</th>
                                     <th>Base imponible</th>
@@ -789,14 +796,26 @@ export default function Ventas({token}) {
                                 </thead>
                                 <tbody>
                                 {invoicesList.map((f, i) => (
-                                    <tr key={f.id}>
+                                    // Las rectificativas van en negativo: se marcan para que no se
+                                    // confundan con una factura normal al revisar el listado.
+                                    <tr key={f.id} style={f.isRectifying ? {background: '#fff5f5'} : undefined}>
                                         <td>{i + 1}</td>
                                         <td>{f.number || '—'}</td>
+                                        <td>
+                                            {f.isRectifying ? (
+                                                <span className="uk-badge" style={{background: '#d32f2f'}}
+                                                      title={f.invoices?.number ? `Rectifica a ${f.invoices.number}` : 'Rectificativa'}>
+                                                    Rect. {f.invoices?.number || ''}
+                                                </span>
+                                            ) : (f.type === 'n' ? 'Normal' : 'Simplificada')}
+                                        </td>
                                         <td>{f.issuedAt ? new Date(f.issuedAt).toLocaleDateString('es-ES', {dateStyle: 'medium'}) : ''}</td>
                                         <td>{nombreCliente(f.User) || '—'}</td>
                                         <td>{formatEUR(Number(f.totalNet) || 0)}</td>
                                         <td>{formatEUR(Number(f.totalTax) || 0)}</td>
-                                        <td>{formatEUR(Number(f.totalGross) || 0)}</td>
+                                        <td style={f.isRectifying ? {color: '#d32f2f', fontWeight: 600} : undefined}>
+                                            {formatEUR(Number(f.totalGross) || 0)}
+                                        </td>
                                     </tr>
                                 ))}
                                 </tbody>

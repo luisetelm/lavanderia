@@ -130,15 +130,21 @@ export default function VentaRow({
         : '-';
 
     const handleCreateSimplifiedInvoice = async (e) => {
-        e?.preventDefault();
-        setRowLoading(true);
-        if (isZeroAmount) {
-            setRowLoading(false);
-            alert('No se puede facturar: importe 0 €');
+        if (e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        if (rowLoading || isZeroAmount) {
+            if (isZeroAmount) {
+                alert('No se puede facturar: importe 0 €');
+            }
             return;
         }
-        try {
 
+        setRowLoading(true);
+
+        try {
             const invoiceData = venta.paymentMethod === 'card' ? {
                 operationDate: venta.createdAt,
                 issuedAt: venta.createdAt
@@ -153,9 +159,13 @@ export default function VentaRow({
             if (resp?.emailError) {
                 console.warn('Factura creada pero fallo envío de email:', resp.emailError);
                 alert('Factura creada, pero no se pudo enviar el email: ' + resp.emailError);
+            } else {
+                alert('Factura simplificada creada exitosamente');
             }
+
+            // Actualizar solo esta fila sin recargar toda la página
             await onRefresh(venta.id);
-            await refetchOrderDetail(); // <-- re-fetch para renderizar la fila actualizada
+            await refetchOrderDetail();
         } catch (err) {
             console.error('Error al generar factura simplificada', err);
             alert('No se pudo generar la factura simplificada: ' + (err.error || err.message || err));
@@ -165,24 +175,35 @@ export default function VentaRow({
     };
 
     const handleCreateNormalInvoice = async (e) => {
-        e?.preventDefault();
-        setRowLoading(true);
-        if (isZeroAmount) {
-            setRowLoading(false);
-            alert('No se puede facturar: importe 0 €');
+        if (e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        if (rowLoading || isZeroAmount) {
+            if (isZeroAmount) {
+                alert('No se puede facturar: importe 0 €');
+            }
             return;
         }
+
+        setRowLoading(true);
+
         try {
             const resp = await createInvoice(token, {
                 orderIds: [venta.id],
                 type: 'n'
             });
+
             if (resp?.emailError) {
                 console.warn('Factura creada pero fallo envío de email:', resp.emailError);
                 alert('Factura creada, pero no se pudo enviar el email: ' + resp.emailError);
+            } else {
+                alert('Factura normal creada exitosamente');
             }
+
             await onRefresh(venta.id);
-            await refetchOrderDetail(); // <-- re-fetch
+            await refetchOrderDetail();
         } catch (err) {
             console.error('Error al generar factura normal', err);
             alert('No se pudo generar la factura normal: ' + (err.error || err.message || err));
@@ -192,19 +213,30 @@ export default function VentaRow({
     };
 
     const handleConvertToNormal = async (e) => {
-        e?.preventDefault();
+        if (e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        if (rowLoading) return;
+
         setRowLoading(true);
+
         try {
             const resp = await createInvoice(token, {
                 orderIds: [venta.id],
                 type: 'n'
             });
+
             if (resp?.emailError) {
                 console.warn('Factura convertida pero fallo envío de email:', resp.emailError);
                 alert('Factura convertida, pero no se pudo enviar el email: ' + resp.emailError);
+            } else {
+                alert('Factura convertida a normal exitosamente');
             }
+
             await onRefresh(venta.id);
-            await refetchOrderDetail(); // <-- re-fetch
+            await refetchOrderDetail();
         } catch (err) {
             console.error('Error al convertir a factura normal', err);
             alert('No se pudo convertir la factura a normal: ' + (err.error || err.message || err));

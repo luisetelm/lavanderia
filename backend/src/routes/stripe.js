@@ -1,4 +1,5 @@
 import { createCheckoutSession, constructWebhookEvent } from '../services/stripe.js';
+import { facturaDe } from '../utils/facturaDe.js';
 
 export default async function (fastify) {
     const prisma = fastify.prisma;
@@ -208,9 +209,10 @@ export async function stripeWebhookRoutes(fastify) {
                         });
 
                         // Si tiene factura vinculada, marcarla como pagada
-                        if (order.invoiceTickets?.invoices) {
+                        const facturaVigente = facturaDe(order);
+                        if (facturaVigente) {
                             await prisma.invoices.update({
-                                where: { id: order.invoiceTickets.invoices.id },
+                                where: { id: facturaVigente.id },
                                 data: { paid: true, paymentStatus: 'paid' }
                             });
                         }

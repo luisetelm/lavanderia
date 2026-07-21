@@ -15,6 +15,7 @@ import {
     updateStepStatus,
     recalculateTracking
 } from '../api.js';
+import AdjustOrderModal from './AdjustOrderModal.jsx';
 import UIkit from 'uikit';
 import {printSaleTicket, printWashLabels, printInternalLabel, printFinishedLabelForOrder, printGarmentFinishedLabel} from '../utils/printUtils.js';
 import {getPrintSettings} from '../utils/printSettings.js';
@@ -73,6 +74,15 @@ export default function PaymentSection({token, orderId, onPaid, initialOrder = n
     // Modal de confirmación (listo/recogido)
     const [showModal, setShowModal] = useState(false);
     const [modalAction, setModalAction] = useState(null);
+
+    // Ajuste de un pedido ya cobrado (añadir/anular líneas). Mueve dinero y
+    // emite documentos fiscales, así que se limita a admin y caja.
+    const [showAdjustModal, setShowAdjustModal] = useState(false);
+    const rolActual = (() => {
+        try { return JSON.parse(localStorage.getItem('user') || 'null')?.role || ''; }
+        catch { return ''; }
+    })();
+    const puedeAjustar = ['admin', 'cashier'].includes(rolActual);
 
     // Notas internas controladas
     const [internalNotes, setInternalNotes] = useState('');
@@ -1110,6 +1120,42 @@ export default function PaymentSection({token, orderId, onPaid, initialOrder = n
                         </button>
                     )}
 
+
+                    {/* Ajustar un pedido ya cobrado: añadir lo que falte o anular lo
+                        cobrado por error. Emite rectificativa y/o factura nueva. */}
+                    {order.paid && order.status !== 'cancelled' && puedeAjustar && (
+                        <button
+                            className="uk-button uk-button-default uk-width-1-1@l"
+                            onClick={() => setShowAdjustModal(true)}
+                            disabled={isProcessing}
+                        >
+                            Ajustar pedido
+                        </button>
+                    )}
+
+                    {showAdjustModal && (
+                        <AdjustOrderModal
+                            token={token}
+                            order={order}
+                            onClose={() => setShowAdjustModal(false)}
+                            onDone={(res) => {
+                                setShowAdjustModal(false);
+                                const docs = [
+                                    res?.documentos?.rectificativa?.number,
+                                    res?.documentos?.factura?.number,
+                                ].filter(Boolean);
+                                const dinero = res?.neto > 0
+                                    ? `Cobrar ${formatEUR(res.neto)}`
+                                    : (res?.neto < 0 ? `Devolver ${formatEUR(Math.abs(res.neto))}` : 'Sin cambio de importe');
+                                UIkit.notification({
+                                    message: `Ajuste aplicado. ${dinero}.` + (docs.length ? ` Documentos: ${docs.join(', ')}` : ''),
+                                    status: 'success',
+                                    timeout: 6000,
+                                });
+                                loadOrder();
+                            }}
+                        />
+                    )}
 
                     {showModal && (
                         <StatusChangeModal

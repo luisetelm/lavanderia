@@ -1,5 +1,3 @@
-import {worker} from "globals";
-
 const API_BASE = import.meta.env.VITE_API_BASE || '/api';
 import UIkit from 'uikit';
 
@@ -219,6 +217,22 @@ export function fetchOrder(token, orderId) {
 // Usado por la página de búsqueda al escanear el QR de los tickets internos.
 export function findOrderByNum(token, num) {
     return request(`/orders/find?num=${encodeURIComponent(num)}`, token);
+}
+
+// Ajusta un pedido ya cobrado: añade productos/servicios y/o anula líneas
+// cobradas por error. Emite los documentos fiscales que correspondan y liquida
+// la diferencia. Ver docs/ajustes-pedidos-facturados.md.
+export function adjustOrder(token, orderId, {add = [], void: toVoid = [], reason, settlementMethod = null}) {
+    return request(`/orders/${orderId}/adjustments`, token, {
+        method: 'POST',
+        body: JSON.stringify({add, void: toVoid, reason, settlementMethod}),
+    });
+}
+
+// Resuelve los pedidos activos de un cliente a partir del magic link impreso
+// en el QR de su ticket. Devuelve { client, orders }.
+export function findOrdersByPortalToken(token, magicToken) {
+    return request(`/orders/find-by-portal-token?token=${encodeURIComponent(magicToken)}`, token);
 }
 
 // Obtiene el "magic link" del portal del cliente para un pedido (QR del ticket de cliente).

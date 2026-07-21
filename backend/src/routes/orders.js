@@ -1,8 +1,10 @@
 // backend/src/routes/orders.js
 //import nextOrderNum from '../utils/generateOrderNum.js';
 import {isValidSpanishPhone} from '../utils/validatePhone.js';
-import {crearFactura} from "./invoices.js";
+import {crearFactura, crearRectificativa, convertBigIntToString} from "./invoices.js";
 import { sendCollectedNotification, sendReadyNotification } from '../services/notify.js';
+import { facturaDe } from '../utils/facturaDe.js';
+import { calcularLinea } from '../utils/precioLinea.js';
 import jwt from 'jsonwebtoken';
 import fs from 'fs';
 import path from 'path';
@@ -514,9 +516,10 @@ export default async function (fastify, opts) {
                 }
 
                 // Si el pedido ya tenía factura normal vinculada, marcarla como pagada
-                if (order.invoiceTickets?.invoices) {
+                const facturaVigente = facturaDe(order);
+                if (facturaVigente) {
                     await tx.invoices.update({
-                        where: {id: order.invoiceTickets.invoices.id},
+                        where: {id: facturaVigente.id},
                         data: {paid: true, paymentStatus: 'paid'}
                     });
                 }
@@ -638,7 +641,7 @@ export default async function (fastify, opts) {
             ]);
 
             orders.forEach(order => {
-                const inv = order?.invoiceTickets?.invoices;
+                const inv = facturaDe(order);
                 if (inv) {
                     order.factura = inv;
                 }
@@ -714,6 +717,254 @@ export default async function (fastify, opts) {
         }
     });
 
+    // ─── POST /api/orders/:id/adjustments ────────────────────────────────────
+    // Ajusta un pedido ya cobrado: añade productos o servicios y/o anula líneas
+    // cobradas por error. Ver docs/ajustes-pedidos-facturados.md.
+    //
+    // Body: {
+    //   add:    [{ productId, variantId?, quantity }],
+    //   void:   [{ lineId, reason? }],
+    //   reason: "motivo del ajuste",          // obligatorio
+    //   settlementMethod: "cash" | "card_pos" | "transfer" | null
+    // }
+    //
+    // Añadir y quitar no son simétricos:
+    //   - lo añadido es una operación nueva  → factura nueva por esas líneas
+    //   - lo anulado es corregir un error    → rectificativa de su factura
+    // Un mismo ajuste puede emitir los dos documentos. El dinero, en cambio, se
+    // liquida una sola vez por el neto.
+    fastify.post('/:id/adjustments', async (req, reply) => {
+        const prisma = fastify.prisma;
+        const orderId = Number(req.params.id);
+        if (isNaN(orderId)) return reply.status(400).send({error: 'ID de pedido inválido'});
+
+        const {add = [], void: aAnular = [], reason, settlementMethod = null} = req.body || {};
+
+        if (!reason || !String(reason).trim()) {
+            return reply.status(400).send({error: 'Debes indicar el motivo del ajuste.'});
+        }
+        if (!Array.isArray(add) || !Array.isArray(aAnular) || (!add.length && !aAnular.length)) {
+            return reply.status(400).send({error: 'No hay nada que ajustar.'});
+        }
+
+        try {
+            const order = await prisma.order.findUnique({
+                where: {id: orderId},
+                include: {lines: true, client: true},
+            });
+            if (!order) return reply.status(404).send({error: 'Pedido no encontrado'});
+            if (order.status === 'cancelled') {
+                return reply.status(400).send({error: 'No se puede ajustar un pedido cancelado.'});
+            }
+
+            // Las líneas a anular deben ser de este pedido y no estarlo ya.
+            const porId = new Map(order.lines.map((l) => [l.id, l]));
+            for (const v of aAnular) {
+                const linea = porId.get(Number(v.lineId));
+                if (!linea) {
+                    return reply.status(400).send({error: `La línea ${v.lineId} no es de este pedido.`});
+                }
+                if (linea.voidedAt) {
+                    return reply.status(400).send({error: `La línea ${v.lineId} ya estaba anulada.`});
+                }
+            }
+
+            // Precios calculados con la misma regla que el TPV.
+            const nuevas = [];
+            for (const item of add) {
+                nuevas.push(await calcularLinea(prisma, item, order.client));
+            }
+
+            const importeAnadido = +nuevas.reduce((s, l) => s + l.totalPrice, 0).toFixed(2);
+            const lineasAnuladas = aAnular.map((v) => porId.get(Number(v.lineId)));
+            const importeAnulado = +lineasAnuladas.reduce((s, l) => s + Number(l.totalPrice || 0), 0).toFixed(2);
+            const neto = +(importeAnadido - importeAnulado).toFixed(2);
+
+            const nuevoTotal = +(Number(order.total || 0) + neto).toFixed(2);
+            if (nuevoTotal < 0) {
+                return reply.status(400).send({error: 'El ajuste dejaría el pedido en importe negativo.'});
+            }
+
+            // ── 1. Aplicar los cambios sobre las líneas del pedido ──
+            await prisma.$transaction(async (tx) => {
+                for (const l of nuevas) {
+                    await tx.orderLine.create({
+                        data: {
+                            orderId,
+                            productId: l.productId,
+                            variantId: l.variantId,
+                            quantity: l.quantity,
+                            unitPrice: l.unitPrice,
+                            discount: l.discount,
+                            totalPrice: l.totalPrice,
+                        },
+                    });
+                }
+                for (const v of aAnular) {
+                    await tx.orderLine.update({
+                        where: {id: Number(v.lineId)},
+                        data: {
+                            voidedAt: new Date(),
+                            voidedBy: req.user?.userId || null,
+                            voidReason: String(v.reason || reason).trim(),
+                        },
+                    });
+                }
+                await tx.order.update({
+                    where: {id: orderId},
+                    data: {total: nuevoTotal, updatedAt: new Date()},
+                });
+            });
+
+            const documentos = {rectificativa: null, factura: null};
+
+            // ── 2. Lo anulado que ya estaba facturado → rectificativa ──
+            // Se agrupan por factura, porque las líneas anuladas pueden venir de
+            // facturas distintas si el pedido ya se había ajustado antes.
+            const porFactura = new Map();
+            for (const l of lineasAnuladas) {
+                if (l.invoicedInId == null) continue;
+                const k = String(l.invoicedInId);
+                porFactura.set(k, (porFactura.get(k) || 0) + Number(l.totalPrice || 0));
+            }
+            for (const [invoiceId] of porFactura) {
+                documentos.rectificativa = await crearRectificativa(prisma, {
+                    invoiceId: Number(invoiceId),
+                    reason: `Ajuste pedido ${order.orderNum}: ${String(reason).trim()}`,
+                });
+            }
+
+            // ── 3. Lo añadido → factura nueva, sólo si el pedido ya estaba facturado ──
+            // Si aún no lo estaba, las líneas quedan pendientes y entrarán en su
+            // factura cuando se emita, sin hacer nada especial aquí.
+            const yaFacturado = await prisma.invoiceTickets.findFirst({
+                where: {ticketId: orderId},
+                include: {invoices: true},
+            });
+            if (nuevas.length && yaFacturado) {
+                documentos.factura = await crearFactura(prisma, {
+                    orderIds: [orderId],
+                    type: yaFacturado.invoices.type || 's',
+                    invoiceData: {notes: `Ajuste pedido ${order.orderNum}: ${String(reason).trim()}`},
+                });
+            }
+
+            // ── 4. Liquidar el dinero, una sola vez y por el neto ──
+            // Si queda diferencia a favor de la lavandería y no se cobra en el
+            // momento (el cliente ya no está delante), el pedido vuelve a estar
+            // pendiente de cobro. Sin esto el suplemento se perdería de vista:
+            // el pedido seguiría marcado como pagado debiendo dinero.
+            if (neto > 0 && !settlementMethod) {
+                await prisma.order.update({where: {id: orderId}, data: {paid: false}});
+                if (documentos.factura) {
+                    // crearFactura() devuelve los BigInt ya convertidos a string.
+                    await prisma.invoices.update({
+                        where: {id: BigInt(documentos.factura.id)},
+                        data: {paid: false, paymentStatus: 'unpaid'},
+                    });
+                    documentos.factura.paid = false;
+                    documentos.factura.paymentStatus = 'unpaid';
+                }
+            }
+
+            let liquidacion = null;
+            if (neto !== 0 && settlementMethod) {
+                liquidacion = await prisma.$transaction(async (tx) => {
+                    const pago = await tx.payment.create({
+                        data: {
+                            amount: neto,                    // negativo = devolución
+                            method: settlementMethod,
+                            status: 'completed',
+                            orderId,
+                            clientId: order.clientId,
+                            recordedBy: req.user?.userId || null,
+                            note: `Ajuste pedido ${order.orderNum}: ${String(reason).trim()}`,
+                        },
+                    });
+
+                    if (settlementMethod === 'cash') {
+                        await tx.cashMovement.create({
+                            data: {
+                                type: neto > 0 ? 'sale_cash_in' : 'refund_cash_out',
+                                amount: Math.abs(neto),
+                                note: `Ajuste pedido ${order.orderNum}`,
+                                orderid: orderId,
+                                userid: req.user?.userId,
+                            },
+                        });
+                    }
+                    return pago;
+                });
+            }
+
+            const actualizado = await prisma.order.findUnique({
+                where: {id: orderId},
+                include: {lines: {include: {product: true}}, client: true},
+            });
+
+            return reply.send({
+                order: convertBigIntToString(actualizado),
+                importeAnadido,
+                importeAnulado,
+                neto,
+                liquidacion: liquidacion ? convertBigIntToString(liquidacion) : null,
+                documentos: convertBigIntToString(documentos),
+            });
+        } catch (err) {
+            req.log.error(err);
+            const code = err.statusCode || 500;
+            return reply.status(code).send({error: err.message || 'Error ajustando el pedido'});
+        }
+    });
+
+    // ─── GET /api/orders/find-by-portal-token?token=eyJ... ───────────────────
+    // Resuelve los pedidos activos de un cliente a partir del "magic link" que
+    // lleva impreso el QR del ticket de cliente. Ese QR apunta al portal
+    // (/portal/verify/<jwt>) e identifica al CLIENTE, no a un pedido, así que
+    // aquí traducimos cliente → pedidos que siguen en el circuito.
+    // Cuelga de /api/orders, luego exige sesión de empleado (preHandler de
+    // server.js); el JWT del ticket sólo se usa para identificar al cliente.
+    fastify.get('/find-by-portal-token', async (req, reply) => {
+        const prisma = fastify.prisma;
+        const raw = (req.query?.token || '').toString().trim();
+        if (!raw) return reply.status(400).send({error: 'Parámetro "token" obligatorio'});
+
+        let payload;
+        try {
+            // Se ignora la caducidad a propósito: un ticket de hace meses puede
+            // seguir teniendo pedidos sin recoger, y quien consulta ya es un
+            // empleado autenticado. La firma sí se verifica.
+            payload = jwt.verify(raw, process.env.JWT_SECRET, {ignoreExpiration: true});
+        } catch {
+            return reply.status(400).send({error: 'El código QR no es válido'});
+        }
+        if (payload.role !== 'portal_client' || !payload.id) {
+            return reply.status(400).send({error: 'El código QR no corresponde a un cliente'});
+        }
+
+        try {
+            const client = await prisma.user.findUnique({
+                where: {id: Number(payload.id)},
+                select: {id: true, firstName: true, lastName: true, phone: true},
+            });
+            if (!client) return reply.status(404).send({error: 'Cliente no encontrado'});
+
+            // Activos = ni recogidos ni anulados.
+            const orders = await prisma.order.findMany({
+                where: {clientId: client.id, status: {in: ['pending', 'ready']}},
+                select: {
+                    id: true, orderNum: true, status: true,
+                    total: true, fechaLimite: true, createdAt: true,
+                },
+                orderBy: {createdAt: 'desc'},
+            });
+            return reply.send({client, orders});
+        } catch (err) {
+            req.log.error(err);
+            return reply.status(500).send({error: 'Error buscando los pedidos del cliente'});
+        }
+    });
+
     // ─── GET /api/orders/:id/portal-link ─────────────────────────────────────
     // Devuelve un "magic link" de acceso al portal del cliente del pedido, para
     // imprimirlo como QR en el ticket de cliente. Si el pedido no tiene cliente
@@ -771,6 +1022,11 @@ export default async function (fastify, opts) {
                             annotations: true,
                             discount: true,
                             color: true,
+                            // Estado de facturación y anulación: el TPV los
+                            // necesita para el modal de ajuste (sql/009).
+                            invoicedInId: true,
+                            voidedAt: true,
+                            voidReason: true,
                             product: {
                                 select: {id: true, name: true, basePrice: true, serviceOptions: true, labelCount: true, printWashLabel: true,
                                     itinerary: {
@@ -859,6 +1115,10 @@ export default async function (fastify, opts) {
                     color: l.color || null,
                     annotations: l.annotations ? (typeof l.annotations === 'string' ? JSON.parse(l.annotations) : l.annotations) : [],
                     productName: l.product?.name || '',
+                    // Estado de facturación y anulación, para el modal de ajuste.
+                    invoicedInId: l.invoicedInId != null ? String(l.invoicedInId) : null,
+                    voidedAt: l.voidedAt || null,
+                    voidReason: l.voidReason || null,
                     product: {
                         id: l.product?.id, name: l.product?.name, basePrice: l.product?.basePrice,
                         // Necesarios para la impresión de etiquetas de lavado en el frontend:
