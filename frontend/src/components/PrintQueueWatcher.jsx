@@ -1,7 +1,7 @@
 import {useEffect, useRef} from 'react';
 import {reclamarImpresiones, marcarImpresionHecha, marcarImpresionFallida} from '../api.js';
 import {getPrintSettings} from '../utils/printSettings.js';
-import {printFinishedLabelForOrder, printGarmentLabel} from '../utils/printUtils.js';
+import {printFinishedLabelForOrder, printGarmentLabel, puedeImprimirAqui} from '../utils/printUtils.js';
 
 // Vacía la cola de impresión.
 //
@@ -23,9 +23,12 @@ export default function PrintQueueWatcher({token}) {
 
         const vaciarCola = async () => {
             const ajustes = getPrintSettings();
-            if (!ajustes.tieneImpresora) return;      // este dispositivo no imprime
             if (ocupado.current) return;              // la vuelta anterior sigue en marcha
             if (document.hidden) return;              // pestaña en segundo plano
+
+            // No basta con el ajuste: hay que tener QZ Tray de verdad. Si no,
+            // este puesto reclamaría encargos que luego no podría imprimir.
+            if (!await puedeImprimirAqui()) return;
 
             ocupado.current = true;
             try {

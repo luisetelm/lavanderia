@@ -21,20 +21,39 @@ imprime desde él, y no hay dos formas distintas de componer una etiqueta.
 
 ## Configuración
 
-En **Impresión → Este dispositivo**, en cada equipo:
+**No hace falta configurar nada para que funcione.** Antes de imprimir se
+comprueba si hay QZ Tray escuchando en el equipo; si no lo hay —el caso de la
+tablet—, la etiqueta va a la cola. El resultado se recuerda un minuto para no
+penalizar cada impresión.
+
+Esto es deliberado: el ajuste vive en el `localStorage` del navegador, y si la
+tablet lo perdiera (datos borrados, dispositivo nuevo, modo incógnito) volvería
+al valor por defecto, intentaría imprimir contra un QZ inexistente y **la
+etiqueta se perdería sin llegar a la cola**. Detectándolo, el caso peor es que
+un encargo acabe en la cola de más, no que se pierda.
+
+El ajuste manual sigue existiendo, en **Impresión → Este dispositivo**, para
+forzar que un equipo con impresora no imprima (por ejemplo, dejar que todo salga
+por la del mostrador):
 
 | Dispositivo | «Tiene impresora conectada» | Nombre del puesto |
 |---|---|---|
 | Ordenador principal | ✅ activado | `Mostrador` |
-| Tablet del taller | ❌ desactivado | `Tablet taller` |
+| Tablet del taller | indiferente (se detecta) | `Tablet taller` |
 
 El nombre del puesto sólo sirve para saber quién imprimió cada cosa si algo falla.
 
-⚠️ Si se desactiva en **todos** los equipos, nadie vacía la cola y no se imprime
-nada. Al menos uno tiene que tenerlo activado.
+⚠️ Si se desactiva a mano en **todos** los equipos, nadie vacía la cola y no se
+imprime nada.
 
 Puede haber más de un puesto con impresora: el reparto usa `SKIP LOCKED`, de modo
 que cada encargo se lo lleva uno solo y nada se imprime por duplicado.
+
+### Quién puede acceder
+
+La pantalla de **Impresión** es visible para todos los roles, no sólo para
+administración: configura el dispositivo, no el negocio, y la tablet del taller
+la usan trabajadores.
 
 ## Cómo funciona
 
@@ -68,7 +87,9 @@ También desde la aplicación: `GET /api/print-jobs`.
 
 1. ¿El ordenador principal tiene la aplicación abierta y la sesión iniciada? El
    vigilante sólo corre con la aplicación abierta.
-2. ¿Tiene «Tiene impresora conectada» activado?
+2. ¿Está QZ Tray arrancado en ese equipo? Si no responde, el puesto no reclama
+   encargos (para no quedárselos sin poder imprimirlos) y la cola se queda quieta.
+   Tras arrancarlo puede tardar hasta un minuto en detectarlo.
 3. ¿Está activada la regla correspondiente («Al marcar como listo», «Al finalizar
    cada prenda»)? Si está desactivada en el puesto receptor, el encargo vuelve a
    la cola con ese error: la etiqueta no se pierde, pero no se imprime.

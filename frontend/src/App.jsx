@@ -145,7 +145,7 @@ export default function App() {
     const [adminMenuOpen, setAdminMenuOpen] = useState(false);
 
     // Mantener menú admin abierto si la ruta actual es de administración
-    const adminPaths = ['/ventas', '/estadisticas', '/resenas', '/caja', '/horario', '/itinerarios', '/recursos', '/impresion', '/accesos', '/campanas'];
+    const adminPaths = ['/ventas', '/estadisticas', '/resenas', '/caja', '/horario', '/itinerarios', '/recursos', '/accesos', '/campanas'];
     useEffect(() => {
         if (adminPaths.some(p => location.pathname.startsWith(p))) {
             setAdminMenuOpen(true);
@@ -311,6 +311,10 @@ export default function App() {
                         <li><NavLink to="/tareas"><span uk-icon="icon: list; ratio: 0.9"></span> Tareas</NavLink></li>
                         <li><NavLink to="/tracking"><span uk-icon="icon: bolt; ratio: 0.9"></span> Tracking</NavLink></li>
                         <li><NavLink to="/usuarios"><span uk-icon="icon: users; ratio: 0.9"></span> Usuarios</NavLink></li>
+                        {/* Impresión es configuración DEL DISPOSITIVO (qué imprime este
+                            equipo, y si manda a la cola). La tablet del taller la usan
+                            trabajadores, así que no puede ser sólo de administración. */}
+                        <li><NavLink to="/impresion"><span uk-icon="icon: print; ratio: 0.9"></span> Impresión</NavLink></li>
                         <li><NavLink to="/mensajes">
                             <span uk-icon="icon: comment; ratio: 0.9"></span> Mensajes
                             {unreadMsgCount > 0 && <span className="sidebar-badge">{unreadMsgCount}</span>}
@@ -340,7 +344,6 @@ export default function App() {
                                         <li><NavLink to="/horario"><span uk-icon="icon: calendar; ratio: 0.8"></span> Horario</NavLink></li>
                                         <li><NavLink to="/itinerarios"><span uk-icon="icon: settings; ratio: 0.8"></span> Itinerarios</NavLink></li>
                                         <li><NavLink to="/recursos"><span uk-icon="icon: cog; ratio: 0.8"></span> Recursos</NavLink></li>
-                                        <li><NavLink to="/impresion"><span uk-icon="icon: print; ratio: 0.8"></span> Impresión</NavLink></li>
                                         <li><NavLink to="/accesos"><span uk-icon="icon: sign-in; ratio: 0.8"></span> Accesos</NavLink></li>
                                     </ul>
                                 )}

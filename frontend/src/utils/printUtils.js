@@ -864,12 +864,43 @@ export async function printInternalLabel(order, options = {}) {
 // pedido que acaba de pasar a listo. Respeta el ajuste onReady. Carga el pedido
 // completo por su id y devuelve ese pedido (o null si no se imprimió), para que
 // quien lo llame pueda notificar al usuario.
+// ¿Puede imprimir este dispositivo?
+//
+// No basta con el ajuste: si la tablet pierde el localStorage (datos del
+// navegador borrados, dispositivo nuevo, modo incógnito) volvería al valor por
+// defecto y creería que tiene impresora. Entonces intentaría imprimir contra un
+// QZ Tray que no existe y la etiqueta se perdería sin llegar a la cola.
+//
+// Por eso se comprueba de verdad si hay QZ Tray escuchando. El resultado se
+// recuerda un minuto para no penalizar cada impresión.
+let impresoraDetectada = null;
+let impresoraComprobadaEn = 0;
+const CADUCIDAD_DETECCION_MS = 60_000;
+
+export async function puedeImprimirAqui() {
+    // Desactivado a mano: no se comprueba nada, va a la cola.
+    if (getPrintSettings().tieneImpresora === false) return false;
+
+    const ahora = Date.now();
+    if (impresoraDetectada !== null && (ahora - impresoraComprobadaEn) < CADUCIDAD_DETECCION_MS) {
+        return impresoraDetectada;
+    }
+    try {
+        await connectQZSecure(1, 400);   // un intento rápido, no los 8 habituales
+        impresoraDetectada = true;
+    } catch {
+        impresoraDetectada = false;
+    }
+    impresoraComprobadaEn = ahora;
+    return impresoraDetectada;
+}
+
 export async function printFinishedLabelForOrder(token, orderId) {
     if (!orderId || !getPrintSettings().onReady) return null;
 
     // Dispositivo sin impresora (la tablet del taller): no imprime, deja el
     // encargo para el puesto que sí la tiene. Ver sql/010 y PrintQueueWatcher.
-    if (!getPrintSettings().tieneImpresora) {
+    if (!await puedeImprimirAqui()) {
         try {
             const order = await fetchOrder(token, orderId);
             await encolarImpresion(token, { type: 'finished_label', orderId });
@@ -956,7 +987,7 @@ export async function printGarmentFinishedLabel(garment, token = null) {
     if (!getPrintSettings().onGarmentReady) return false;
 
     // Sin impresora en este dispositivo: a la cola (ver printFinishedLabelForOrder).
-    if (!getPrintSettings().tieneImpresora) {
+    if (!await puedeImprimirAqui()) {
         if (!token) {
             console.warn('No se puede encolar la etiqueta de prenda: falta el token');
             return false;
