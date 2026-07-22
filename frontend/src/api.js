@@ -4,7 +4,14 @@ import UIkit from 'uikit';
 
 async function request(path, token, opts = {}) {
     const headers = opts.headers || {};
-    headers['Content-Type'] = 'application/json';
+    // Sólo se anuncia JSON cuando de verdad se manda algo. Fastify rechaza una
+    // petición con Content-Type: application/json y cuerpo vacío ("Body cannot
+    // be empty when content-type is set to 'application/json'"), que era lo que
+    // hacía fallar siempre a las llamadas sin cuerpo: confirmar una impresión
+    // (y provocar que la etiqueta se reimprimiera) o borrar por id.
+    if (opts.body !== undefined && opts.body !== null) {
+        headers['Content-Type'] = 'application/json';
+    }
     if (token) headers['Authorization'] = `Bearer ${token}`;
     const res = await fetch(`${API_BASE}${path}`, {
         ...opts, headers,
