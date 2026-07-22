@@ -152,6 +152,14 @@ export default function TrackingWorkshop({ token }) {
         return () => document.removeEventListener('fullscreenchange', onChange);
     }, []);
 
+    /* A pantalla completa se oculta el menú lateral (ver .taller-inmersivo en
+       uikit-theme.less). Se limpia al salir de la página: si no, quien navegue
+       a otra sección se quedaría sin menú. */
+    useEffect(() => {
+        document.body.classList.toggle('taller-inmersivo', isFullscreen);
+        return () => document.body.classList.remove('taller-inmersivo');
+    }, [isFullscreen]);
+
     /* El navegador sólo concede la pantalla completa dentro de un gesto del
        usuario, así que NO se puede activar sola al abrir la página. Si quedó
        activada en esta tablet, se recupera en el primer toque sobre la pantalla. */
@@ -526,9 +534,18 @@ export default function TrackingWorkshop({ token }) {
                 </div>
             )}
 
-            {/* Tablero: auto-fill para que con pocas fases visibles las columnas
-                se ensanchen y no haya scroll horizontal en la tablet. */}
-            <div style={{
+            {/* A pantalla completa todas las fases van en una fila con scroll
+                horizontal, como un tablero de taller. En ventana normal se
+                reparten en rejilla para no obligar a desplazarse en una tablet
+                que ya tiene el menú ocupando ancho. */}
+            <div style={isFullscreen ? {
+                display: 'flex',
+                gap: 12,
+                alignItems: 'flex-start',
+                overflowX: 'auto',
+                WebkitOverflowScrolling: 'touch',
+                paddingBottom: 8,
+            } : {
                 display: 'grid',
                 gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
                 gap: 12,
@@ -540,6 +557,7 @@ export default function TrackingWorkshop({ token }) {
                         column={column}
                         query={query}
                         actionLoading={actionLoading}
+                        inmersivo={isFullscreen}
                         onStart={handleStart}
                         onComplete={handleComplete}
                         onOpenBatch={setBatchModal}
@@ -563,13 +581,17 @@ export default function TrackingWorkshop({ token }) {
 }
 
 /* ── Columna ── */
-function WorkshopColumn({ column, query, actionLoading, onStart, onComplete, onOpenBatch }) {
+function WorkshopColumn({ column, query, actionLoading, inmersivo, onStart, onComplete, onOpenBatch }) {
     const isBatch = column.resource?.processingMode === 'batch';
     const pendingItems = column.items.filter(i => i.status === 'pending');
     const inProgressItems = column.items.filter(i => i.status === 'in_progress');
 
     return (
-        <div className="uk-card uk-card-default" style={{ overflow: 'hidden', borderRadius: 10 }}>
+        <div className="uk-card uk-card-default" style={{
+            overflow: 'hidden', borderRadius: 10,
+            // En la fila horizontal la columna no debe encogerse ni estirarse.
+            ...(inmersivo ? { flex: '0 0 320px' } : {}),
+        }}>
             <div style={{
                 padding: '12px 14px', borderBottom: '1px solid #e5e7eb', background: '#f8fafc',
                 display: 'flex', alignItems: 'center', gap: 8,
@@ -608,7 +630,12 @@ function WorkshopColumn({ column, query, actionLoading, onStart, onComplete, onO
                 </div>
             )}
 
-            <div style={{ padding: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{
+                padding: 8, display: 'flex', flexDirection: 'column', gap: 8,
+                // Cada columna se desplaza por dentro para que su cabecera y el
+                // recuento sigan visibles mientras se recorre la fila.
+                ...(inmersivo ? { maxHeight: 'calc(100vh - 250px)', overflowY: 'auto' } : {}),
+            }}>
                 {column.items.length === 0 ? (
                     <div style={{ padding: '24px 12px', textAlign: 'center', color: '#cbd5e1', fontSize: '0.85rem' }}>
                         {query ? 'Sin coincidencias' : 'Nada pendiente'}

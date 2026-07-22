@@ -1451,3 +1451,21 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 
+
+/* ================================================
+   Modo inmersivo del taller
+   ================================================ */
+/* Con la aplicación a pantalla completa en la tablet del taller, el menú
+   lateral es espacio robado a las prendas: el trabajador no navega, trabaja.
+   La clase la pone y la quita la vista de taller según el estado de pantalla
+   completa, y se sale con el botón de su propia barra. */
+body.taller-inmersivo {
+  .app-sidebar {
+    display: none;
+  }
+
+  .app-main {
+    margin-left: 0;
+    padding: 12px;
+  }
+}
