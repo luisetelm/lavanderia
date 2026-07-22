@@ -221,9 +221,11 @@ export default function TrackingWorkshop({ token }) {
     }, [token]);
 
     // Etiqueta "Finalizado" de una prenda concreta (respeta onGarmentReady).
+    // Devuelve true si salió: quien la llama usa eso para no imprimir además la
+    // etiqueta de recogida del pedido, que duplicaría el ticket de la prenda.
     const printGarmentLabelFor = useCallback(async (item) => {
-        if (!item) return;
-        await printGarmentFinishedLabel({
+        if (!item) return false;
+        return printGarmentFinishedLabel({
             orderNum: item.orderNum,
             clientName: item.clientName,
             productName: item.productName,
@@ -252,8 +254,11 @@ export default function TrackingWorkshop({ token }) {
             const res = await updateStepStatus(token, item.stepId, { action: 'complete' });
             await loadBoard();
             armUndo([item.stepId], `${item.productName} · ${splitOrderNum(item.orderNum).seq} completado`);
-            if (res?.lineBecameReady) await printGarmentLabelFor(item);
-            if (res?.orderBecameReady) await printFinishedLabel(res.orderId);
+            // La etiqueta de la prenda ya lleva el QR del pedido: si sale, no se
+            // imprime además la de recogida. La de recogida queda para pedidos
+            // que llegan a listo sin pasar por el tracking.
+            const salioEtiquetaPrenda = res?.lineBecameReady ? await printGarmentLabelFor(item) : false;
+            if (res?.orderBecameReady && !salioEtiquetaPrenda) await printFinishedLabel(res.orderId);
         } catch (e) {
             console.error('Error completando paso:', e);
             avisar('Error al completar', 'danger', 3000);
@@ -271,11 +276,16 @@ export default function TrackingWorkshop({ token }) {
                 ? `${stepIds.length} prendas iniciadas`
                 : `${stepIds.length} prendas completadas`);
             if (action === 'complete') {
+                // Los pedidos cuyas prendas ya han sacado etiqueta no necesitan
+                // además la de recogida: la de prenda lleva el mismo QR.
+                const conEtiquetaDePrenda = new Set();
                 for (const lid of (res?.readyLineIds || [])) {
                     const it = items.find(i => i.orderLineId === lid);
-                    if (it) await printGarmentLabelFor(it);
+                    if (it && await printGarmentLabelFor(it)) conEtiquetaDePrenda.add(it.orderId);
                 }
-                for (const oid of (res?.readyOrderIds || [])) await printFinishedLabel(oid);
+                for (const oid of (res?.readyOrderIds || [])) {
+                    if (!conEtiquetaDePrenda.has(oid)) await printFinishedLabel(oid);
+                }
             }
         } catch (e) {
             console.error('Error en acción por lote:', e);

@@ -408,7 +408,7 @@ export default function App() {
                     <Route path="/horario" element={soloAdmin(<WorkSchedule token={token}/>)}/>
                     <Route path="/itinerarios" element={<ItineraryConfig token={token}/>}/>
                     <Route path="/recursos" element={<ResourceConfig token={token}/>}/>
-                    <Route path="/impresion" element={<PrintSettings/>}/>
+                    <Route path="/impresion" element={<PrintSettings token={token}/>}/>
                     <Route path="/accesos" element={soloAdmin(<LoginLogs token={token}/>)}/>
                     <Route path="*" element={<div style={{padding: 40, textAlign: 'center'}}>Ruta no encontrada</div>}/>
                     <Route path="/login" element={<Login onLogin={handleLogin}/>}/>

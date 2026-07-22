@@ -261,20 +261,23 @@ export default function PaymentSection({token, orderId, onPaid, initialOrder = n
             await loadOrder();
             // Cada vez que una PRENDA queda totalmente finalizada: imprimir su etiqueta
             // grande de embolsado (respeta el ajuste onGarmentReady).
+            let salioEtiquetaPrenda = false;
             if (res?.lineBecameReady && line) {
                 const clientName = order.client
                     ? `${order.client.firstName || ''} ${order.client.lastName || ''}`.trim()
                     : '';
-                const printed = await printGarmentFinishedLabel({
+                salioEtiquetaPrenda = await printGarmentFinishedLabel({
                     orderNum: order.orderNum,
                     clientName,
                     productName: line.product?.name || line.productName || 'Prenda',
                     quantity: line.quantity,
                     fechaLimite: order.fechaLimite,
                 }, token);
-                if (printed) notify('Prenda finalizada · etiqueta de embolsado impresa', 'success');
+                if (salioEtiquetaPrenda) notify('Prenda finalizada · etiqueta de embolsado impresa', 'success');
             }
-            if (res?.orderBecameReady) {
+            // La etiqueta de prenda ya lleva el QR del pedido: imprimir además la
+            // de recogida sacaría dos tickets para la misma prenda.
+            if (res?.orderBecameReady && !salioEtiquetaPrenda) {
                 const printed = await printFinishedLabelForOrder(token, res.orderId);
                 if (printed) notify('Pedido listo · etiqueta de finalizado impresa', 'success');
             }

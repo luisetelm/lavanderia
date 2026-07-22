@@ -81,8 +81,10 @@ export default function TrackingBoard({ token }) {
     }, [data]);
 
     // Imprime la etiqueta "Finalizado" de una prenda concreta (respeta onGarmentReady).
+    // Devuelve true si la etiqueta salió: quien la llama lo usa para no imprimir
+    // además la de recogida, que duplicaría el ticket de la prenda.
     const printGarmentLabelFor = useCallback(async (item) => {
-        if (!item) return;
+        if (!item) return false;
         const printed = await printGarmentFinishedLabel({
             orderNum: item.orderNum,
             clientName: item.clientName,
@@ -93,6 +95,7 @@ export default function TrackingBoard({ token }) {
         if (printed) {
             UIkit.notification({ message: `Prenda finalizada · etiqueta impresa (${item.orderNum})`, status: 'success', pos: 'top-right', timeout: 2000 });
         }
+        return printed;
     }, [token]);
 
     useEffect(() => {
@@ -110,10 +113,10 @@ export default function TrackingBoard({ token }) {
             await loadBoard();
             UIkit.notification({ message: 'Paso completado', status: 'success', pos: 'top-right', timeout: 1500 });
             // Si la prenda quedó totalmente finalizada, imprimir su etiqueta "Finalizado".
-            if (res?.lineBecameReady) {
-                await printGarmentLabelFor(item);
-            }
-            if (res?.orderBecameReady) {
+            // Esa etiqueta ya lleva el QR del pedido, así que sustituye a la de
+            // recogida; la de recogida queda para pedidos sin tracking.
+            const salioEtiquetaPrenda = res?.lineBecameReady ? await printGarmentLabelFor(item) : false;
+            if (res?.orderBecameReady && !salioEtiquetaPrenda) {
                 await printFinishedLabel(res.orderId);
             }
         } catch (e) {
@@ -173,12 +176,15 @@ export default function TrackingBoard({ token }) {
             });
             if (action !== 'complete') return;
             // Etiqueta "Finalizado" por cada prenda que quedó totalmente terminada.
+            // Los pedidos que ya han sacado etiqueta de prenda no llevan además
+            // la de recogida: sería el mismo ticket por duplicado.
+            const conEtiquetaDePrenda = new Set();
             for (const lid of (res?.readyLineIds || [])) {
                 const it = items.find(i => i.orderLineId === lid);
-                if (it) await printGarmentLabelFor(it);
+                if (it && await printGarmentLabelFor(it)) conEtiquetaDePrenda.add(it.orderId);
             }
             for (const oid of (res?.readyOrderIds || [])) {
-                await printFinishedLabel(oid);
+                if (!conEtiquetaDePrenda.has(oid)) await printFinishedLabel(oid);
             }
         } catch (e) {
             console.error('Error batch:', e);

@@ -923,8 +923,11 @@ export async function printFinishedLabelForOrder(token, orderId) {
 
 // Etiqueta "Finalizado" POR PRENDA: se imprime cuando una prenda concreta
 // completa todos sus pasos de tracking, sin esperar a que el resto del pedido
-// termine. Se imprime en la impresora de tickets (papel normal), igual que la
-// etiqueta de recogida.
+// termine. Se imprime en la impresora de tickets (papel normal).
+//
+// Es la ÚNICA etiqueta que se pega a la prenda, así que lleva todo lo necesario
+// para identificarla después, incluido el QR que abre el pedido: antes salían
+// dos tickets por prenda (este y el de recogida) y sobraba uno.
 export async function printGarmentLabel({ orderNum, clientName, productName, quantity = 1, fechaLimite = '' }) {
     const fechaEntrega = fechaLimite
         ? new Date(fechaLimite).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })
@@ -935,6 +938,20 @@ export async function printGarmentLabel({ orderNum, clientName, productName, qua
     const bigNum = numParts.length > 1 ? numParts.pop() : (orderNum || '');
     const prefix = numParts.join('/');
     const qty = quantity > 1 ? `${quantity}× ` : '';
+
+    // Mismo QR que la etiqueta de recogida: abre el pedido por su número.
+    const origin = (typeof window !== 'undefined' && window.location?.origin)
+        ? window.location.origin
+        : 'https://app.tinteyburbuja.com';
+    let qrCodeDataUrl = '';
+    try {
+        qrCodeDataUrl = await QRCode.toDataURL(`${origin}/buscar-pedido?num=${encodeURIComponent(orderNum || '')}`, {
+            width: 160, margin: 0, errorCorrectionLevel: 'M',
+        });
+    } catch (e) {
+        // Sin QR se sigue imprimiendo: el número de pedido ya identifica la prenda.
+        console.warn('No se pudo generar el QR de la etiqueta de prenda:', e);
+    }
 
     const html = `
     <html>
@@ -951,6 +968,8 @@ export async function printGarmentLabel({ orderNum, clientName, productName, qua
           .prenda { font-size: 18px; font-weight: 800; margin: 0 0 2px; }
           .cliente { font-size: 15px; font-weight: 700; margin: 0 0 2px; }
           .fecha { font-size: 12px; letter-spacing: 0.5px; text-transform: uppercase; color: #6b7280; margin: 0; }
+          .qr { margin-top: 8px; }
+          .qr img { width: 30mm; height: 30mm; }
           .cut { page-break-after: always; }
         </style>
       </head>
@@ -963,6 +982,7 @@ export async function printGarmentLabel({ orderNum, clientName, productName, qua
           <div class="prenda">${qty}${productName || 'Prenda'}</div>
           ${clientName ? `<div class="cliente">${clientName}</div>` : ''}
           ${fechaEntrega ? `<div class="fecha">Entrega · ${fechaEntrega}</div>` : ''}
+          ${qrCodeDataUrl ? `<div class="qr"><img src="${qrCodeDataUrl}" alt="QR pedido" /></div>` : ''}
         </div>
         <div class="cut"></div>
       </body>

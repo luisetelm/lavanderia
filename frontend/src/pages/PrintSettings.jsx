@@ -1,11 +1,24 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import PageToolbar from '../components/PageToolbar.jsx';
 import { getPrintSettings, setPrintSettings } from '../utils/printSettings.js';
 import { connectQZ } from '../qzInit.js';
 import { listPrinters } from '../qzHelper.js';
 import { printWasherTest } from '../utils/printUtils.js';
+import { fetchColaImpresion, marcarImpresionHecha } from '../api.js';
 
-export default function PrintSettings() {
+const ESTADOS_COLA = {
+    pending: { texto: 'En espera', color: '#b45309', fondo: '#fef3c7' },
+    printing: { texto: 'Imprimiendo', color: '#1d4ed8', fondo: '#dbeafe' },
+    failed: { texto: 'Fallido', color: '#b91c1c', fondo: '#fee2e2' },
+    done: { texto: 'Impreso', color: '#15803d', fondo: '#dcfce7' },
+};
+
+const TIPOS_COLA = {
+    finished_label: 'Etiqueta de recogida',
+    garment_label: 'Etiqueta de prenda',
+};
+
+export default function PrintSettings({ token }) {
     const [settings, setSettings] = useState(getPrintSettings());
     const [printerTicket, setPrinterTicket] = useState(
         localStorage.getItem('printerTicket') || localStorage.getItem('posPrinterName') || ''
@@ -17,6 +30,44 @@ export default function PrintSettings() {
     const [detectError, setDetectError] = useState('');
     const [testing, setTesting] = useState(false);
     const [testMsg, setTestMsg] = useState('');
+    const [cola, setCola] = useState([]);
+    const [colaError, setColaError] = useState('');
+    const [colaCargando, setColaCargando] = useState(false);
+
+    // La cola es del sistema, no de este dispositivo: se ve igual desde
+    // cualquier puesto. Muestra los encargos vivos (en espera, imprimiendo y
+    // fallidos), que es donde se ve si algo se ha atascado.
+    const cargarCola = useCallback(async () => {
+        if (!token) return;
+        setColaCargando(true);
+        try {
+            const jobs = await fetchColaImpresion(token);
+            setCola(Array.isArray(jobs) ? jobs : []);
+            setColaError('');
+        } catch (e) {
+            console.error('No se pudo consultar la cola de impresión:', e);
+            setColaError('No se pudo consultar la cola.');
+        } finally {
+            setColaCargando(false);
+        }
+    }, [token]);
+
+    useEffect(() => {
+        cargarCola();
+        const t = setInterval(cargarCola, 10000);
+        return () => clearInterval(t);
+    }, [cargarCola]);
+
+    // Saca de la cola un encargo atascado sin imprimirlo.
+    const descartarEncargo = async (id) => {
+        try {
+            await marcarImpresionHecha(token, id);
+            await cargarCola();
+        } catch (e) {
+            console.error('No se pudo descartar el encargo:', e);
+            setColaError('No se pudo descartar el encargo.');
+        }
+    };
 
     const detectPrinters = async () => {
         setDetecting(true);
@@ -154,6 +205,101 @@ export default function PrintSettings() {
                             Sirve para saber qué puesto imprimió cada cosa si algo falla.
                         </div>
                     </div>
+                </div>
+
+                {/* Estado de la cola: es donde se ve si un encargo se ha
+                    quedado atascado o ha agotado sus reintentos. */}
+                <div className="uk-card uk-card-default uk-card-body uk-margin">
+                    <div className="uk-flex uk-flex-between uk-flex-middle" style={{ gap: 8, flexWrap: 'wrap' }}>
+                        <h4 className="uk-margin-small-top uk-margin-remove-bottom">Cola de impresión</h4>
+                        <div className="uk-flex uk-flex-middle" style={{ gap: 8 }}>
+                            <span className="uk-text-muted" style={{ fontSize: '0.8rem' }}>
+                                {cola.length === 0 ? 'Vacía' : `${cola.length} encargo${cola.length > 1 ? 's' : ''}`}
+                            </span>
+                            <button
+                                type="button"
+                                className="uk-button uk-button-default uk-button-small"
+                                onClick={cargarCola}
+                                disabled={colaCargando}
+                            >
+                                {colaCargando ? '…' : 'Actualizar'}
+                            </button>
+                        </div>
+                    </div>
+                    <p className="uk-text-muted" style={{ fontSize: '0.85rem' }}>
+                        Encargos pendientes de imprimir en el puesto con impresora. Se actualiza solo cada 10 segundos.
+                    </p>
+
+                    {colaError && (
+                        <div className="uk-text-danger" style={{ fontSize: '0.85rem' }}>{colaError}</div>
+                    )}
+
+                    {cola.length === 0 && !colaError ? (
+                        <div className="uk-text-muted" style={{ fontSize: '0.85rem' }}>
+                            No hay nada pendiente.
+                        </div>
+                    ) : (
+                        <div style={{ overflowX: 'auto' }}>
+                            <table className="uk-table uk-table-small uk-table-divider uk-table-middle" style={{ margin: 0 }}>
+                                <thead>
+                                    <tr style={{ fontSize: '0.75rem' }}>
+                                        <th>Hora</th>
+                                        <th>Tipo</th>
+                                        <th>Pedido</th>
+                                        <th>Estado</th>
+                                        <th>Intentos</th>
+                                        <th>Puesto</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody style={{ fontSize: '0.82rem' }}>
+                                    {cola.map((job) => {
+                                        const estado = ESTADOS_COLA[job.status] || { texto: job.status, color: '#475569', fondo: '#f1f5f9' };
+                                        return (
+                                            <tr key={job.id}>
+                                                <td style={{ whiteSpace: 'nowrap' }}>
+                                                    {job.createdAt
+                                                        ? new Date(job.createdAt).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
+                                                        : '—'}
+                                                </td>
+                                                <td>{TIPOS_COLA[job.type] || job.type}</td>
+                                                <td style={{ fontVariantNumeric: 'tabular-nums' }}>
+                                                    {job.order?.orderNum || '—'}
+                                                </td>
+                                                <td>
+                                                    <span style={{
+                                                        padding: '1px 8px', borderRadius: 10, fontSize: '0.72rem',
+                                                        fontWeight: 600, background: estado.fondo, color: estado.color,
+                                                        whiteSpace: 'nowrap',
+                                                    }}>
+                                                        {estado.texto}
+                                                    </span>
+                                                    {job.error && (
+                                                        <div className="uk-text-muted" style={{ fontSize: '0.72rem', marginTop: 2 }}>
+                                                            {job.error}
+                                                        </div>
+                                                    )}
+                                                </td>
+                                                <td style={{ fontVariantNumeric: 'tabular-nums' }}>{job.attempts ?? 0}</td>
+                                                <td className="uk-text-muted">{job.claimedBy || '—'}</td>
+                                                <td style={{ textAlign: 'right' }}>
+                                                    <button
+                                                        type="button"
+                                                        className="uk-button uk-button-default uk-button-small"
+                                                        style={{ fontSize: '0.72rem' }}
+                                                        onClick={() => descartarEncargo(job.id)}
+                                                        title="Saca el encargo de la cola sin imprimirlo"
+                                                    >
+                                                        Descartar
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
                 </div>
 
                 <div className="uk-card uk-card-default uk-card-body uk-margin">
