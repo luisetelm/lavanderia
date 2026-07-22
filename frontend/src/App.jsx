@@ -146,12 +146,17 @@ export default function App() {
     const [adminMenuOpen, setAdminMenuOpen] = useState(false);
 
     // Mantener menú admin abierto si la ruta actual es de administración
-    const adminPaths = ['/ventas', '/estadisticas', '/resenas', '/caja', '/horario', '/itinerarios', '/recursos', '/accesos', '/campanas'];
+    const adminPaths = ['/ventas', '/estadisticas', '/resenas', '/caja', '/horario', '/itinerarios', '/recursos', '/accesos', '/campanas', '/tracking/supervision'];
     useEffect(() => {
         if (adminPaths.some(p => location.pathname.startsWith(p))) {
             setAdminMenuOpen(true);
         }
     }, [location.pathname]);
+
+    // Inicio de cada rol: también es a donde se devuelve a quien entra por URL
+    // a una ruta de administración que no le corresponde.
+    const homePath = user?.role === 'worker' ? '/tracking' : '/dashboard';
+    const soloAdmin = (elemento) => user?.role === 'admin' ? elemento : <Navigate to={homePath} replace/>;
 
     // Cerrar menú móvil al navegar
     useEffect(() => {
@@ -380,29 +385,31 @@ export default function App() {
                 <ErrorBoundary>
                 <Routes>
                     {/* El trabajador entra directo al taller: un panel de métricas no
-                        le sirve de nada con una prenda en la mano. */}
-                    <Route path="/" element={<Navigate to={user?.role === 'worker' ? '/tracking' : '/dashboard'} replace/>}/>
+                        le sirve de nada con una prenda en la mano. Es también el
+                        destino al que se devuelve a quien entra por URL a una
+                        ruta que no le corresponde. */}
+                    <Route path="/" element={<Navigate to={homePath} replace/>}/>
                     <Route path="/dashboard" element={<Dashboard token={token} user={user}/>}/>
                     <Route path="/pos" element={<POS token={token} user={user}/>}/>
                     <Route path="/productos" element={<Inventory token={token}/>}/>
                     <Route path="/tareas" element={<Tasks token={token} user={user}/>}/>
                     <Route path="/buscar-pedido" element={<OrderLookup token={token}/>}/>
                     <Route path="/tracking" element={<TrackingWorkshop token={token} user={user}/>}/>
-                    <Route path="/tracking/supervision" element={<TrackingBoard token={token} user={user}/>}/>
+                    <Route path="/tracking/supervision" element={soloAdmin(<TrackingBoard token={token} user={user}/>)}/>
                     <Route path="/usuarios" element={<Users token={token} user={user}/>}/>
                     <Route path="/usuarios/:id" element={<UserEdit token={token} user={user}/>}/>
                     <Route path="/mensajes" element={<Messages token={token} onUnreadCount={setUnreadMsgCount}/>}/>
                     <Route path="/ventas" element={<Ventas token={token}/>}/>
                     <Route path="/estadisticas" element={<Stats token={token}/>}/>
-                    <Route path="/rendimiento" element={user.role === 'admin' ? <WorkerPerformance token={token}/> : <Navigate to="/dashboard" replace/>}/>
+                    <Route path="/rendimiento" element={soloAdmin(<WorkerPerformance token={token}/>)}/>
                     <Route path="/resenas" element={<Reviews token={token}/>}/>
-                    <Route path="/campanas" element={user.role === 'admin' ? <Campaigns token={token}/> : <Navigate to="/dashboard" replace/>}/>
-                    <Route path="/caja" element={<CashAudit token={token}/>}/>
-                    <Route path="/horario" element={<WorkSchedule token={token}/>}/>
+                    <Route path="/campanas" element={soloAdmin(<Campaigns token={token}/>)}/>
+                    <Route path="/caja" element={soloAdmin(<CashAudit token={token}/>)}/>
+                    <Route path="/horario" element={soloAdmin(<WorkSchedule token={token}/>)}/>
                     <Route path="/itinerarios" element={<ItineraryConfig token={token}/>}/>
                     <Route path="/recursos" element={<ResourceConfig token={token}/>}/>
                     <Route path="/impresion" element={<PrintSettings/>}/>
-                    <Route path="/accesos" element={user.role === 'admin' ? <LoginLogs token={token}/> : <Navigate to="/dashboard" replace/>}/>
+                    <Route path="/accesos" element={soloAdmin(<LoginLogs token={token}/>)}/>
                     <Route path="*" element={<div style={{padding: 40, textAlign: 'center'}}>Ruta no encontrada</div>}/>
                     <Route path="/login" element={<Login onLogin={handleLogin}/>}/>
                 </Routes>
