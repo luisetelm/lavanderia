@@ -21,10 +21,16 @@ import { printFinishedLabelForOrder, printGarmentFinishedLabel } from '../utils/
    ───────────────────────────────────────────────────────────── */
 
 const HIDDEN_COLS_KEY = 'trackingHiddenColumns';
+const FULLSCREEN_KEY = 'trackingFullscreen';
 const ORDER_PREFIX = `TPV/${new Date().getFullYear()}/`;
 const UNDO_TIMEOUT_MS = 12000;
 const REFRESH_MS = 30000;
 const TOUCH_MIN = 48; // altura mínima de un objetivo táctil (px)
+
+// Safari en iPad no permite pantalla completa fuera de un <video>: ahí el botón
+// no se muestra y la solución es instalar la app en la pantalla de inicio.
+const FULLSCREEN_SUPPORTED = typeof document !== 'undefined'
+    && Boolean(document.documentElement?.requestFullscreen);
 
 function readHiddenCols() {
     try {
@@ -101,6 +107,8 @@ export default function TrackingWorkshop({ token }) {
     const [actionLoading, setActionLoading] = useState(null);
     const [undoInfo, setUndoInfo] = useState(null); // { stepIds, label }
     const [batchModal, setBatchModal] = useState(null);
+    const [searchFocused, setSearchFocused] = useState(false);
+    const [isFullscreen, setIsFullscreen] = useState(false);
     const undoTimer = useRef(null);
 
     const loadBoard = useCallback(async () => {
@@ -135,6 +143,45 @@ export default function TrackingWorkshop({ token }) {
     }, [hiddenCols]);
 
     useEffect(() => () => { if (undoTimer.current) clearTimeout(undoTimer.current); }, []);
+
+    // Mantener el botón sincronizado si se sale con Escape o con un gesto.
+    useEffect(() => {
+        const onChange = () => setIsFullscreen(Boolean(document.fullscreenElement));
+        onChange();
+        document.addEventListener('fullscreenchange', onChange);
+        return () => document.removeEventListener('fullscreenchange', onChange);
+    }, []);
+
+    /* El navegador sólo concede la pantalla completa dentro de un gesto del
+       usuario, así que NO se puede activar sola al abrir la página. Si quedó
+       activada en esta tablet, se recupera en el primer toque sobre la pantalla. */
+    useEffect(() => {
+        if (!FULLSCREEN_SUPPORTED) return;
+        let quedoActivada = false;
+        try { quedoActivada = localStorage.getItem(FULLSCREEN_KEY) === '1'; } catch { /* ignorar */ }
+        if (!quedoActivada) return;
+        const restaurar = () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(() => { /* sin gesto válido */ });
+            }
+        };
+        window.addEventListener('pointerdown', restaurar, { once: true });
+        return () => window.removeEventListener('pointerdown', restaurar);
+    }, []);
+
+    const toggleFullscreen = () => {
+        const guardar = (v) => {
+            try { localStorage.setItem(FULLSCREEN_KEY, v); } catch { /* ignorar */ }
+        };
+        if (document.fullscreenElement) {
+            document.exitFullscreen().catch(() => { /* ya fuera */ });
+            guardar('0');
+        } else {
+            document.documentElement.requestFullscreen()
+                .then(() => guardar('1'))
+                .catch(() => avisar('El navegador no ha permitido la pantalla completa', 'warning'));
+        }
+    };
 
     const armUndo = useCallback((stepIds, label) => {
         if (undoTimer.current) clearTimeout(undoTimer.current);
@@ -295,18 +342,34 @@ export default function TrackingWorkshop({ token }) {
                         >
                             <span uk-icon="icon: refresh; ratio: 0.8"></span>
                         </button>
+                        {FULLSCREEN_SUPPORTED && (
+                            <button
+                                className={`uk-button uk-button-small ${isFullscreen ? 'uk-button-primary' : 'uk-button-default'}`}
+                                onClick={toggleFullscreen}
+                                type="button"
+                                title={isFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}
+                                aria-pressed={isFullscreen}
+                            >
+                                <span uk-icon={`icon: ${isFullscreen ? 'shrink' : 'expand'}; ratio: 0.8`}></span>
+                            </button>
+                        )}
                     </div>
                 }
             >
                 {/* Búsqueda por nº de pedido */}
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 10, flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 12, flexWrap: 'wrap' }}>
                     <div style={{
-                        display: 'flex', alignItems: 'center', flex: '1 1 260px', maxWidth: 420,
-                        border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff',
-                        overflow: 'hidden', height: TOUCH_MIN,
+                        display: 'flex', alignItems: 'center', flex: '1 1 320px', maxWidth: 560,
+                        border: `2px solid ${searchFocused ? '#048ABF' : (query ? '#94a3b8' : '#cbd5e1')}`,
+                        boxShadow: searchFocused ? '0 0 0 4px rgba(4,138,191,0.15)' : 'none',
+                        borderRadius: 10, background: '#fff', overflow: 'hidden', height: 60,
+                        transition: 'border-color 0.15s, box-shadow 0.15s',
                     }}>
+                        <span style={{ padding: '0 4px 0 14px', color: searchFocused ? '#048ABF' : '#94a3b8', display: 'flex' }}>
+                            <span uk-icon="icon: search; ratio: 1.1"></span>
+                        </span>
                         <span style={{
-                            padding: '0 8px 0 12px', color: '#94a3b8', fontSize: '0.95rem',
+                            padding: '0 2px 0 8px', color: '#94a3b8', fontSize: '1rem',
                             fontVariantNumeric: 'tabular-nums', userSelect: 'none', whiteSpace: 'nowrap',
                         }}>
                             {ORDER_PREFIX}
@@ -316,12 +379,14 @@ export default function TrackingWorkshop({ token }) {
                             inputMode="numeric"
                             value={query}
                             onChange={e => setQuery(e.target.value)}
+                            onFocus={() => setSearchFocused(true)}
+                            onBlur={() => setSearchFocused(false)}
                             placeholder="0095"
                             aria-label="Buscar por número de pedido"
                             style={{
                                 flex: 1, minWidth: 0, border: 'none', outline: 'none', height: '100%',
-                                fontSize: '1.1rem', fontWeight: 600, letterSpacing: '0.03em',
-                                fontVariantNumeric: 'tabular-nums', background: 'transparent',
+                                fontSize: '1.7rem', fontWeight: 700, letterSpacing: '0.04em',
+                                fontVariantNumeric: 'tabular-nums', background: 'transparent', color: '#1e293b',
                             }}
                         />
                         {query && (
@@ -330,15 +395,19 @@ export default function TrackingWorkshop({ token }) {
                                 onClick={() => setQuery('')}
                                 aria-label="Limpiar búsqueda"
                                 style={{
-                                    width: TOUCH_MIN, height: '100%', border: 'none', background: 'transparent',
-                                    color: '#64748b', cursor: 'pointer', fontSize: '1.3rem', lineHeight: 1,
+                                    width: 56, height: '100%', border: 'none', background: 'transparent',
+                                    color: '#64748b', cursor: 'pointer', fontSize: '1.7rem', lineHeight: 1,
                                 }}
                             >
                                 ×
                             </button>
                         )}
                     </div>
-                    <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                    <span style={{
+                        fontSize: query ? '0.95rem' : '0.85rem',
+                        fontWeight: query ? 600 : 400,
+                        color: query && matchCount === 0 ? '#b45309' : '#64748b',
+                    }}>
                         {query
                             ? `${matchCount} ${matchCount === 1 ? 'coincidencia' : 'coincidencias'}`
                             : `${totalVisibleItems} ${totalVisibleItems === 1 ? 'prenda' : 'prendas'} en proceso`}

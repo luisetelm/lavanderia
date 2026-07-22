@@ -3,10 +3,22 @@
 <head>
     <meta charset="UTF-8"/>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
-    <!-- Respaldo para navegadores o dispositivos que no usan el SVG -->
-    <link rel="apple-touch-icon" href="/logo.png"/>
+    <!-- Respaldo para navegadores o dispositivos que no usan el SVG. iOS exige
+         PNG cuadrado y sin transparencia: se rasteriza desde el favicon. -->
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png"/>
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <title>Tinte y Burbuja</title>
+    <!-- PWA: instalada en la pantalla de inicio, la tablet del taller abre la
+         aplicación sin barra de navegador (display: fullscreen en el manifest),
+         que es la única forma de tenerla siempre a pantalla completa sin
+         depender de que alguien pulse un botón. -->
+    <link rel="manifest" href="/manifest.webmanifest"/>
+    <meta name="theme-color" content="#048ABF"/>
+    <meta name="mobile-web-app-capable" content="yes"/>
+    <!-- iOS ignora el manifest: necesita sus propias metas para abrirse sin Safari -->
+    <meta name="apple-mobile-web-app-capable" content="yes"/>
+    <meta name="apple-mobile-web-app-status-bar-style" content="default"/>
+    <meta name="apple-mobile-web-app-title" content="Tinte y Burbuja"/>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
