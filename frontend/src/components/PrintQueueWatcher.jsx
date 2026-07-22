@@ -91,13 +91,16 @@ export default function PrintQueueWatcher({token}) {
 
                     try {
                         if (job.type === 'finished_label') {
-                            const order = await printFinishedLabelForOrder(token, job.orderId);
+                            // enCola: no re-encolar (ya está en la cola) y dejar
+                            // que el error suba para reintentarlo aquí.
+                            const order = await printFinishedLabelForOrder(token, job.orderId, {enCola: true});
                             // printFinishedLabelForOrder devuelve null si la impresión
                             // automática está desactivada en este puesto: en ese caso el
                             // encargo no se ha atendido y debe volver a la cola.
                             if (!order) throw new Error('La impresión de etiquetas de recogida está desactivada en este puesto');
                         } else if (job.type === 'garment_label') {
-                            await printGarmentLabel(job.payload || {});
+                            // Sin diálogo del navegador: si falla, se reintenta desde la cola.
+                            await printGarmentLabel(job.payload || {}, {sinFallbackNavegador: true});
                         } else {
                             throw new Error(`Tipo de impresión desconocido: ${job.type}`);
                         }

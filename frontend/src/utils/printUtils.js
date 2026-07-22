@@ -851,6 +851,9 @@ export async function printInternalLabel(order, options = {}) {
     try {
         await sendToPrinter(getTicketPrinterName(), buildRawHtml(html));
     } catch (e) {
+        // Ver printGarmentLabel: en dispositivos sin impresora la etiqueta va a
+        // la cola en vez de abrir el diálogo de impresión del navegador.
+        if (options.sinFallbackNavegador) throw e;
         console.warn('QZ Tray falló al imprimir etiqueta interna, recayendo a window.print()', e);
         const w = window.open('', 'print_internal_label_fallback');
         w.document.write(html);
@@ -895,16 +898,23 @@ export async function puedeImprimirAqui() {
     return impresoraDetectada;
 }
 
-export async function printFinishedLabelForOrder(token, orderId) {
+// opciones.enCola: lo llama PrintQueueWatcher para atender un encargo que YA
+// está en la cola. En ese caso no se vuelve a encolar (sería un bucle) y se
+// deja que el error suba, para que la cola lo reintente.
+export async function printFinishedLabelForOrder(token, orderId, opciones = {}) {
     if (!orderId || !getPrintSettings().onReady) return null;
+
+    const aLaCola = async () => {
+        const order = await fetchOrder(token, orderId);
+        await encolarImpresion(token, { type: 'finished_label', orderId });
+        return order;
+    };
 
     // Dispositivo sin impresora (la tablet del taller): no imprime, deja el
     // encargo para el puesto que sí la tiene. Ver sql/010 y PrintQueueWatcher.
-    if (!await puedeImprimirAqui()) {
+    if (!opciones.enCola && !await puedeImprimirAqui()) {
         try {
-            const order = await fetchOrder(token, orderId);
-            await encolarImpresion(token, { type: 'finished_label', orderId });
-            return order;
+            return await aLaCola();
         } catch (e) {
             console.warn('No se pudo encolar la etiqueta de finalizado:', e);
             return null;
@@ -913,11 +923,20 @@ export async function printFinishedLabelForOrder(token, orderId) {
 
     try {
         const order = await fetchOrder(token, orderId);
-        await printInternalLabel(order, { token });
+        await printInternalLabel(order, { token, sinFallbackNavegador: true });
         return order;
     } catch (e) {
-        console.warn('No se pudo imprimir la etiqueta de finalizado:', e);
-        return null;
+        if (opciones.enCola) throw e;   // que lo gestione la cola
+        // Este puesto creía tener impresora pero no ha podido imprimir: antes
+        // se abría el diálogo del navegador en plena tablet del taller. Mejor
+        // dejarlo en la cola para el puesto que sí imprime.
+        console.warn('No se pudo imprimir la etiqueta de finalizado, se envía a la cola:', e);
+        try {
+            return await aLaCola();
+        } catch (e2) {
+            console.warn('Tampoco se pudo encolar la etiqueta de finalizado:', e2);
+            return null;
+        }
     }
 }
 
@@ -928,7 +947,7 @@ export async function printFinishedLabelForOrder(token, orderId) {
 // Es la ÚNICA etiqueta que se pega a la prenda, así que lleva todo lo necesario
 // para identificarla después, incluido el QR que abre el pedido: antes salían
 // dos tickets por prenda (este y el de recogida) y sobraba uno.
-export async function printGarmentLabel({ orderNum, clientName, productName, quantity = 1, fechaLimite = '' }) {
+export async function printGarmentLabel({ orderNum, clientName, productName, quantity = 1, fechaLimite = '' }, opciones = {}) {
     const fechaEntrega = fechaLimite
         ? new Date(fechaLimite).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })
         : '';
@@ -992,6 +1011,10 @@ export async function printGarmentLabel({ orderNum, clientName, productName, qua
     try {
         await sendToPrinter(getTicketPrinterName(), buildRawHtml(html));
     } catch (e) {
+        // En el taller no se abre la ventana de impresión del navegador: ahí no
+        // hay impresora y el trabajador no debe lidiar con un diálogo. Quien
+        // llama decide (sinFallbackNavegador) y manda la etiqueta a la cola.
+        if (opciones.sinFallbackNavegador) throw e;
         console.warn('QZ Tray falló al imprimir etiqueta de prenda, recayendo a window.print()', e);
         const w = window.open('', 'print_garment_label_fallback');
         w.document.write(html);
@@ -1006,8 +1029,7 @@ export async function printGarmentLabel({ orderNum, clientName, productName, qua
 export async function printGarmentFinishedLabel(garment, token = null) {
     if (!getPrintSettings().onGarmentReady) return false;
 
-    // Sin impresora en este dispositivo: a la cola (ver printFinishedLabelForOrder).
-    if (!await puedeImprimirAqui()) {
+    const aLaCola = async () => {
         if (!token) {
             console.warn('No se puede encolar la etiqueta de prenda: falta el token');
             return false;
@@ -1019,14 +1041,18 @@ export async function printGarmentFinishedLabel(garment, token = null) {
             console.warn('No se pudo encolar la etiqueta de prenda finalizada:', e);
             return false;
         }
-    }
+    };
+
+    // Sin impresora en este dispositivo: a la cola (ver printFinishedLabelForOrder).
+    if (!await puedeImprimirAqui()) return aLaCola();
 
     try {
-        await printGarmentLabel(garment);
+        // Sin diálogo del navegador: si QZ falla, la etiqueta va a la cola.
+        await printGarmentLabel(garment, { sinFallbackNavegador: Boolean(token) });
         return true;
     } catch (e) {
-        console.warn('No se pudo imprimir la etiqueta de prenda finalizada:', e);
-        return false;
+        console.warn('No se pudo imprimir la etiqueta de prenda, se envía a la cola:', e);
+        return aLaCola();
     }
 }
 
