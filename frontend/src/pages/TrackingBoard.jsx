@@ -3,14 +3,23 @@ import { fetchTrackingBoard, updateStepStatus, batchCompleteSteps, undoStep } fr
 import { useNavigate } from 'react-router-dom';
 import UIkit from 'uikit';
 import PageToolbar from '../components/PageToolbar.jsx';
+import { confirmar } from '../utils/dialogo.js';
+import { COLOR_HEX } from '../utils/colores.js';
 import { printFinishedLabelForOrder, printGarmentFinishedLabel } from '../utils/printUtils.js';
 
-const COLOR_HEX = {
-    negro: '#1e1e1e', blanco: '#f5f5f5', gris: '#9ca3af', azul: '#3b82f6',
-    marino: '#1e3a5f', rojo: '#ef4444', verde: '#22c55e', marron: '#92400e',
-    beige: '#d4b896', rosa: '#f472b6', amarillo: '#facc15', morado: '#a855f7',
-    burdeos: '#7f1d1d', naranja: '#f97316',
-};
+/* Qué paso se deshace desde una tarjeta:
+   - si el paso actual está en curso, se deshace su inicio;
+   - si está pendiente, se retrocede la prenda al último paso ya completado.
+   Devuelve null cuando no hay nada que deshacer (prenda en su primer paso). */
+function getUndoTarget(item) {
+    if (item.status === 'in_progress') {
+        return { stepId: item.stepId, label: 'el inicio de este paso' };
+    }
+    const done = (item.lineStepsTiming || []).filter(s => s.status === 'done');
+    if (done.length === 0) return null;
+    const last = done[done.length - 1]; // lineStepsTiming ya viene ordenado
+    return { stepId: last.id, label: `el paso "${last.stepLabel}"` };
+}
 
 function isPast(date) {
     if (!date) return false;
@@ -129,10 +138,17 @@ export default function TrackingBoard({ token }) {
         }
     };
 
-    const handleUndo = async (stepId) => {
-        setActionLoading(stepId);
+    const handleUndo = async (item) => {
+        const target = getUndoTarget(item);
+        if (!target) return;
+        const ok = await confirmar(
+            `Se va a deshacer ${target.label} de "${item.productName}" (#${item.orderNum}).\n\nLa prenda volverá a quedar pendiente en esa fase.`,
+            { titulo: 'Deshacer paso', textoConfirmar: 'Deshacer', peligroso: true }
+        );
+        if (!ok) return;
+        setActionLoading(item.stepId);
         try {
-            await undoStep(token, stepId);
+            await undoStep(token, target.stepId);
             await loadBoard();
             UIkit.notification({ message: 'Paso deshecho', status: 'warning', pos: 'top-right', timeout: 1500 });
         } catch (e) {
@@ -144,12 +160,19 @@ export default function TrackingBoard({ token }) {
         }
     };
 
-    const handleBatchComplete = async (stepIds, items = []) => {
+    const handleBatchComplete = async (stepIds, items = [], action = 'complete') => {
         try {
-            const res = await batchCompleteSteps(token, stepIds);
+            const res = await batchCompleteSteps(token, stepIds, action);
             setBatchModal(null);
             await loadBoard();
-            UIkit.notification({ message: `${stepIds.length} prendas completadas`, status: 'success', pos: 'top-right', timeout: 2000 });
+            UIkit.notification({
+                message: action === 'start'
+                    ? `${stepIds.length} prendas en proceso`
+                    : `${stepIds.length} prendas completadas`,
+                status: 'success', pos: 'top-right', timeout: 2000,
+            });
+            if (action !== 'complete') return;
+            // Etiqueta "Finalizado" por cada prenda que quedó totalmente terminada.
             for (const lid of (res?.readyLineIds || [])) {
                 const it = items.find(i => i.orderLineId === lid);
                 if (it) await printGarmentLabelFor(it);
@@ -179,7 +202,7 @@ export default function TrackingBoard({ token }) {
     return (
         <div>
             <PageToolbar
-                title="Tracking"
+                title="Tracking · Supervisión"
                 filters={[]}
                 actions={
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -446,6 +469,18 @@ export default function TrackingBoard({ token }) {
                                                                 {expandedSteps[item.stepId] ? '▴' : '▾'}
                                                             </button>
                                                         )}
+                                                        {/* Deshacer: devuelve la prenda a la fase anterior (o cancela el inicio) */}
+                                                        {getUndoTarget(item) && (
+                                                            <button
+                                                                className="uk-button uk-button-default uk-button-small"
+                                                                style={{ fontSize: '0.65rem', padding: '2px 6px', color: '#b45309', borderColor: '#fcd34d' }}
+                                                                onClick={() => handleUndo(item)}
+                                                                disabled={actionLoading === item.stepId}
+                                                                title="Deshacer el último paso de esta prenda"
+                                                            >
+                                                                ↶
+                                                            </button>
+                                                        )}
                                                         {/* Botón Iniciar: solo para pasos autoProgress que estén pending */}
                                                         {item.autoProgress && item.status === 'pending' && (
                                                             <button
@@ -552,28 +587,7 @@ export default function TrackingBoard({ token }) {
             {batchModal && (
                 <BatchCompleteModal
                     data={batchModal}
-                    onComplete={(stepIds) => {
-                        const action = batchModal.action || 'complete';
-                        const modalItems = batchModal.items || [];
-                        batchCompleteSteps(token, stepIds, action).then((res) => {
-                            setBatchModal(null);
-                            loadBoard();
-                            UIkit.notification({
-                                message: action === 'start'
-                                    ? `${stepIds.length} prendas en proceso`
-                                    : `${stepIds.length} prendas completadas`,
-                                status: 'success', pos: 'top-right', timeout: 2000
-                            });
-                            if (action === 'complete') {
-                                // Etiqueta "Finalizado" por cada prenda que quedó totalmente terminada.
-                                (res?.readyLineIds || []).forEach(lid => {
-                                    const it = modalItems.find(i => i.orderLineId === lid);
-                                    if (it) printGarmentLabelFor(it);
-                                });
-                                (res?.readyOrderIds || []).forEach(oid => printFinishedLabel(oid));
-                            }
-                        }).catch(e => console.error('Error batch:', e));
-                    }}
+                    onComplete={(stepIds) => handleBatchComplete(stepIds, batchModal.items || [], batchModal.action || 'complete')}
                     onClose={() => setBatchModal(null)}
                 />
             )}

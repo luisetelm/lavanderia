@@ -13,6 +13,7 @@ import Messages from './pages/Messages.jsx';
 import Reviews from './pages/Reviews.jsx';
 import CashAudit from './pages/CashAudit.jsx';
 import TrackingBoard from './pages/TrackingBoard.jsx';
+import TrackingWorkshop from './pages/TrackingWorkshop.jsx';
 import ItineraryConfig from './pages/ItineraryConfig.jsx';
 import ResourceConfig from './pages/ResourceConfig.jsx';
 import WorkSchedule from './pages/WorkSchedule.jsx';
@@ -309,7 +310,8 @@ export default function App() {
                         <li><NavLink to="/pos"><span uk-icon="icon: cart; ratio: 0.9"></span> POS</NavLink></li>
                         <li><NavLink to="/productos"><span uk-icon="icon: grid; ratio: 0.9"></span> Productos</NavLink></li>
                         <li><NavLink to="/tareas"><span uk-icon="icon: list; ratio: 0.9"></span> Tareas</NavLink></li>
-                        <li><NavLink to="/tracking"><span uk-icon="icon: bolt; ratio: 0.9"></span> Tracking</NavLink></li>
+                        {/* 'end' para que /tracking/supervision no marque también este enlace */}
+                        <li><NavLink to="/tracking" end><span uk-icon="icon: bolt; ratio: 0.9"></span> Taller</NavLink></li>
                         <li><NavLink to="/usuarios"><span uk-icon="icon: users; ratio: 0.9"></span> Usuarios</NavLink></li>
                         {/* Impresión es configuración DEL DISPOSITIVO (qué imprime este
                             equipo, y si manda a la cola). La tablet del taller la usan
@@ -336,6 +338,7 @@ export default function App() {
                                 {adminMenuOpen && (
                                     <ul className="sidebar-admin-submenu">
                                         <li><NavLink to="/ventas"><span uk-icon="icon: credit-card; ratio: 0.8"></span> Ventas</NavLink></li>
+                                        <li><NavLink to="/tracking/supervision"><span uk-icon="icon: bolt; ratio: 0.8"></span> Tracking (supervisión)</NavLink></li>
                                         <li><NavLink to="/estadisticas"><span uk-icon="icon: bolt; ratio: 0.8"></span> Estadísticas</NavLink></li>
                                         <li><NavLink to="/rendimiento"><span uk-icon="icon: users; ratio: 0.8"></span> Rendimiento</NavLink></li>
                                         <li><NavLink to="/resenas"><span uk-icon="icon: star; ratio: 0.8"></span> Reseñas</NavLink></li>
@@ -376,13 +379,16 @@ export default function App() {
             <AppMain>
                 <ErrorBoundary>
                 <Routes>
-                    <Route path="/" element={<Navigate to="/dashboard" replace/>}/>
+                    {/* El trabajador entra directo al taller: un panel de métricas no
+                        le sirve de nada con una prenda en la mano. */}
+                    <Route path="/" element={<Navigate to={user?.role === 'worker' ? '/tracking' : '/dashboard'} replace/>}/>
                     <Route path="/dashboard" element={<Dashboard token={token} user={user}/>}/>
                     <Route path="/pos" element={<POS token={token} user={user}/>}/>
                     <Route path="/productos" element={<Inventory token={token}/>}/>
                     <Route path="/tareas" element={<Tasks token={token} user={user}/>}/>
                     <Route path="/buscar-pedido" element={<OrderLookup token={token}/>}/>
-                    <Route path="/tracking" element={<TrackingBoard token={token} user={user}/>}/>
+                    <Route path="/tracking" element={<TrackingWorkshop token={token} user={user}/>}/>
+                    <Route path="/tracking/supervision" element={<TrackingBoard token={token} user={user}/>}/>
                     <Route path="/usuarios" element={<Users token={token} user={user}/>}/>
                     <Route path="/usuarios/:id" element={<UserEdit token={token} user={user}/>}/>
                     <Route path="/mensajes" element={<Messages token={token} onUnreadCount={setUnreadMsgCount}/>}/>
