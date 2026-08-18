@@ -1,4 +1,4 @@
-import React, {useState, useEffect, useCallback, useRef} from 'react';
+import React, {useState, useEffect} from 'react';
 import {Routes, Route, NavLink, Navigate, useLocation} from 'react-router-dom';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
@@ -9,7 +9,6 @@ import Users from './pages/Users';
 import Ventas from './pages/Ventas';
 import AuthRedirect from './components/AuthRedirect';
 import UserEdit from './pages/UserEdit.jsx';
-import Messages from './pages/Messages.jsx';
 import Reviews from './pages/Reviews.jsx';
 import CashAudit from './pages/CashAudit.jsx';
 import TrackingBoard from './pages/TrackingBoard.jsx';
@@ -48,7 +47,9 @@ import PortalDashboard from './pages/portal/PortalDashboard.jsx';
 import PortalOrders from './pages/portal/PortalOrders.jsx';
 import PortalOrderDetail from './pages/portal/PortalOrderDetail.jsx';
 import PortalInvoices from './pages/portal/PortalInvoices.jsx';
-import { fetchConversations, fetchMe } from './api.js';
+import { fetchMe } from './api.js';
+import ChatWidget from './components/chat/ChatWidget.jsx';
+import { MessagesProvider } from './context/MessagesContext.jsx';
 
 
 function PortalApp() {
@@ -132,6 +133,14 @@ export default function App() {
         localStorage.removeItem('user');
     };
 
+    // Un 401 (token caducado o revocado) tiene que dejar la sesión limpia. Si sólo
+    // se navegara a /login, la app seguiría en el layout de sesión iniciada y
+    // pintaría el formulario de acceso con menú y chat encima.
+    useEffect(() => {
+        window.addEventListener('unauthorized', handleLogout);
+        return () => window.removeEventListener('unauthorized', handleLogout);
+    }, []);
+
     // Rutas del portal: layout separado, sin sidebar ni UIkit nav
     if (location.pathname.startsWith('/portal')) {
         return (
@@ -142,7 +151,6 @@ export default function App() {
     }
 
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-    const [unreadMsgCount, setUnreadMsgCount] = useState(0);
     const [adminMenuOpen, setAdminMenuOpen] = useState(false);
 
     // Mantener menú admin abierto si la ruta actual es de administración
@@ -163,119 +171,6 @@ export default function App() {
         setMobileMenuOpen(false);
     }, [location.pathname]);
 
-    // Polling de mensajes no leídos para el badge del sidebar
-    // Además: detecta mensajes entrantes nuevos para emitir sonido + notificación persistente.
-    const prevConvStateRef = useRef(null); // Map<convId, {unread, lastAt}>
-    const initialLoadDoneRef = useRef(false);
-    const audioCtxRef = useRef(null);
-
-    // Pedir permiso de notificaciones del navegador una vez
-    useEffect(() => {
-        if (!token || !user || (user.role !== 'admin' && user.role !== 'cashier')) return;
-        if (typeof window === 'undefined' || !('Notification' in window)) return;
-        if (Notification.permission === 'default') {
-            Notification.requestPermission().catch(() => {});
-        }
-    }, [token, user]);
-
-    // Beep sintetizado con Web Audio API (sin necesidad de ficheros)
-    const playBeep = useCallback(() => {
-        try {
-            const Ctx = window.AudioContext || window.webkitAudioContext;
-            if (!Ctx) return;
-            if (!audioCtxRef.current) audioCtxRef.current = new Ctx();
-            const ctx = audioCtxRef.current;
-            if (ctx.state === 'suspended') ctx.resume().catch(() => {});
-
-            const playTone = (freq, start, dur) => {
-                const osc = ctx.createOscillator();
-                const gain = ctx.createGain();
-                osc.type = 'sine';
-                osc.frequency.value = freq;
-                gain.gain.setValueAtTime(0.0001, ctx.currentTime + start);
-                gain.gain.exponentialRampToValueAtTime(0.25, ctx.currentTime + start + 0.02);
-                gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + start + dur);
-                osc.connect(gain).connect(ctx.destination);
-                osc.start(ctx.currentTime + start);
-                osc.stop(ctx.currentTime + start + dur + 0.02);
-            };
-            // Doble tono tipo "ding-dong" tipo WhatsApp
-            playTone(880, 0, 0.18);
-            playTone(660, 0.20, 0.22);
-        } catch (e) { /* silenciar */ }
-    }, []);
-
-    const showWhatsAppNotification = useCallback((conv) => {
-        try {
-            if (!('Notification' in window) || Notification.permission !== 'granted') return;
-            const name = (conv.firstName || conv.lastName)
-                ? `${conv.firstName || ''} ${conv.lastName || ''}`.trim()
-                : `+${conv.phone || 'Desconocido'}`;
-            const body = conv.lastMessage || 'Nuevo mensaje';
-            const isWa = conv.lastChannel === 'whatsapp';
-            const n = new Notification(`${isWa ? '💬 WhatsApp' : '📩 SMS'} · ${name}`, {
-                body: body.length > 140 ? body.slice(0, 137) + '…' : body,
-                icon: '/logo.png',
-                tag: `conv-${conv.id}`,
-                requireInteraction: true, // No se cierra hasta que el usuario la cierra/click
-                renotify: true,
-            });
-            n.onclick = () => {
-                try {
-                    window.focus();
-                    window.location.hash = '';
-                    // Navegar a /mensajes
-                    if (!window.location.pathname.startsWith('/mensajes')) {
-                        window.history.pushState({}, '', '/mensajes');
-                        window.dispatchEvent(new PopStateEvent('popstate'));
-                    }
-                } catch { /* noop */ }
-                n.close();
-            };
-        } catch (e) { /* silenciar */ }
-    }, []);
-
-    const loadUnreadCount = useCallback(async () => {
-        if (!token || !user || (user.role !== 'admin' && user.role !== 'cashier')) return;
-        try {
-            const convs = await fetchConversations(token);
-            const total = convs.reduce((sum, c) => sum + (c.unreadCount || 0), 0);
-            setUnreadMsgCount(total);
-
-            // Detectar incrementos de unread / nuevos mensajes inbound
-            const prev = prevConvStateRef.current;
-            const next = new Map();
-            const newOnes = [];
-            for (const c of convs) {
-                const lastAt = c.lastMessageAt ? new Date(c.lastMessageAt).getTime() : 0;
-                next.set(c.id, { unread: c.unreadCount || 0, lastAt });
-                if (initialLoadDoneRef.current && prev) {
-                    const p = prev.get(c.id);
-                    const isNewer = !p || lastAt > p.lastAt;
-                    const unreadIncreased = (c.unreadCount || 0) > (p?.unread || 0);
-                    // Solo si hay un mensaje entrante nuevo (unread sube) y es más reciente
-                    if (unreadIncreased && isNewer && c.lastDirection === 'inbound') {
-                        newOnes.push(c);
-                    }
-                }
-            }
-            prevConvStateRef.current = next;
-            initialLoadDoneRef.current = true;
-
-            if (newOnes.length > 0) {
-                playBeep();
-                // Mostrar una notificación por conversación (máx 3 para evitar spam)
-                newOnes.slice(0, 3).forEach(showWhatsAppNotification);
-            }
-        } catch (e) { /* silenciar */ }
-    }, [token, user, playBeep, showWhatsAppNotification]);
-
-    useEffect(() => {
-        loadUnreadCount();
-        const interval = setInterval(loadUnreadCount, 15000);
-        return () => clearInterval(interval);
-    }, [loadUnreadCount]);
-
     // Login: layout limpio, sin sidebar ni menú
     if (!token) {
         return (
@@ -289,6 +184,7 @@ export default function App() {
 
     return (<AuthRedirect>
         <DraftOrderProvider>
+        <MessagesProvider token={token} user={user}>
         <div className="app-layout">
             <ScanCapture />
             <DialogHost />
@@ -303,11 +199,6 @@ export default function App() {
                             type="button"
                         >
                             <span uk-icon={mobileMenuOpen ? 'icon: close; ratio: 1.2' : 'icon: menu; ratio: 1.2'}></span>
-                            {/* Badge visible solo en móvil cuando el menú está cerrado:
-                                avisa de mensajes sin leer aunque el sidebar esté colapsado. */}
-                            {unreadMsgCount > 0 && !mobileMenuOpen && (
-                                <span className="hamburger-badge">{unreadMsgCount}</span>
-                            )}
                         </button>
                     </div>
                     <ul className="sidebar-nav">
@@ -322,10 +213,6 @@ export default function App() {
                             equipo, y si manda a la cola). La tablet del taller la usan
                             trabajadores, así que no puede ser sólo de administración. */}
                         <li><NavLink to="/impresion"><span uk-icon="icon: print; ratio: 0.9"></span> Impresión</NavLink></li>
-                        <li><NavLink to="/mensajes">
-                            <span uk-icon="icon: comment; ratio: 0.9"></span> Mensajes
-                            {unreadMsgCount > 0 && <span className="sidebar-badge">{unreadMsgCount}</span>}
-                        </NavLink></li>
                         {token && user.role === 'admin' && (
                             <li className="sidebar-admin-group">
                                 <button
@@ -398,7 +285,6 @@ export default function App() {
                     <Route path="/tracking/supervision" element={soloAdmin(<TrackingBoard token={token} user={user}/>)}/>
                     <Route path="/usuarios" element={<Users token={token} user={user}/>}/>
                     <Route path="/usuarios/:id" element={<UserEdit token={token} user={user}/>}/>
-                    <Route path="/mensajes" element={<Messages token={token} onUnreadCount={setUnreadMsgCount}/>}/>
                     <Route path="/ventas" element={<Ventas token={token}/>}/>
                     <Route path="/estadisticas" element={<Stats token={token}/>}/>
                     <Route path="/rendimiento" element={soloAdmin(<WorkerPerformance token={token}/>)}/>
@@ -411,12 +297,16 @@ export default function App() {
                     <Route path="/impresion" element={<PrintSettings token={token}/>}/>
                     <Route path="/accesos" element={soloAdmin(<LoginLogs token={token}/>)}/>
                     <Route path="*" element={<div style={{padding: 40, textAlign: 'center'}}>Ruta no encontrada</div>}/>
-                    <Route path="/login" element={<Login onLogin={handleLogin}/>}/>
+                    {/* Con sesión iniciada, /login no tiene sentido: al inicio del rol */}
+                    <Route path="/login" element={<Navigate to={homePath} replace/>}/>
                 </Routes>
                 </ErrorBoundary>
             </AppMain>
             <DraftOrderBanner token={token} worker={user} />
+            {/* Chat flotante: mensajes de clientes sobre cualquier pantalla (sólo admin/cajero) */}
+            <ChatWidget />
         </div>
+        </MessagesProvider>
         </DraftOrderProvider>
     </AuthRedirect>);
 }

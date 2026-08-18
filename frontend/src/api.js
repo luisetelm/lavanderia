@@ -546,6 +546,14 @@ export function markConversationAsRead(token, conversationId) {
     return request(`/messages/read/${conversationId}`, token, { method: 'POST', body: JSON.stringify({}) });
 }
 
+// Vincula la conversación de un número desconocido a un cliente existente
+export function linkConversationClient(token, conversationId, clientId) {
+    return request(`/messages/conversations/${conversationId}/link-client`, token, {
+        method: 'POST',
+        body: JSON.stringify({ clientId }),
+    });
+}
+
 export async function sendMediaMessage(token, { file, conversationId, caption, channel }) {
     const formData = new FormData();
     formData.append('file', file);

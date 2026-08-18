@@ -37,7 +37,9 @@ No test framework is configured.
 
 **Components (`src/components/`):** Reusable UI — `PaymentSection` (card/cash payments, invoice generation, status updates), `CartSummary`, `CustomerSelector`, `DateCarousel`, `CashModal`, `Pagination`, `UserForm`, `VentaRow`, `Ticket`, `OrderValidation`, `AuthRedirect`.
 
-**Hooks:** `useOrder.js` — fetch single order with loading/error states.
+**Hooks:** `useOrder.js` — fetch single order with loading/error states. `useDraftOrder.js` — draft order context (POS cart). `useMessages.js` — shared messaging state.
+
+**Chat flotante (`src/components/chat/`, `src/context/MessagesContext.jsx`):** No hay página de mensajes; el chat es un widget flotante (`ChatWidget`) montado en el layout de `App.jsx` sobre cualquier ruta, sólo para admin/cajero. `MessagesProvider` hace el único polling de conversaciones (15 s), lleva el contador, el sonido, las notificaciones del sistema (permiso pedido desde el clic, no al cargar) y el estado abierto/ancho del panel. `ClientContextPanel` muestra ficha, pedidos y acciones del cliente de la conversación, y permite vincular números desconocidos (`POST /messages/conversations/:id/link-client`).
 
 **Printing (`src/utils/printUtils.js`, `src/qzInit.js`, `src/qzHelper.js`):** QZ Tray integration for thermal printers (ESC/POS). Generates HTML receipts, wash labels, cash reports. Falls back to `window.print()`. Printer names in localStorage.
 
