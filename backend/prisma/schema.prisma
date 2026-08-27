@@ -421,6 +421,9 @@ model Message {
   conversationId  Int?
   retryCount      Int           @default(0)
   nextRetryAt     DateTime?     @db.Timestamptz(6)
+  errorCode       Int?          // código de error de Meta cuando status = failed
+  errorMessage    String?       @db.VarChar(255)
+  fallbackNotificationId Int?   // Notification (SMS) enviada al fallar la entrega
   createdAt       DateTime      @default(now()) @db.Timestamptz(6)
   updatedAt       DateTime      @default(now()) @db.Timestamptz(6)
   client          User?         @relation("client_messages", fields: [clientId], references: [id])

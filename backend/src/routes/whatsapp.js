@@ -11,6 +11,7 @@ import {
     downloadMedia
 } from '../services/whatsapp.js';
 import { findOrCreateConversation, touchConversation } from '../services/conversation.js';
+import { fallbackToSmsAfterWhatsAppFailure } from '../services/notify.js';
 
 /**
  * Rutas autenticadas de WhatsApp (admin/cashier).
@@ -278,23 +279,39 @@ export async function whatsappWebhookRoutes(fastify) {
 
             // Procesar actualizaciones de estado
             for (const status of statuses) {
-                if (status.waMessageId) {
-                    // Registrar el motivo cuando Meta reporta un fallo, para poder diagnosticar
-                    if (status.status === 'failed') {
-                        console.error(
-                            `[WhatsApp] Mensaje ${status.waMessageId} FALLIDO`,
-                            `→ code=${status.errorCode ?? 'N/A'}`,
-                            `msg="${status.errorMessage ?? 'sin detalle'}"`,
-                        );
-                    }
-                    await prisma.message.updateMany({
-                        where: { externalId: status.waMessageId },
-                        data: {
-                            status: status.status,
-                            updatedAt: new Date(),
-                        }
+                if (!status.waMessageId) continue;
+
+                if (status.status === 'failed') {
+                    // Guardar el motivo (antes sólo se escribía en consola y no se
+                    // podía diagnosticar desde la app por qué un cliente no recibía avisos)
+                    const errorCode = Number.isFinite(Number(status.errorCode)) ? Number(status.errorCode) : null;
+                    const errorMessage = status.errorMessage ? String(status.errorMessage).slice(0, 255) : null;
+                    console.error(
+                        `[WhatsApp] Mensaje ${status.waMessageId} FALLIDO`,
+                        `→ code=${errorCode ?? 'N/A'}`,
+                        `msg="${errorMessage ?? 'sin detalle'}"`,
+                    );
+                    const failed = await prisma.message.findUnique({ where: { externalId: status.waMessageId } });
+                    if (!failed) continue;
+                    await prisma.message.update({
+                        where: { id: failed.id },
+                        data: { status: 'failed', errorCode, errorMessage, updatedAt: new Date() },
                     });
+                    try {
+                        await fallbackToSmsAfterWhatsAppFailure(prisma, failed, { errorCode, errorMessage });
+                    } catch (fbErr) {
+                        console.error(`[WhatsApp] Error en fallback SMS del mensaje ${status.waMessageId}:`, fbErr);
+                    }
+                    continue;
                 }
+
+                await prisma.message.updateMany({
+                    where: { externalId: status.waMessageId },
+                    data: {
+                        status: status.status,
+                        updatedAt: new Date(),
+                    }
+                });
             }
         } catch (err) {
             console.error('[WhatsApp] Error procesando webhook:', err);

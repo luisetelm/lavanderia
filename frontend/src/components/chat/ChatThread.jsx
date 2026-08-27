@@ -500,6 +500,12 @@ function MessageList({ messages, onImageClick }) {
                                 </span>
                             )}
                         </div>
+                        {m.direction === 'outbound' && m.status === 'failed' && (m.errorMessage || m.errorCode || m.fallbackNotificationId) && (
+                            <div className="msg-bubble-error" style={{ color: '#ef4444', fontSize: '0.75em', marginTop: 2 }}>
+                                {m.errorCode ? `Error ${m.errorCode}: ` : 'No entregado: '}{m.errorMessage || 'sin detalle'}
+                                {m.fallbackNotificationId ? ' · reenviado por SMS' : ''}
+                            </div>
+                        )}
                     </div>
                 </div>
             </React.Fragment>

@@ -338,7 +338,8 @@ export function parseWebhookPayload(body) {
                         recipientId: status.recipient_id,
                         timestamp: status.timestamp,
                         errorCode: status.errors?.[0]?.code,
-                        errorMessage: status.errors?.[0]?.message,
+                        // Meta manda el motivo útil en error_data.details ("message" es genérico)
+                        errorMessage: status.errors?.[0]?.error_data?.details || status.errors?.[0]?.message,
                     });
                 }
             }

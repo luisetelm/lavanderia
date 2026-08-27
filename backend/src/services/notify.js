@@ -291,3 +291,65 @@ export async function sendCollectedNotification(prisma, orderId, forceSendSMS = 
 // Exportado para reutilizar en el servicio de reintentos (reminders.js)
 export { buildOrderNotificationPayload };
 
+
+
+/**
+ * Fallback a SMS cuando Meta acepta un mensaje de WhatsApp y después informa
+ * por webhook de que NO se ha podido entregar (status = failed). Hasta ahora
+ * ese caso se perdía: el aviso quedaba en "failed" y el cliente no se enteraba.
+ *
+ * Sólo actúa sobre mensajes salientes de texto con destinatario, una única vez
+ * por mensaje (fallbackNotificationId) y nunca para clientes con avisos desactivados.
+ */
+export async function fallbackToSmsAfterWhatsAppFailure(prisma, message, { errorCode = null, errorMessage = null } = {}) {
+    if (!message || message.direction !== 'outbound' || message.channel !== 'whatsapp') return null;
+    if (message.fallbackNotificationId) return null;
+    if (!message.content || message.mediaType) return null;
+
+    const client = message.clientId
+        ? await prisma.user.findUnique({ where: { id: message.clientId }, select: { id: true, phone: true, notifyChannel: true } })
+        : null;
+    if (client?.notifyChannel === 'none') return null;
+
+    const normalizedPhone = normalizePhone(client?.phone || message.phone || '');
+    if (!normalizedPhone) return null;
+
+    const reason = `wa_delivery_failed${errorCode ? ` ${errorCode}` : ''}: ${(errorMessage || 'sin detalle').slice(0, 100)}`;
+    const notification = await prisma.notification.create({
+        data: {
+            orderid: message.orderId || null,
+            type: 'sms',
+            recipient: normalizedPhone,
+            content: message.content,
+            status: 'pending',
+            conversationId: message.conversationId || null,
+            statusMessage: reason.slice(0, 255),
+        },
+    });
+    // Marcar antes de enviar: si Meta repite el mismo status no se duplica el SMS
+    await prisma.message.update({ where: { id: message.id }, data: { fallbackNotificationId: notification.id } });
+
+    try {
+        const sms = await sendSMScustomer(normalizedPhone, message.content);
+        const baseMsg = (sms?.message || 'SMS enviado').slice(0, 120);
+        await prisma.notification.update({
+            where: { id: notification.id },
+            data: {
+                status: parseInt(sms?.code, 10) === 0 ? 'sent' : 'failed',
+                statusCode: Number.parseInt(sms?.code, 10) || null,
+                subid: sms?.subid || null,
+                statusMessage: `${reason} | ${baseMsg}`.slice(0, 255),
+            },
+        });
+        if (message.conversationId) await touchConversation(prisma, message.conversationId);
+        console.log(`[Notify] Mensaje WA #${message.id} no entregado (${errorCode ?? 'N/A'}); reenviado por SMS (notif #${notification.id})`);
+        return { ok: true, notificationId: notification.id };
+    } catch (smsErr) {
+        await prisma.notification.update({
+            where: { id: notification.id },
+            data: { status: 'failed', statusMessage: `${reason} | ${(smsErr.message || 'Error SMS')}`.slice(0, 255) },
+        });
+        console.error(`[Notify] Fallback SMS del mensaje WA #${message.id} también falló:`, smsErr.message);
+        return { ok: false, notificationId: notification.id, error: smsErr.message };
+    }
+}
