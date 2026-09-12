@@ -23,8 +23,8 @@
 .pl-grid-wrap {
     max-height: min(58vh, 620px);
     overflow-y: auto;
-    padding: 2px 2px 4px;
-    margin: 0 -2px;
+    overflow-x: hidden;
+    padding: 8px 8px 6px 2px; /* hueco para el contador que sobresale de la tarjeta */
 }
 .pl-grid {
     display: grid;
