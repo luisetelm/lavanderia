@@ -1,193 +1,323 @@
-import React, {useState, useEffect} from 'react';
-import { lineasActivas } from '../utils/lineas.js';
-import {fetchDates} from '../api';
+import React, {useState, useEffect, useCallback, useRef} from 'react';
 import {Link} from 'react-router-dom';
+import UIkit from 'uikit';
+import {lineasActivas} from '../utils/lineas.js';
+import {fetchDates} from '../api';
+import './DateCarousel.css';
 
+/* ── Utilidades de fecha (todo en 'YYYY-MM-DD', hora local) ── */
+const ymd = (d) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+};
+const fromYmd = (s) => {
+    const [y, m, d] = String(s).slice(0, 10).split('-').map(Number);
+    return new Date(y, m - 1, d);
+};
+const addDays = (s, n) => {
+    const d = fromYmd(s);
+    d.setDate(d.getDate() + n);
+    return ymd(d);
+};
+const mondayOf = (s) => {
+    const d = fromYmd(s);
+    const dow = d.getDay();
+    d.setDate(d.getDate() + (dow === 0 ? -6 : 1 - dow));
+    return ymd(d);
+};
+const fmt = (s, opts) => fromYmd(s).toLocaleDateString('es-ES', opts);
+// "lunes, 14 de septiembre" -> "Lunes, 14 de septiembre"
+const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+const fmtLoad = (n) => (Math.round(n * 10) / 10).toString().replace('.', ',');
 
-export default function DateCarousel({
-                                         fechaLimite, setFechaLimite, token
-                                     }) {
-    const [currentPage, setCurrentPage] = useState(0);
-    const [dates, setDates] = useState([]);
-    const [loadByDay, setLoadByDay] = useState({});
-    const [suggestedDate, setSuggestedDate] = useState(null);
+const WEEKDAYS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+const LOAD_MAX = 8; // a partir de aquí el día se considera lleno
+const WEEKS = 2;
+
+const loadLevel = (load) => (load >= LOAD_MAX ? 'high' : load >= LOAD_MAX / 2 ? 'mid' : 'low');
+
+export default function DateCarousel({fechaLimite, setFechaLimite, token}) {
+    const todayStr = ymd(new Date());
+    const [weekStart, setWeekStart] = useState(() => mondayOf(fechaLimite || todayStr));
+    const [data, setData] = useState(null); // { days, loadByDay, suggestedDate, today }
     const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
+    // Fecha elegida en el calendario nativo que aún no está cargada en la rejilla
+    const [pendingPick, setPendingPick] = useState(null);
+    const pickerRef = useRef(null);
 
-    const loadDates = async (page) => {
+    const load = useCallback(async (start) => {
         setLoading(true);
+        setError('');
         try {
-            const res = await fetchDates(page, token);
-            setDates(res.dates);
-            setLoadByDay(res.loadByDay);
-            console.log(res);
-
-            if (page === 0 && res.suggestedDate) {
-                setSuggestedDate(res.suggestedDate);
-                // Solo establecer la fecha sugerida aquí si no hay fecha límite establecida
-                if (fechaLimite === null || fechaLimite === undefined || fechaLimite === '') {
-
-                    console.log('Estableciendo fecha sugerida:', res.suggestedDate);
-                    setFechaLimite(res.suggestedDate);
-                }
-            }
-        } catch (error) {
-            console.error('Error loading dates:', error);
+            const res = await fetchDates(token, {start, weeks: WEEKS});
+            setData(res);
+        } catch (e) {
+            console.error('Error cargando fechas de entrega:', e);
+            setError('No se pudieron cargar las fechas de entrega');
         } finally {
             setLoading(false);
         }
-    };
-
-    useEffect(() => {
-        if (token) {
-            loadDates(0);
-        }
     }, [token]);
 
+    useEffect(() => {
+        if (token) load(weekStart);
+    }, [token, weekStart, load]);
 
-    const handlePrevious = () => {
-        const newPage = currentPage - 1; // Permitir páginas negativas
-        console.log('Previous - Current page:', currentPage, 'New page:', newPage);
-        setCurrentPage(newPage);
-        loadDates(newPage);
+    // Si el pedido aún no tiene fecha (pedido nuevo o borrador vaciado),
+    // se propone la fecha sugerida por el servidor.
+    useEffect(() => {
+        if (!fechaLimite && data?.suggestedDate) {
+            setFechaLimite(data.suggestedDate);
+        }
+    }, [fechaLimite, data?.suggestedDate, setFechaLimite]);
+
+    const days = data?.days || [];
+    const loadByDay = data?.loadByDay || {};
+    const suggestedDate = data?.suggestedDate || null;
+    const weekEnd = addDays(weekStart, WEEKS * 7 - 1);
+    const canGoBack = weekStart > mondayOf(todayStr);
+
+    const dayByDate = Object.fromEntries(days.map(d => [d.date, d]));
+    const selected = fechaLimite ? dayByDate[fechaLimite] : null;
+
+    const selectDay = (day) => {
+        if (day.isPast || !day.isWorking) return;
+        setFechaLimite(day.date);
     };
 
-    const handleNext = () => {
-        const newPage = currentPage + 1;
-        console.log('Next - Current page:', currentPage, 'New page:', newPage);
-        setCurrentPage(newPage);
-        loadDates(newPage);
+    const goToDate = (dateStr) => {
+        setWeekStart(mondayOf(dateStr));
     };
 
-    if (loading) {
-        return <div className="uk-text-center">
-            <div uk-spinner="true"></div>
-        </div>;
-    }
+    // Selección de una fecha lejana con el calendario nativo
+    const handlePick = (e) => {
+        const v = e.target.value;
+        if (!v) return;
+        if (v < todayStr) {
+            UIkit.notification({message: 'La fecha no puede ser anterior a hoy', status: 'warning', pos: 'top-right', timeout: 2500});
+            return;
+        }
+        goToDate(v);
+        // El día concreto puede no estar cargado aún (otra semana); se
+        // selecciona al llegar los datos si está abierto.
+        setPendingPick(v);
+    };
+    useEffect(() => {
+        if (!pendingPick || !data) return;
+        const day = (data.days || []).find(d => d.date === pendingPick);
+        if (!day) return;
+        if (day.isWorking) {
+            setFechaLimite(day.date);
+        } else {
+            UIkit.notification({
+                message: `Ese día la lavandería está cerrada${day.label ? ` (${day.label})` : ''}`,
+                status: 'warning', pos: 'top-right', timeout: 3000,
+            });
+        }
+        setPendingPick(null);
+    }, [pendingPick, data, setFechaLimite]);
 
-    // Carga ponderada: ignora productos que no computan y pondera por workloadWeight.
+    // Carga ponderada de un pedido (para el desplegable de detalle)
     const orderWeighted = (o) => lineasActivas(o.lines).reduce((s, l) => {
         const p = l.product || {};
         if (p.countsForLoad === false) return s;
         const w = (p.workloadWeight != null) ? Number(p.workloadWeight) : 1;
         return s + (l.quantity || 0) * w;
     }, 0);
-    const dayWeighted = (orders) => orders.reduce((s, o) => s + orderWeighted(o), 0);
-    const fmtLoad = (n) => (Math.round(n * 10) / 10).toString().replace('.', ',');
 
-    return (<div className="uk-margin-medium-bottom">
-        <h4 className="uk-margin-small-bottom">Fecha de entrega</h4>
+    const rangeLabel = (() => {
+        const a = fromYmd(weekStart), b = fromYmd(weekEnd);
+        const sameMonth = a.getMonth() === b.getMonth();
+        const left = a.toLocaleDateString('es-ES', sameMonth ? {day: 'numeric'} : {day: 'numeric', month: 'short'});
+        const right = b.toLocaleDateString('es-ES', {day: 'numeric', month: 'short', year: a.getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined});
+        return `${left} – ${right}`;
+    })();
 
-        <div className="uk-flex uk-flex-middle uk-grid-small" uk-grid="true">
-                <span
-                    onClick={handlePrevious}
-                    disabled={currentPage === 0}
-                >
-                    <span uk-icon="icon: chevron-left; ratio: 2;"></span>
-                </span>
-
-            <div className="uk-width-expand">
-                <div className="uk-child-width-1-5 uk-grid-small" uk-grid="true">
-                    {dates.map((key) => {
-                        const ordersForDay = loadByDay[key] || [];
-                        const load = dayWeighted(ordersForDay);
-                        const colorClass = load >= 8 ? 'uk-alert-danger' : load >= 4 ? 'uk-alert-warning' : 'uk-alert-success';
-
-                        const isSuggested = key === suggestedDate;
-
-                        return (<div key={key}>
-                            <div className="uk-inline uk-display-block">
-                                <div
-                                    className={`${colorClass} uk-padding-small uk-border-rounded uk-box-shadow-small uk-display-block ${fechaLimite === key ? 'uk-box-shadow-medium uk-position-z-index uk-border uk-border-emphasis uk-background-selected' : ''} ${isSuggested ? 'uk-box-shadow-large uk-border uk-border-primary' : ''}`}
-                                    onClick={() => setFechaLimite(key)}
-                                >
-                                    <div className="uk-text-bold">
-                                        {new Date(key).toLocaleDateString('es-ES', {
-                                            weekday: 'short', day: 'numeric', month: 'short',
-                                        })}
-
-                                    </div>
-                                    <div className="uk-text-small">Pedidos: {ordersForDay.length}</div>
-                                    <div className="uk-text-small uk-text-bold">Carga: {fmtLoad(load)}</div>
-                                </div>
-
-                                {/* Dropdown acotado: cabecera/pie fijos y lista con scroll */}
-                                {/* IMPORTANTE: no poner display/flex en el elemento uk-dropdown,
-                                    porque sobrescribe el display:none que UIkit usa para ocultarlo.
-                                    El layout va en un div interior. */}
-                                {ordersForDay.length > 0 && (<div
-                                    className="uk-card uk-card-default"
-                                    style={{ padding: 0 }}
-                                    uk-dropdown="mode: hover; delay-hide: 200; pos: bottom-center; boundary: !.uk-grid; boundary-align: true; animation: uk-animation-slide-top-small"
-                                >
-                                  <div style={{
-                                      width: 300, maxWidth: '92vw',
-                                      display: 'flex', flexDirection: 'column',
-                                      maxHeight: '60vh', overflow: 'hidden',
-                                  }}>
-                                    {/* Cabecera fija */}
-                                    <div style={{ padding: '10px 12px', borderBottom: '1px solid #eef2f7', flexShrink: 0 }}>
-                                        <strong style={{ fontSize: '0.82rem' }}>
-                                            {new Date(key).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'short' })}
-                                        </strong>
-                                    </div>
-
-                                    {/* Lista con scroll */}
-                                    <div style={{ overflowY: 'auto', flex: 1 }}>
-                                        {ordersForDay.map((order) => {
-                                            const st = order.status;
-                                            const stLabel = st === 'pending' ? 'Pendiente' : st === 'in_progress' ? 'En proceso' : st === 'ready' ? 'Listo' : st === 'collected' ? 'Recogido' : st === 'cancelled' ? 'Cancelado' : st;
-                                            const stClass = st === 'pending' ? 'warning' : st === 'in_progress' ? 'primary' : st === 'ready' ? 'success' : 'default';
-                                            return (
-                                                <div key={order.id} style={{ padding: '8px 12px', borderBottom: '1px solid #f4f6f9' }}>
-                                                    <div className="uk-flex uk-flex-between uk-flex-middle" style={{ gap: 6 }}>
-                                                        <Link
-                                                            to={`/tareas`}
-                                                            state={{ filterOrderId: order.id, orderNumber: order.orderNum || order.id }}
-                                                            className="uk-text-bold"
-                                                            style={{ fontSize: '0.82rem' }}
-                                                        >
-                                                            {order.orderNum}
-                                                        </Link>
-                                                        <span className={`uk-label uk-label-${stClass}`} style={{ fontSize: '0.6rem' }}>
-                                                            {stLabel}
-                                                        </span>
-                                                    </div>
-                                                    <div className="uk-text-muted" style={{ fontSize: '0.72rem' }}>
-                                                        {order.client?.firstName} {order.client?.lastName} · Carga {fmtLoad(orderWeighted(order))}
-                                                    </div>
-                                                    {/* Prendas en una sola línea que envuelve */}
-                                                    <div style={{ fontSize: '0.72rem', marginTop: 2, lineHeight: 1.35 }}>
-                                                        {lineasActivas(order.lines).map((l, i) => {
-                                                            const noLoad = l.product?.countsForLoad === false;
-                                                            return (
-                                                                <span key={l.id} style={{ color: noLoad ? '#9ca3af' : '#475569' }}>
-                                                                    {i > 0 ? ', ' : ''}{l.quantity}× {l.product?.name || `#${l.productId}`}{noLoad ? ' (no computa)' : ''}
-                                                                </span>
-                                                            );
-                                                        })}
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-
-                                    {/* Pie fijo con el resumen del día */}
-                                    <div style={{ padding: '8px 12px', borderTop: '1px solid #eef2f7', background: '#fbfcfe', fontSize: '0.72rem', color: '#64748b', flexShrink: 0 }}>
-                                        {ordersForDay.length} pedido{ordersForDay.length !== 1 ? 's' : ''} · Carga {fmtLoad(load)}
-                                    </div>
-                                  </div>
-                                </div>)}
-                            </div>
-                        </div>);
-                    })}
+    return (
+        <div className="dc">
+            {/* Cabecera: título + navegación */}
+            <div className="dc-head">
+                <h4 className="uk-margin-remove">Fecha de entrega</h4>
+                <div className="dc-nav">
+                    <button type="button" className="dc-nav-btn" onClick={() => setWeekStart(mondayOf(todayStr))}
+                            disabled={!canGoBack} title="Volver a la semana actual">Hoy</button>
+                    <button type="button" className="dc-nav-btn" onClick={() => setWeekStart(addDays(weekStart, -7))}
+                            disabled={!canGoBack} aria-label="Semana anterior">
+                        <span uk-icon="icon: chevron-left; ratio: 0.9"></span>
+                    </button>
+                    <span className="dc-range">{rangeLabel}</span>
+                    <button type="button" className="dc-nav-btn" onClick={() => setWeekStart(addDays(weekStart, 7))}
+                            aria-label="Semana siguiente">
+                        <span uk-icon="icon: chevron-right; ratio: 0.9"></span>
+                    </button>
+                    <button type="button" className="dc-nav-btn" title="Elegir otra fecha"
+                            onClick={() => pickerRef.current?.showPicker ? pickerRef.current.showPicker() : pickerRef.current?.click()}>
+                        <span uk-icon="icon: calendar; ratio: 0.9"></span>
+                    </button>
+                    <input ref={pickerRef} type="date" className="dc-picker" min={todayStr}
+                           value="" onChange={handlePick} tabIndex={-1} aria-hidden="true"/>
                 </div>
             </div>
 
-            <span
-                onClick={handleNext}
-            >
-                    <span uk-icon="icon: chevron-right; ratio: 2;"></span>
-                </span>
+            {error && <div className="uk-alert-danger uk-margin-small" uk-alert="true"><p>{error}</p></div>}
+
+            {/* Rejilla semanal */}
+            <div className={`dc-grid ${loading ? 'is-loading' : ''}`}>
+                {WEEKDAYS.map(w => <div key={w} className="dc-wd">{w}</div>)}
+
+                {days.map(day => {
+                    const orders = loadByDay[day.date] || [];
+                    const isSelected = fechaLimite === day.date;
+                    const isSuggested = suggestedDate === day.date;
+                    const closed = !day.isWorking;
+                    const disabled = day.isPast || closed;
+                    const level = loadLevel(day.load);
+                    const showMonth = day.date.endsWith('-01') || day.date === days[0].date;
+                    const cls = [
+                        'dc-day',
+                        disabled ? 'is-disabled' : '',
+                        closed ? 'is-closed' : '',
+                        day.isPast ? 'is-past' : '',
+                        day.isToday ? 'is-today' : '',
+                        isSelected ? 'is-selected' : '',
+                        isSuggested && !isSelected ? 'is-suggested' : '',
+                        !disabled ? `load-${level}` : '',
+                    ].filter(Boolean).join(' ');
+
+                    const title = closed
+                        ? `Cerrado${day.label ? ` · ${day.label}` : ''}`
+                        : day.isPast ? 'Fecha pasada'
+                            : `${orders.length} pedido${orders.length !== 1 ? 's' : ''} · carga ${fmtLoad(day.load)}`;
+
+                    return (
+                        <div key={day.date} className="dc-cell">
+                            <button
+                                type="button"
+                                className={cls}
+                                onClick={() => selectDay(day)}
+                                disabled={disabled}
+                                aria-pressed={isSelected}
+                                title={title}
+                            >
+                                <span className="dc-num">
+                                    {fromYmd(day.date).getDate()}
+                                    {showMonth && <small>{fmt(day.date, {month: 'short'}).replace('.', '')}</small>}
+                                </span>
+
+                                {closed ? (
+                                    <span className={`dc-closed ${day.isException ? 'is-holiday' : ''}`}>
+                                        {day.isException && <span uk-icon="icon: ban; ratio: 0.6"></span>}
+                                        <span className="dc-closed-label">{day.label || 'Cerrado'}</span>
+                                    </span>
+                                ) : day.isPast ? (
+                                    <span className="dc-meta">&nbsp;</span>
+                                ) : (
+                                    <>
+                                        <span className="dc-bar"><i style={{width: `${Math.min(day.load / LOAD_MAX, 1) * 100}%`}}/></span>
+                                        <span className="dc-meta">
+                                            {orders.length > 0 ? `${orders.length} ped · ${fmtLoad(day.load)}` : 'libre'}
+                                        </span>
+                                    </>
+                                )}
+
+                                {isSuggested && !closed && !day.isPast && <span className="dc-badge">Sugerida</span>}
+                                {isSelected && <span className="dc-check" uk-icon="icon: check; ratio: 0.7"></span>}
+                            </button>
+
+                            {/* Detalle de pedidos del día al pasar el ratón */}
+                            {orders.length > 0 && !closed && (
+                                <div className="uk-card uk-card-default" style={{padding: 0}}
+                                     uk-dropdown="mode: hover; delay-show: 350; delay-hide: 200; pos: bottom-center; boundary: !.dc; boundary-align: true; animation: uk-animation-slide-top-small">
+                                    <div className="dc-pop">
+                                        <div className="dc-pop-head">
+                                            <strong>{cap(fmt(day.date, {weekday: 'long', day: 'numeric', month: 'short'}))}</strong>
+                                        </div>
+                                        <div className="dc-pop-list">
+                                            {orders.map(order => {
+                                                const st = order.status;
+                                                const stLabel = st === 'pending' ? 'Pendiente' : st === 'in_progress' ? 'En proceso' : st === 'ready' ? 'Listo' : st === 'collected' ? 'Recogido' : st === 'cancelled' ? 'Cancelado' : st;
+                                                const stClass = st === 'pending' ? 'warning' : st === 'in_progress' ? 'primary' : st === 'ready' ? 'success' : 'default';
+                                                return (
+                                                    <div key={order.id} className="dc-pop-item">
+                                                        <div className="uk-flex uk-flex-between uk-flex-middle" style={{gap: 6}}>
+                                                            <Link to="/tareas"
+                                                                  state={{filterOrderId: order.id, orderNumber: order.orderNum || order.id}}
+                                                                  className="uk-text-bold" style={{fontSize: '0.82rem'}}>
+                                                                {order.orderNum}
+                                                            </Link>
+                                                            <span className={`uk-label uk-label-${stClass}`} style={{fontSize: '0.6rem'}}>{stLabel}</span>
+                                                        </div>
+                                                        <div className="uk-text-muted" style={{fontSize: '0.72rem'}}>
+                                                            {order.client?.firstName} {order.client?.lastName} · Carga {fmtLoad(orderWeighted(order))}
+                                                        </div>
+                                                        <div style={{fontSize: '0.72rem', marginTop: 2, lineHeight: 1.35}}>
+                                                            {lineasActivas(order.lines).map((l, i) => {
+                                                                const noLoad = l.product?.countsForLoad === false;
+                                                                return (
+                                                                    <span key={l.id} style={{color: noLoad ? '#9ca3af' : '#475569'}}>
+                                                                        {i > 0 ? ', ' : ''}{l.quantity}× {l.product?.name || `#${l.productId}`}{noLoad ? ' (no computa)' : ''}
+                                                                    </span>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                        <div className="dc-pop-foot">
+                                            {orders.length} pedido{orders.length !== 1 ? 's' : ''} · Carga {fmtLoad(day.load)}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    );
+                })}
+
+                {loading && !days.length && (
+                    <div className="dc-loading"><div uk-spinner="ratio: 0.8"></div></div>
+                )}
+            </div>
+
+            {/* Resumen de la selección */}
+            <div className="dc-summary">
+                {fechaLimite ? (
+                    <>
+                        <span className="dc-summary-date">
+                            <span uk-icon="icon: calendar; ratio: 0.8"></span>
+                            {cap(fmt(fechaLimite, {weekday: 'long', day: 'numeric', month: 'long'}))}
+                        </span>
+                        {selected && !selected.isWorking && (
+                            <span className="dc-summary-warn">Ese día está cerrado, elige otra fecha</span>
+                        )}
+                        {selected && selected.isWorking && (
+                            <span className="dc-summary-load">
+                                {selected.orders > 0 ? `${selected.orders} pedido${selected.orders !== 1 ? 's' : ''} · carga ${fmtLoad(selected.load)}` : 'sin pedidos'}
+                            </span>
+                        )}
+                        {!selected && (
+                            <button type="button" className="dc-link" onClick={() => goToDate(fechaLimite)}>Ver en calendario</button>
+                        )}
+                        {suggestedDate && suggestedDate !== fechaLimite && (
+                            <button type="button" className="dc-link" onClick={() => { setFechaLimite(suggestedDate); goToDate(suggestedDate); }}>
+                                Usar sugerida ({fmt(suggestedDate, {weekday: 'short', day: 'numeric', month: 'short'})})
+                            </button>
+                        )}
+                    </>
+                ) : (
+                    <span className="uk-text-muted">Selecciona un día de entrega</span>
+                )}
+            </div>
+
+            <div className="dc-legend">
+                <span><i className="load-low"/>Poca carga</span>
+                <span><i className="load-mid"/>Media</span>
+                <span><i className="load-high"/>Llena</span>
+                <span><i className="closed"/>Cerrado / festivo</span>
+            </div>
         </div>
-    </div>);
+    );
 }

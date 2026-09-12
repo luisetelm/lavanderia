@@ -91,10 +91,13 @@ export function createOrder(token, order) {
     });
 }
 
-export function fetchDates(page, token) {
-    return request(`/orders/delivery-dates?page=${page}`, token, {
-        method: 'GET',
-    });
+// Calendario de entrega del POS: semanas completas desde `start` (lunes de
+// esa semana) con días abiertos/cerrados, carga por día y fecha sugerida.
+export function fetchDates(token, {start, weeks = 2} = {}) {
+    const params = new URLSearchParams();
+    if (start) params.set('start', start);
+    params.set('weeks', String(weeks));
+    return request(`/orders/delivery-dates?${params}`, token);
 }
 
 export function fetchOrders(token, {q, status, workerId, sortBy, sortOrder, startDate, endDate, page, size} = {}) {

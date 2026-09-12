@@ -5,6 +5,7 @@ import {crearFactura, crearRectificativa, convertBigIntToString} from "./invoice
 import { sendCollectedNotification, sendReadyNotification } from '../services/notify.js';
 import { facturaDe } from '../utils/facturaDe.js';
 import { calcularLinea } from '../utils/precioLinea.js';
+import { getWorkCalendar, getDayInfo, nextWorkingDay, ymd, addDays, mondayOf } from '../utils/workCalendar.js';
 import jwt from 'jsonwebtoken';
 import fs from 'fs';
 import path from 'path';
@@ -132,22 +133,29 @@ export default async function (fastify, opts) {
         }
 
         // Fecha límite: si viene, se parsea; si no, se propone (ej. dentro de una semana laboral)
-        const defaultFechaLimite = () => {
-            const d = new Date();
-            d.setDate(d.getDate() + 7);
-            // avanza hasta día laborable si cae en fin de semana
-            while (d.getDay() === 0 || d.getDay() === 6) {
-                d.setDate(d.getDate() + 1);
-            }
-            return d;
+        // Por defecto, una semana vista saltando a un día abierto (horario + festivos).
+        const defaultFechaLimite = async () => {
+            const target = await nextWorkingDay(prisma, addDays(ymd(new Date()), 7));
+            return new Date(`${target}T00:00:00.000Z`);
         };
 
-        let fechaLimite = fechaLimiteRaw ? new Date(fechaLimiteRaw) : defaultFechaLimite();
+        let fechaLimite = fechaLimiteRaw ? new Date(fechaLimiteRaw) : await defaultFechaLimite();
+        if (Number.isNaN(fechaLimite.getTime())) {
+            return reply.status(400).send({error: 'Fecha límite no válida.'});
+        }
         // opcional: rechazar pasado
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         if (fechaLimite < today) {
             return reply.status(400).send({error: 'La fecha límite no puede ser anterior a hoy.'});
+        }
+        // Rechazar días en que la lavandería está cerrada (festivos / horario semanal)
+        if (fechaLimiteRaw) {
+            const dayInfo = await getDayInfo(prisma, fechaLimiteRaw);
+            if (dayInfo && !dayInfo.isWorking) {
+                const motivo = dayInfo.label ? ` (${dayInfo.label})` : '';
+                return reply.status(400).send({error: `La lavandería está cerrada ese día${motivo}. Elige otra fecha de entrega.`});
+            }
         }
 
         // Generar orderNum (usa tu helper correctamente con fastify)
@@ -390,10 +398,18 @@ export default async function (fastify, opts) {
         if (observacionesInternas !== undefined) data.observacionesInternas = observacionesInternas;
         if (fechaLimiteRaw !== undefined) {
             const fechaLimite = new Date(fechaLimiteRaw);
+            if (Number.isNaN(fechaLimite.getTime())) {
+                return reply.status(400).send({error: 'Fecha límite no válida.'});
+            }
             const today = new Date();
             today.setHours(0, 0, 0, 0);
             if (fechaLimite < today) {
                 return reply.status(400).send({error: 'La fecha límite no puede ser anterior a hoy.'});
+            }
+            const dayInfo = await getDayInfo(prisma, fechaLimiteRaw);
+            if (dayInfo && !dayInfo.isWorking) {
+                const motivo = dayInfo.label ? ` (${dayInfo.label})` : '';
+                return reply.status(400).send({error: `La lavandería está cerrada ese día${motivo}. Elige otra fecha de entrega.`});
             }
             data.fechaLimite = fechaLimite;
         }
@@ -1584,203 +1600,87 @@ export default async function (fastify, opts) {
         }
     });
 
+    // ─── GET /api/orders/delivery-dates ── Calendario de entrega del POS ──
+    // Devuelve semanas completas (lunes a domingo) a partir de `start`
+    // (por defecto, la semana actual), indicando para cada día si la
+    // lavandería está abierta según el horario laboral y los festivos,
+    // la carga de trabajo ya asignada y una fecha sugerida.
     fastify.get('/delivery-dates', async (req, reply) => {
         try {
-            const {page = 0} = req.query;
-            const pageNum = parseInt(page) || 0; // Permitir páginas negativas
+            const todayStr = ymd(new Date());
+            const weeks = Math.min(Math.max(parseInt(req.query.weeks) || 2, 1), 6);
+            const startRaw = /^\d{4}-\d{2}-\d{2}$/.test(req.query.start || '') ? req.query.start : todayStr;
+            const start = mondayOf(startRaw);
+            const end = addDays(start, weeks * 7 - 1);
 
-            // Generar las fechas del carrusel para esta página (permitiendo páginas negativas)
-            const dates = [];
-            let startDate = new Date();
-            startDate.setDate(startDate.getDate() + 3); // Empezar desde mañana para el carrusel
+            // Rango para la fecha sugerida: desde hoy hasta 6 semanas vista.
+            const suggestFrom = addDays(todayStr, 2); // mínimo 2 días de margen
+            const suggestTo = addDays(todayStr, 42);
 
-            // Calcular cuántos días laborables saltar (puede ser negativo)
-            let daysToSkip = 0;
-            let tempDate = new Date(startDate);
+            const calFrom = start < todayStr ? start : todayStr;
+            const calTo = end > suggestTo ? end : suggestTo;
+            const calendar = await getWorkCalendar(prisma, calFrom, calTo);
 
-            if (pageNum >= 0) {
-                // Páginas positivas: avanzar hacia el futuro
-                for (let p = 0; p < pageNum; p++) {
-                    let laborableCount = 0;
-                    while (laborableCount < 5) {
-                        if (tempDate.getDay() !== 0 && tempDate.getDay() !== 6) {
-                            laborableCount++;
-                        }
-                        tempDate.setDate(tempDate.getDate() + 1);
-                        daysToSkip++;
-                    }
-                }
-            } else {
-                // Páginas negativas: retroceder hacia el pasado
-                for (let p = 0; p < Math.abs(pageNum); p++) {
-                    let laborableCount = 0;
-                    while (laborableCount < 5) {
-                        tempDate.setDate(tempDate.getDate() - 1);
-                        if (tempDate.getDay() !== 0 && tempDate.getDay() !== 6) {
-                            laborableCount++;
-                        }
-                        daysToSkip--;
-                    }
-                }
-            }
-
-            // Establecer fecha de inicio para esta página
-            let current = new Date(startDate);
-            current.setDate(current.getDate() + daysToSkip);
-
-            // Generar exactamente 5 días laborables
-            while (dates.length < 5) {
-                if (current.getDay() !== 0 && current.getDay() !== 6) {
-                    dates.push(current.toISOString().split('T')[0]);
-                }
-                current.setDate(current.getDate() + 1);
-            }
-
-            // Convertir strings de fecha a objetos Date para la consulta
-            const dateObjects = dates.map(dateStr => new Date(dateStr + 'T00:00:00.000Z'));
-
-            // Obtener pedidos para estas fechas
+            // Pedidos de todo el rango (calendario visible + búsqueda de sugerida)
             const orders = await prisma.order.findMany({
                 where: {
-                    fechaLimite: {in: dateObjects}
-                }, include: {
-                    lines: {
-                        include: {product: true}
+                    fechaLimite: {
+                        gte: new Date(`${calFrom}T00:00:00.000Z`),
+                        lte: new Date(`${calTo}T00:00:00.000Z`),
                     },
-                    client: {
-                        select: {id: true, firstName: true, lastName: true}
-                    }
-                }
+                    status: { notIn: ['cancelled'] },
+                },
+                include: {
+                    lines: { include: { product: true } },
+                    client: { select: { id: true, firstName: true, lastName: true } },
+                },
+            });
+            const byDay = {};
+            orders.forEach(o => {
+                const k = o.fechaLimite.toISOString().slice(0, 10);
+                (byDay[k] ||= []).push(o);
             });
 
-            // Agrupar por fecha
-            const loadByDay = {};
-            dates.forEach(date => {
-                loadByDay[date] = orders.filter(o => o.fechaLimite.toISOString().split('T')[0] === date);
-            });
-
-            // Carga de trabajo ponderada de un pedido: ignora productos que no
-            // computan (counts_for_load = false) y pondera por workload_weight.
+            // Carga ponderada: ignora productos que no computan y pondera por workload_weight.
             const weightedLoad = (order) => (order.lines || []).reduce((s, l) => {
                 const p = l.product || {};
                 if (p.countsForLoad === false) return s;
                 const w = (p.workloadWeight != null) ? Number(p.workloadWeight) : 1;
                 return s + (l.quantity || 0) * w;
             }, 0);
+            const dayLoad = (k) => (byDay[k] || []).reduce((s, o) => s + weightedLoad(o), 0);
 
-            // Calcular fecha sugerida solo en la primera página (page = 0)
-            // y asegurar que esté dentro de las fechas disponibles
+            // Fecha sugerida: primer día abierto, a 2+ días vista, con carga < 8.
             let suggestedDate = null;
-            if (pageNum == 0) {
-                const today = new Date();
-                today.setHours(0, 0, 0, 0);
+            let firstOpen = null;
+            for (let k = suggestFrom; k <= suggestTo; k = addDays(k, 1)) {
+                if (!calendar[k]?.isWorking) continue;
+                firstOpen ||= k;
+                if (dayLoad(k) < 8) { suggestedDate = k; break; }
+            }
+            suggestedDate ||= firstOpen;
 
-                // Buscar la fecha sugerida solo entre las fechas disponibles
-                // y que cumplan con el mínimo de 2 días desde hoy
-                const minDate = new Date(today);
-                minDate.setDate(minDate.getDate() + 2); // Mínimo 2 días
-                const minDateStr = minDate.toISOString().split('T')[0];
-
-                console.log(`Looking for suggested date among available dates: ${dates.join(', ')}`);
-                console.log(`Minimum date required: ${minDateStr}`);
-
-                for (const dateStr of dates) {
-                    // Solo considerar fechas que cumplan el mínimo de 2 días
-                    if (dateStr >= minDateStr) {
-                        const ordersForDay = loadByDay[dateStr] || [];
-                        const totalItems = ordersForDay.reduce((sum, order) => sum + weightedLoad(order), 0);
-
-                        console.log(`Date ${dateStr} has ${totalItems} total items`);
-
-                        if (totalItems < 8) {
-                            suggestedDate = dateStr;
-                            console.log(`Found suggested date: ${dateStr}`);
-                            break;
-                        }
-                    }
-                }
-
-                // Si no se encuentra ninguna fecha con menos de 8 items en la página 0,
-                // buscar en páginas siguientes hasta encontrar una fecha adecuada
-                if (!suggestedDate) {
-                    console.log('No suitable date found in page 0, searching in future pages');
-                    let searchPage = 1;
-                    let maxSearchPages = 3; // Buscar máximo 3 páginas hacia adelante
-
-                    while (!suggestedDate && searchPage <= maxSearchPages) {
-                        // Generar fechas para la página de búsqueda
-                        const searchDates = [];
-                        let searchStartDate = new Date();
-                        searchStartDate.setDate(searchStartDate.getDate() + 1);
-
-                        let searchDaysToSkip = 0;
-                        let searchTempDate = new Date(searchStartDate);
-
-                        for (let p = 0; p < searchPage; p++) {
-                            let laborableCount = 0;
-                            while (laborableCount < 5) {
-                                if (searchTempDate.getDay() !== 0 && searchTempDate.getDay() !== 6) {
-                                    laborableCount++;
-                                }
-                                searchTempDate.setDate(searchTempDate.getDate() + 1);
-                                searchDaysToSkip++;
-                            }
-                        }
-
-                        let searchCurrent = new Date(searchStartDate);
-                        searchCurrent.setDate(searchCurrent.getDate() + searchDaysToSkip);
-
-                        while (searchDates.length < 5) {
-                            if (searchCurrent.getDay() !== 0 && searchCurrent.getDay() !== 6) {
-                                searchDates.push(searchCurrent.toISOString().split('T')[0]);
-                            }
-                            searchCurrent.setDate(searchCurrent.getDate() + 1);
-                        }
-
-                        // Buscar en las fechas de esta página
-                        const searchDateObjects = searchDates.map(dateStr => new Date(dateStr + 'T00:00:00.000Z'));
-                        const searchOrders = await prisma.order.findMany({
-                            where: {fechaLimite: {in: searchDateObjects}}, include: {lines: {include: {product: true}}}
-                        });
-
-                        const searchLoadByDay = {};
-                        searchDates.forEach(date => {
-                            searchLoadByDay[date] = searchOrders.filter(o => o.fechaLimite.toISOString().split('T')[0] === date);
-                        });
-
-                        for (const dateStr of searchDates) {
-                            if (dateStr >= minDateStr) {
-                                const ordersForDay = searchLoadByDay[dateStr] || [];
-                                const totalItems = ordersForDay.reduce((sum, order) => sum + weightedLoad(order), 0);
-
-                                if (totalItems < 8) {
-                                    suggestedDate = dateStr;
-                                    console.log(`Found suggested date in page ${searchPage}: ${dateStr}`);
-                                    break;
-                                }
-                            }
-                        }
-
-                        searchPage++;
-                    }
-                }
-
-                // Si aún no se encuentra, usar la primera fecha disponible que cumpla el mínimo
-                if (!suggestedDate) {
-                    suggestedDate = dates.find(dateStr => dateStr >= minDateStr);
-                    console.log(`No date with <8 items found, using first available: ${suggestedDate}`);
-                }
-
-                console.log(`Final suggested date: ${suggestedDate}`);
+            const days = [];
+            const loadByDay = {};
+            for (let k = start; k <= end; k = addDays(k, 1)) {
+                const c = calendar[k] || { isWorking: false, label: null, isException: false };
+                days.push({
+                    date: k,
+                    isWorking: c.isWorking,
+                    isException: c.isException,
+                    label: c.label,
+                    isPast: k < todayStr,
+                    isToday: k === todayStr,
+                    orders: (byDay[k] || []).length,
+                    load: Math.round(dayLoad(k) * 10) / 10,
+                });
+                loadByDay[k] = byDay[k] || [];
             }
 
-            return {
-                dates, loadByDay, suggestedDate: pageNum === 0 ? suggestedDate : null
-            };
-
+            return { today: todayStr, start, end, days, loadByDay, suggestedDate };
         } catch (error) {
             console.error('Error in delivery-dates endpoint:', error);
-            reply.status(500).send({error: 'Error interno'});
+            reply.status(500).send({ error: 'Error interno' });
         }
     });
 

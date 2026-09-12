@@ -80,59 +80,6 @@ export default function POS({token, user}) {
         }).catch(() => setError('No se pudieron cargar productos'));
     }, [token]);
 
-    // Cargar trabajos / carga por día
-    useEffect(() => {
-        const fetchLoads = async () => {
-            try {
-                const getNextBusinessDays = (count = 12) => {
-                    const days = [];
-                    let cursor = new Date();
-                    while (days.length < count) {
-                        cursor = new Date(cursor);
-                        cursor.setDate(cursor.getDate() + 1);
-                        const wd = cursor.getDay();
-                        if (wd !== 0 && wd !== 6) days.push(new Date(cursor));
-                    }
-                    return days;
-                };
-                const formatKey = (d) => d.toISOString().split('T')[0];
-
-                const days = getNextBusinessDays(12);
-                if (days.length === 0) return;
-
-                const from = formatKey(days[0]);
-                const to = formatKey(days[days.length - 1]);
-
-                const res = await fetch(`/api/orders?fechaLimite_gte=${from}&fechaLimite_lte=${to}`, {
-                    headers: {Authorization: `Bearer ${token}`},
-                });
-
-                if (!res.ok) {
-                    console.error('Error cargando órdenes de carga:', await res.text());
-                    return;
-                }
-
-                const orders = await res.json();
-                if (!Array.isArray(orders)) {
-                    console.warn('Respuesta inesperada de /api/orders:', orders);
-                    return;
-                }
-
-                const grouped = {};
-                days.forEach((d) => { grouped[formatKey(d)] = []; });
-                orders.forEach((o) => {
-                    if (o.fechaLimite) {
-                        const key = o.fechaLimite.split('T')[0];
-                        if (grouped[key]) grouped[key].push(o);
-                    }
-                });
-            } catch (e) {
-                console.error('fetchLoads falló:', e);
-            }
-        };
-        fetchLoads();
-    }, [token]);
-
     // Cargar contexto de caja
     const loadCash = async () => {
         setCashErr('');
