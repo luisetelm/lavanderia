@@ -286,7 +286,9 @@ export default function POS({token, user}) {
 
     // Render
     const hasDiscount = Number(draft.discount || 0) > 0;
-    return (<div className="pos">
+    // Espacio que ocupa abajo la barra de cobro (o el padding normal de la página)
+    const bottomPad = draft.isActive && draft.bannerHeight > 0 ? draft.bannerHeight + 8 : 24;
+    return (<div className="pos" style={{'--pos-bottom': `${bottomPad}px`}}>
         <PageToolbar
             title="Punto de Venta"
             actions={

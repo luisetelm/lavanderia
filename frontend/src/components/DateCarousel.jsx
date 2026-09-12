@@ -230,7 +230,7 @@ export default function DateCarousel({fechaLimite, setFechaLimite, token}) {
                             {/* Detalle de pedidos del día al pasar el ratón */}
                             {orders.length > 0 && !closed && (
                                 <div className="uk-card uk-card-default" style={{padding: 0}}
-                                     uk-dropdown="mode: hover; delay-show: 350; delay-hide: 200; pos: bottom-center; boundary: !.dc; boundary-align: true; animation: uk-animation-slide-top-small">
+                                     uk-dropdown="mode: hover; delay-show: 350; delay-hide: 200; pos: bottom-center; container: true; animation: uk-animation-slide-top-small">
                                     <div className="dc-pop">
                                         <div className="dc-pop-head">
                                             <strong>{cap(fmt(day.date, {weekday: 'long', day: 'numeric', month: 'short'}))}</strong>

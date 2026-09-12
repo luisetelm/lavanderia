@@ -65,6 +65,49 @@
 .pos-cash-actions { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 .pos-cash-actions .uk-button .uk-icon { margin-right: 4px; }
 
+/* En escritorio el POS ocupa justo la pantalla: cabecera y barra de cobro
+   fijas, y cada columna con scroll propio solo si le hace falta. Así las
+   prendas del pedido siempre quedan a la vista bajo el catálogo. */
+@media (min-width: 1101px) {
+    .pos {
+        display: flex;
+        flex-direction: column;
+        /* 24px de padding superior de .app-main + el inferior (o la barra de cobro) */
+        height: calc(100vh - 24px - var(--pos-bottom, 24px));
+        min-height: 480px;
+    }
+    .pos > .page-toolbar { flex: 0 0 auto; }
+    .pos > .section-content { flex: 1 1 auto; min-height: 0; }
+    .pos-layout { height: 100%; align-items: stretch; }
+    .pos-col { max-height: 100%; }
+
+    /* Columna del pedido: se desplaza entera si no cabe */
+    .pos-col-order { overflow-y: auto; overscroll-behavior: contain; padding-right: 2px; }
+
+    /* Columna del catálogo: el catálogo se estira y su rejilla hace scroll;
+       las prendas ocupan lo que necesiten hasta la mitad de la columna */
+    .pos-col-catalog { overflow: hidden; }
+    .pos-sec-productos {
+        flex: 1 1 auto;
+        min-height: 230px;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+    .pos-sec-productos .pl { flex: 1 1 auto; min-height: 0; }
+    .pos-sec-productos .pl-grid-wrap { flex: 1 1 auto; max-height: none; }
+    .pos-sec-prendas {
+        flex: 0 1 auto;
+        max-height: 55%;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+    .pos-sec-prendas .dl { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+    .pos-sec-prendas .pos-cart-foot { flex: 0 0 auto; }
+}
+
 /* Una sola columna: cliente, productos, prendas y por último entrega */
 @media (max-width: 1100px) {
     .pos-layout { flex-direction: column; align-items: stretch; }
