@@ -140,7 +140,7 @@ export default function DateCarousel({fechaLimite, setFechaLimite, token}) {
         <div className="dc">
             {/* Cabecera: título + navegación */}
             <div className="dc-head">
-                <h4 className="uk-margin-remove">Fecha de entrega</h4>
+                <h4 className="dc-title"><span uk-icon="icon: calendar; ratio: 0.9"></span>Fecha de entrega</h4>
                 <div className="dc-nav">
                     <button type="button" className="dc-nav-btn" onClick={() => setWeekStart(mondayOf(todayStr))}
                             disabled={!canGoBack} title="Volver a la semana actual">Hoy</button>

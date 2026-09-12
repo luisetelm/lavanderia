@@ -1,0 +1,94 @@
+/* Selector de cliente del POS */
+.cs { font-size: 0.85rem; }
+
+.cs-tabs {
+    display: flex;
+    gap: 4px;
+    padding: 3px;
+    background: #f1f5f9;
+    border-radius: 8px;
+    margin-bottom: 10px;
+}
+.cs-tab {
+    flex: 1;
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    height: 30px; border: 0; border-radius: 6px; background: transparent;
+    font: inherit; font-size: 0.8rem; font-weight: 600; color: #64748b; cursor: pointer;
+    position: relative;
+    transition: background .15s, color .15s;
+}
+.cs-tab:hover { color: #1e293b; }
+.cs-tab.is-active { background: #fff; color: #048ABF; box-shadow: 0 1px 2px rgba(15, 23, 42, .08); }
+.cs-tab-dot { width: 7px; height: 7px; border-radius: 50%; background: #f59e0b; }
+
+.cs-results {
+    margin-top: 8px;
+    max-height: 232px;
+    overflow-y: auto;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: #fff;
+}
+.cs-results-empty {
+    padding: 16px; text-align: center; color: #94a3b8; font-size: 0.82rem;
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+}
+.cs-result {
+    display: flex; align-items: center; gap: 10px; width: 100%;
+    padding: 7px 10px; border: 0; border-bottom: 1px solid #f1f5f9; background: #fff;
+    text-align: left; font: inherit; cursor: pointer; color: #1e293b;
+    transition: background .12s;
+}
+.cs-result:last-child { border-bottom: 0; }
+.cs-result:hover { background: #f0f9ff; }
+.cs-result-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.cs-result-name { font-weight: 600; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.cs-result-name .uk-label, .cs-selected-name .uk-label { font-size: 0.6rem; padding: 0 6px; line-height: 1.5; }
+.cs-result-meta { font-size: 0.75rem; color: #64748b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cs-result-go { color: #cbd5e1; flex-shrink: 0; }
+.cs-result:hover .cs-result-go { color: #048ABF; }
+
+.cs-avatar {
+    width: 40px; height: 40px; border-radius: 50%; flex-shrink: 0;
+    background: #048ABF; color: #fff; font-weight: 700; font-size: 0.85rem;
+    display: inline-flex; align-items: center; justify-content: center;
+}
+.cs-avatar-sm { width: 30px; height: 30px; font-size: 0.7rem; background: #e0f2fe; color: #0369a1; }
+
+/* Ficha del cliente seleccionado */
+.cs-selected {
+    display: flex; align-items: flex-start; gap: 12px;
+    padding: 12px; border-radius: 10px;
+    background: #f0f9ff; border: 1px solid #bae6fd;
+}
+.cs-selected-body { flex: 1; min-width: 0; }
+.cs-selected-name { font-weight: 700; font-size: 0.95rem; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.cs-selected-meta { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 3px; color: #475569; font-size: 0.8rem; }
+.cs-selected-meta span > .uk-icon { margin-right: 4px; color: #94a3b8; }
+.cs-selected-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.cs-selected-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0; }
+
+.cs-tag {
+    display: inline-block; padding: 1px 7px; border-radius: 999px;
+    font-size: 0.65rem; font-weight: 600; background: #e2e8f0; color: #475569;
+}
+.cs-tag-big { background: #ede9fe; color: #6d28d9; }
+.cs-tag-dto { background: #d1fae5; color: #047857; }
+
+.cs-link {
+    border: 0; background: none; padding: 0; font: inherit; font-size: 0.78rem; font-weight: 600;
+    color: #048ABF; cursor: pointer; text-decoration: underline; text-underline-offset: 2px;
+}
+.cs-link:hover { color: #0369a1; }
+
+/* Cliente rápido */
+.cs-new-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.cs-new-grid .uk-input { height: 36px; font-size: 0.85rem; }
+.cs-hint { margin-top: 6px; font-size: 0.72rem; color: #94a3b8; }
+.cs-hint-error { color: #dc2626; margin-top: 3px; }
+
+@media (max-width: 480px) {
+    .cs-new-grid { grid-template-columns: 1fr; }
+    .cs-selected { flex-wrap: wrap; }
+    .cs-selected-actions { flex-direction: row; width: 100%; justify-content: flex-end; }
+}

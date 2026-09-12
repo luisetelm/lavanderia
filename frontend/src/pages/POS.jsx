@@ -27,6 +27,8 @@ import CashMovementsPanel from '../components/pos/CashMovementsPanel.jsx';
 import UserSelectorModal from '../components/pos/UserSelectorModal.jsx';
 import PendingInvoicesPanel from '../components/pos/PendingInvoicesPanel.jsx';
 import { useDraftOrder } from '../hooks/useDraftOrder.js';
+import DraftLines from '../components/DraftLines.jsx';
+import './POS.css';
 
 const signed = (t, a) => (['withdrawal', 'refund_cash_out'].includes(t) ? -Math.abs(a) : Math.abs(a));
 
@@ -39,9 +41,6 @@ export default function POS({token, user}) {
     const [searchUser, setSearchUser] = useState('');
     const [searchProduct, setSearchProduct] = useState('');
     const [error, setError] = useState('');
-
-    // Clave para forzar recarga del DateCarousel
-    const [dateCarouselKey] = useState(0);
 
     // Caja: estado UI
     const [showMovementModal, setShowMovementModal] = useState(false);
@@ -119,6 +118,13 @@ export default function POS({token, user}) {
         () => Number((tpvPayments.filter(p => p.reconciled).reduce((a, p) => a + Number(p.amount || 0), 0)).toFixed(2)),
         [tpvPayments]
     );
+
+    // Unidades de cada producto ya en el pedido, para marcarlo en el catálogo
+    const cartCounts = useMemo(() => {
+        const m = {};
+        (draft.cart || []).forEach(c => { m[c.productId] = (m[c.productId] || 0) + (c.quantity || 0); });
+        return m;
+    }, [draft.cart]);
 
     // Añadir producto al carrito del borrador
     const add = (p) => {
@@ -279,34 +285,35 @@ export default function POS({token, user}) {
     }, [showUserSelector, userSearchTerm, token]);
 
     // Render
-    return (<div>
+    const hasDiscount = Number(draft.discount || 0) > 0;
+    return (<div className="pos">
         <PageToolbar
             title="Punto de Venta"
             actions={
-                <div style={{display: 'flex', flexWrap: 'wrap', gap: 4}}>
+                <div className="pos-cash-actions">
                     <button type="button" className="uk-button uk-button-small uk-button-default" onClick={async () => {
                         await loadCash();
                         setShowMovementModal(true);
                     }}>
-                        <span uk-icon="icon: plus-circle; ratio: 0.8" style={{marginRight: 4}}></span>
+                        <span uk-icon="icon: plus-circle; ratio: 0.8"></span>
                         Movimiento
                     </button>
                     <button type="button" className="uk-button uk-button-small uk-button-default" onClick={async () => {
                         await loadCash();
                         setShowCloseModal(true);
                     }}>
-                        <span uk-icon="icon: lock; ratio: 0.8" style={{marginRight: 4}}></span>
+                        <span uk-icon="icon: lock; ratio: 0.8"></span>
                         Cierre
                     </button>
                     <button type="button" className="uk-button uk-button-small uk-button-default" onClick={async () => {
                         await loadCash();
                         setShowMovesCanvas(true);
                     }}>
-                        <span uk-icon="icon: list; ratio: 0.8" style={{marginRight: 4}}></span>
+                        <span uk-icon="icon: list; ratio: 0.8"></span>
                         Movimientos
                     </button>
                     <button type="button" className="uk-button uk-button-small uk-button-default" onClick={() => setShowPendingInvoices(true)}>
-                        <span uk-icon="icon: credit-card; ratio: 0.8" style={{marginRight: 4}}></span>
+                        <span uk-icon="icon: credit-card; ratio: 0.8"></span>
                         Facturas
                     </button>
                 </div>
@@ -314,10 +321,15 @@ export default function POS({token, user}) {
         />
 
         <div className="section-content">
-            <div uk-grid="true" className="uk-grid-small">
-                {/* ── Panel izquierdo: cliente + fecha + observaciones ── */}
-                <div className="uk-width-1-2@m">
-                    <div className="uk-card uk-card-default uk-card-body">
+            <div className="pos-layout">
+                {/* Columna del pedido: cliente y entrega */}
+                <div className="pos-col pos-col-order">
+                    {/* ── Cliente ── */}
+                    <section className="uk-card uk-card-default pos-card pos-sec-cliente">
+                        <h4 className="pos-card-title">
+                            <span uk-icon="icon: user; ratio: 0.9"></span>
+                            Cliente
+                        </h4>
                         <CustomerSelector
                             searchUser={searchUser} setSearchUser={setSearchUser}
                             selectedUser={draft.selectedUser}
@@ -332,46 +344,68 @@ export default function POS({token, user}) {
                             setQuickClientEmail={(v) => draft.setQuickClient({email: v})}
                             token={token}
                         />
+                    </section>
 
-                        <div className="uk-margin" uk-grid="true">
-                            <div className="uk-width-1-1">
-                                <DateCarousel
-                                    key={dateCarouselKey}
-                                    fechaLimite={draft.fechaLimite}
-                                    setFechaLimite={(d) => draft.setFechaLimite(d)}
-                                    token={token}
-                                />
-                            </div>
+                    {/* ── Entrega y observaciones ── */}
+                    <section className="uk-card uk-card-default pos-card pos-sec-entrega">
+                        <DateCarousel
+                            fechaLimite={draft.fechaLimite}
+                            setFechaLimite={(d) => draft.setFechaLimite(d)}
+                            token={token}
+                        />
+                        <div className="pos-field">
+                            <label htmlFor="pos-observaciones">Observaciones del pedido</label>
+                            <textarea
+                                id="pos-observaciones"
+                                className="uk-textarea"
+                                rows="2"
+                                placeholder="Instrucciones generales del pedido (ej: cliente recoge el sábado)..."
+                                value={draft.observaciones}
+                                onChange={(e) => draft.setObservaciones(e.target.value)}
+                            />
                         </div>
+                    </section>
 
-                        <div className="uk-margin">
-                            <h4 className="uk-margin-small-bottom">Observaciones del pedido</h4>
-                            <div className="uk-form-controls">
-                                <textarea
-                                    className="uk-textarea"
-                                    rows="2"
-                                    placeholder="Instrucciones generales del pedido (ej: cliente recoge el sábado)..."
-                                    value={draft.observaciones}
-                                    onChange={(e) => draft.setObservaciones(e.target.value)}
-                                />
-                            </div>
-                        </div>
+                </div>
 
+                {/* Columna del catálogo: productos y prendas */}
+                <div className="pos-col pos-col-catalog">
+                    {/* ── Catálogo ── */}
+                    <section className="uk-card uk-card-default pos-card pos-sec-productos">
+                        <h4 className="pos-card-title">
+                            <span uk-icon="icon: tag; ratio: 0.9"></span>
+                            Productos
+                            <span className="pos-title-right">Pulsa un producto para añadirlo al pedido</span>
+                        </h4>
                         {error && (
                             <div className="uk-alert-danger uk-margin-small" uk-alert="true">
                                 <p>{error}</p>
                             </div>
                         )}
-                    </div>
-                </div>
-
-                {/* ── Panel derecho: catálogo de productos ── */}
-                <div className="uk-width-1-2@m">
-                    <div className="uk-card uk-card-default uk-card-body">
                         <ProductList products={products} searchProduct={searchProduct}
                                      setSearchProduct={setSearchProduct} onAdd={add}
-                                     itineraries={itineraries}/>
-                    </div>
+                                     itineraries={itineraries} cartCounts={cartCounts}/>
+                    </section>
+
+                    {/* ── Prendas del pedido ── */}
+                    <section id="pos-prendas" className="uk-card uk-card-default pos-card pos-sec-prendas">
+                        <h4 className="pos-card-title">
+                            <span uk-icon="icon: bag; ratio: 0.9"></span>
+                            Prendas del pedido
+                            {draft.itemCount > 0 && <span className="pos-title-count">{draft.itemCount}</span>}
+                            {draft.cart.length > 0 && (
+                                <span className="pos-title-right">Color, cantidad, nota o foto de cada prenda</span>
+                            )}
+                        </h4>
+                        <DraftLines theme="light" emptyText="Aún no hay prendas. Añádelas pulsando en el catálogo de productos."/>
+                        {draft.cart.length > 0 && (
+                            <div className="pos-cart-foot">
+                                {hasDiscount && <span className="pos-cart-dto">−{Number(draft.discount)}% dto.</span>}
+                                <span>Total</span>
+                                <span className="pos-cart-total">{draft.total.toFixed(2)} €</span>
+                            </div>
+                        )}
+                    </section>
                 </div>
             </div>
         </div>
