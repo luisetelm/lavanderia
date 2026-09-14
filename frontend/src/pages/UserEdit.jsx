@@ -6,6 +6,7 @@ import { fetchUser } from '../api.js';
 import { formatEUR } from '../utils/format.js';
 import UserForm from '../components/UserForm.jsx';
 import PageToolbar from '../components/PageToolbar.jsx';
+import ClientPricesTab from '../components/ClientPricesTab.jsx';
 
 const STATUS_LABELS = {
   pending: { text: 'Pendiente', cls: 'uk-label-warning' },
@@ -24,6 +25,7 @@ const tabStyle = (active) => ({
   border: 'none',
   cursor: 'pointer',
   transition: 'all 0.15s',
+  whiteSpace: 'nowrap',
 });
 
 // Resume el user-agent a un nombre de navegador/SO legible
@@ -149,13 +151,18 @@ export default function UserEdit({ token, user: loggedUser }) {
 
             {/* Tabs */}
             <div className="uk-card uk-card-default" style={{ overflow: 'hidden' }}>
-              <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0', padding: '0 12px' }}>
+              <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0', padding: '0 12px', overflowX: 'auto' }}>
                 <button type="button" style={tabStyle(activeTab === 'orders')} onClick={() => setActiveTab('orders')}>
                   Pedidos ({orders.length})
                 </button>
                 <button type="button" style={tabStyle(activeTab === 'invoices')} onClick={() => setActiveTab('invoices')}>
                   Facturas ({invoices.length})
                 </button>
+                {!['admin', 'cashier', 'worker'].includes(user?.role) && (
+                  <button type="button" style={tabStyle(activeTab === 'prices')} onClick={() => setActiveTab('prices')}>
+                    Precios pactados
+                  </button>
+                )}
                 <button type="button" style={tabStyle(activeTab === 'notifications')} onClick={() => setActiveTab('notifications')}>
                   Notificaciones ({notifications.length})
                 </button>
@@ -251,6 +258,11 @@ export default function UserEdit({ token, user: loggedUser }) {
                       </table>
                     </div>
                   )
+                )}
+
+                {/* ── Precios pactados ── */}
+                {activeTab === 'prices' && (
+                  <ClientPricesTab token={token} clientId={user.id} canEdit={loggedUser?.role === 'admin'} />
                 )}
 
                 {/* ── Notificaciones ── */}

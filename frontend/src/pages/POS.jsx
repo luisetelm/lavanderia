@@ -386,7 +386,8 @@ export default function POS({token, user}) {
                         )}
                         <ProductList products={products} searchProduct={searchProduct}
                                      setSearchProduct={setSearchProduct} onAdd={add}
-                                     itineraries={itineraries} cartCounts={cartCounts}/>
+                                     itineraries={itineraries} cartCounts={cartCounts}
+                                     agreedPriceFor={draft.agreedPriceFor}/>
                     </section>
 
                     {/* ── Prendas del pedido ── */}

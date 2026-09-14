@@ -182,3 +182,21 @@
 }
 .dl-photo-add:hover { border-color: var(--dl-accent); color: var(--dl-accent); }
 .dl-photo-add input { display: none; }
+
+/* Precio pactado con el cliente: sustituye al tachado del descuento */
+.dl-agreed {
+    margin-right: 4px;
+    padding: 1px 4px;
+    border-radius: 4px;
+    background: #d1fae5;
+    color: #047857;
+    font-size: 0.6rem;
+    font-style: normal;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+.dl-dark .dl-agreed {
+    background: rgba(16, 185, 129, 0.2);
+    color: #a7f3d0;
+}

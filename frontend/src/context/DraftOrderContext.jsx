@@ -1,4 +1,5 @@
 import React, { createContext, useState, useEffect, useCallback, useMemo } from 'react';
+import { fetchEffectivePrices } from '../api.js';
 
 export const DraftOrderContext = createContext(null);
 
@@ -8,6 +9,8 @@ const STORAGE_VERSION = 3; // Incrementar si cambia la estructura
 const defaultState = {
     cart: [],              // [{ productId, quantity, name, basePrice, bigClientPrice }]
     selectedUser: null,    // { id, firstName, lastName, phone, email, isbigclient, discount, notifyChannel }
+    clientPrices: {},      // precios pactados vigentes del cliente: { [productId]: { id, price, validTo, note } }
+    clientPricesFor: null, // id del cliente al que pertenecen, para no aplicar los de otro
     quickClient: { firstName: '', lastName: '', phone: '', email: '' },
     fechaLimite: null,
     observaciones: '',
@@ -51,7 +54,7 @@ function loadFromStorage() {
     }
 }
 
-export function DraftOrderProvider({ children }) {
+export function DraftOrderProvider({ children, token }) {
     const [state, setState] = useState(() => loadFromStorage() || { ...defaultState, quickClient: { ...defaultState.quickClient } });
     const [bannerHeight, setBannerHeight] = useState(0);
 
@@ -115,18 +118,48 @@ export function DraftOrderProvider({ children }) {
     /* ── Acciones del cliente ── */
 
     const setSelectedUser = useCallback((user) => {
-        setState(prev => ({
-            ...prev,
-            selectedUser: user,
-            quickClient: user ? { firstName: '', lastName: '', phone: '', email: '' } : prev.quickClient,
-        }));
+        setState(prev => {
+            // Los precios pactados son del cliente: al cambiar de cliente se
+            // descartan y el efecto de abajo pide los del nuevo.
+            const mismoCliente = (user?.id ?? null) === (prev.selectedUser?.id ?? null);
+            return {
+                ...prev,
+                selectedUser: user,
+                quickClient: user ? { firstName: '', lastName: '', phone: '', email: '' } : prev.quickClient,
+                clientPrices: mismoCliente ? prev.clientPrices : {},
+                clientPricesFor: mismoCliente ? prev.clientPricesFor : null,
+            };
+        });
     }, []);
+
+    // Precios pactados del cliente seleccionado. Se piden aquí y no en el TPV
+    // porque el borrador también puede nacer desde el chat; al recargar la
+    // página se refrescan los que hubiera guardados.
+    const selectedClientId = state.selectedUser?.id ?? null;
+    useEffect(() => {
+        if (!token || !selectedClientId) return undefined;
+        let vigente = true;
+        fetchEffectivePrices(token, selectedClientId)
+            .then((precios) => {
+                if (!vigente) return;
+                setState(prev => (prev.selectedUser?.id === selectedClientId
+                    ? { ...prev, clientPrices: precios || {}, clientPricesFor: selectedClientId }
+                    : prev));
+            })
+            .catch((e) => {
+                // Sin ellos el carrito enseña la tarifa normal; el backend cobra igualmente el pactado.
+                console.warn('No se pudieron cargar los precios pactados del cliente', e);
+            });
+        return () => { vigente = false; };
+    }, [token, selectedClientId]);
 
     const setQuickClient = useCallback((fields) => {
         setState(prev => ({
             ...prev,
             quickClient: { ...prev.quickClient, ...fields },
             selectedUser: null,
+            clientPrices: {},
+            clientPricesFor: null,
         }));
     }, []);
 
@@ -222,7 +255,21 @@ export function DraftOrderProvider({ children }) {
 
     /* ── Valores computados ── */
 
+    // Precio pactado vigente del cliente para un producto, o null si no hay.
+    const agreedPriceFor = useCallback((productId) => {
+        const user = state.selectedUser;
+        if (!user || state.clientPricesFor !== user.id) return null;
+        const pactado = state.clientPrices?.[productId];
+        return pactado ? Number(pactado.price) : null;
+    }, [state.selectedUser, state.clientPrices, state.clientPricesFor]);
+
+    // Replica la regla del backend (utils/precioLinea.js) sólo para mostrar
+    // importes; el precio que se guarda lo calcula siempre el backend.
     const getPriceForItem = useCallback((item) => {
+        // El precio pactado es el precio final: sin descuento del cliente.
+        const pactado = agreedPriceFor(item.productId);
+        if (pactado !== null) return pactado;
+
         const user = state.selectedUser;
         const isbigclient = user?.isbigclient;
         const discountPct = Number(user?.discount || 0);
@@ -236,7 +283,7 @@ export function DraftOrderProvider({ children }) {
             price = price * (1 - factor / 100);
         }
         return price;
-    }, [state.selectedUser]);
+    }, [state.selectedUser, agreedPriceFor]);
 
     const total = useMemo(() =>
         (state.cart || []).reduce((sum, item) => sum + getPriceForItem(item) * item.quantity, 0),
@@ -274,14 +321,14 @@ export function DraftOrderProvider({ children }) {
         clearDraft,
         updateLineNotes, addLinePhoto, removeLinePhoto, splitLine,
         toggleOptionalStep, setLineColor,
-        getPriceForItem,
+        getPriceForItem, agreedPriceFor,
         total, itemCount, clientName, discount, isActive,
         bannerHeight, setBannerHeight,
     }), [state, addToCart, updateQuantity, removeFromCart, setSelectedUser, setQuickClient,
         setFechaLimite, setObservaciones, clearDraft,
         updateLineNotes, addLinePhoto, removeLinePhoto, splitLine,
         toggleOptionalStep, setLineColor,
-        getPriceForItem, total, itemCount, clientName, discount, isActive, bannerHeight]);
+        getPriceForItem, agreedPriceFor, total, itemCount, clientName, discount, isActive, bannerHeight]);
 
     return (
         <DraftOrderContext.Provider value={value}>

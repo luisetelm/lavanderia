@@ -52,4 +52,4 @@ No test framework is configured.
 - **Styling:** Mix of UIKit CSS classes, MUI components, and some Tailwind utilities. Theme customized in `src/styles/uikit-theme.less` (primary: `#048ABF`, font: Noto Sans).
 - **Modals/offcanvas:** UIKit modal and offcanvas patterns (triggered via `UIkit.modal()`, `UIkit.offcanvas()`).
 - **API calls:** Always use functions from `src/api.js`; don't create standalone fetch calls.
-- **Client pricing:** Products have `basePrice` and `bigClientPrice`; users flagged with `isbigclient` get the alternate price.
+- **Client pricing:** A line's unit price is, in order: the client's agreed price for that product if one is in force (`client_product_price`, managed in the "Precios pactados" tab of the client page), else `bigClientPrice` for users flagged `isbigclient`, else `basePrice`. The client's % discount is not applied on agreed prices. The backend (`backend/src/utils/precioLinea.js`) is authoritative; `DraftOrderContext.getPriceForItem` only mirrors it for display. See `docs/precios-pactados.md`.

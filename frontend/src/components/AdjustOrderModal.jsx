@@ -1,5 +1,5 @@
 import React, {useState, useEffect, useMemo} from 'react';
-import {fetchProducts, adjustOrder} from '../api.js';
+import {fetchProducts, adjustOrder, fetchEffectivePrices} from '../api.js';
 import {formatEUR} from '../utils/format.js';
 
 // Modal para ajustar un pedido ya cobrado: añadir productos o servicios (un
@@ -18,12 +18,25 @@ export default function AdjustOrderModal({token, order, onDone, onClose}) {
     const [metodo, setMetodo] = useState('cash');
     const [guardando, setGuardando] = useState(false);
     const [error, setError] = useState('');
+    const [pactados, setPactados] = useState({});        // precios pactados del cliente: { [productId]: { price } }
 
     useEffect(() => {
         fetchProducts(token)
             .then((p) => setProductos(Array.isArray(p) ? p : []))
             .catch(() => setError('No se pudieron cargar los productos.'));
     }, [token]);
+
+    // Precios pactados del cliente, para que el importe que se enseña coincida
+    // con el que cobrará el backend al añadir la línea.
+    const clienteId = order.client?.id ?? order.clientId ?? null;
+    useEffect(() => {
+        if (!clienteId) return;
+        fetchEffectivePrices(token, clienteId)
+            .then((p) => setPactados(p || {}))
+            .catch(() => { /* sin ellos se enseña el precio normal */ });
+    }, [token, clienteId]);
+
+    const precioDe = (p) => (pactados[p.id] ? Number(pactados[p.id].price) : Number(p.basePrice) || 0);
 
     // Sólo se pueden anular las líneas que siguen vivas.
     const lineasVivas = (order.lines || []).filter((l) => !l.voidedAt);
@@ -45,7 +58,7 @@ export default function AdjustOrderModal({token, order, onDone, onClose}) {
         setAAnadir((prev) => {
             const ya = prev.find((x) => x.productId === p.id);
             if (ya) return prev.map((x) => x.productId === p.id ? {...x, quantity: x.quantity + 1} : x);
-            return [...prev, {productId: p.id, name: p.name, price: Number(p.basePrice) || 0, quantity: 1}];
+            return [...prev, {productId: p.id, name: p.name, price: precioDe(p), quantity: 1}];
         });
         setBusqueda('');
     };
@@ -139,7 +152,7 @@ export default function AdjustOrderModal({token, order, onDone, onClose}) {
                                     <button className="uk-button uk-button-text"
                                             style={{width: '100%', textAlign: 'left'}}
                                             onClick={() => anadirProducto(p)}>
-                                        {p.name} <span style={{color: '#64748b'}}>· {formatEUR(Number(p.basePrice) || 0)}</span>
+                                        {p.name} <span style={{color: '#64748b'}}>· {formatEUR(precioDe(p))}{pactados[p.id] ? ' · pactado' : ''}</span>
                                     </button>
                                 </li>
                             ))}

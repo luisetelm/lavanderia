@@ -50,7 +50,7 @@ const compressPhoto = (file) => new Promise((resolve) => {
 
 export default function DraftLines({theme = 'light', emptyText = null}) {
     const {
-        cart, discount, getPriceForItem,
+        cart, discount, getPriceForItem, agreedPriceFor,
         updateQuantity, removeFromCart, updateLineNotes, addLinePhoto, removeLinePhoto,
         splitLine, toggleOptionalStep, setLineColor,
     } = useDraftOrder();
@@ -76,6 +76,7 @@ export default function DraftLines({theme = 'light', emptyText = null}) {
                 const unitPrice = getPriceForItem(c);
                 const lineTotal = unitPrice * c.quantity;
                 const baseTotal = Number(c.basePrice) * c.quantity;
+                const pactado = agreedPriceFor(c.productId) !== null;
                 const hasDetail = c.notes || (c.photos && c.photos.length > 0);
                 const optionalSteps = c.availableOptionalSteps || [];
                 const isOpen = openLineId === c.lineId;
@@ -126,7 +127,8 @@ export default function DraftLines({theme = 'light', emptyText = null}) {
 
                             {/* Precio */}
                             <div className="dl-price">
-                                {hasDiscount && <s>{baseTotal.toFixed(2)}</s>}
+                                {hasDiscount && !pactado && <s>{baseTotal.toFixed(2)}</s>}
+                                {pactado && <em className="dl-agreed" title="Precio pactado con este cliente">pactado</em>}
                                 <span>{lineTotal.toFixed(2)} €</span>
                             </div>
 

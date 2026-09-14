@@ -183,7 +183,7 @@ export default function App() {
     }
 
     return (<AuthRedirect>
-        <DraftOrderProvider>
+        <DraftOrderProvider token={token}>
         <MessagesProvider token={token} user={user}>
         <div className="app-layout">
             <ScanCapture />

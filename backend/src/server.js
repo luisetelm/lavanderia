@@ -22,6 +22,7 @@ import itineraryRoutes from './routes/itineraries.js';
 import qzRoutes from './routes/qz.js';
 import printJobsRoutes from './routes/printJobs.js';
 import campaignsRoutes from './routes/campaigns.js';
+import clientPricesRoutes from './routes/clientPrices.js';
 import fastifyStatic from '@fastify/static';import multipart from '@fastify/multipart';
 import path from 'path';
 import cron from 'node-cron';
@@ -96,6 +97,7 @@ app.register(productRoutes, {prefix: '/api/products'});
 app.register(orderRoutes, {prefix: '/api/orders'});
 app.register(taskRoutes, {prefix: '/api/tasks'});
 app.register(userRoutes, {prefix: '/api/users'});
+app.register(clientPricesRoutes, {prefix: '/api/users'}); // precios pactados: /api/users/:id/prices
 app.register(productsImportRoutes, {prefix: '/api/products'}); // quedaría POST /api/products/import
 app.register(cashRoutes, {prefix: '/api/cash'}); // quedaría POST /api/products/import
 app.register(notificationsRoutes, {prefix: '/api/notifications'});

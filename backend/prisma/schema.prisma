@@ -35,6 +35,7 @@ model Product {
   countsForLoad  Boolean          @default(true) @map("counts_for_load") // si computa en la carga de trabajo del día
   workloadWeight Float            @default(1) @map("workload_weight")    // factor de carga (traje=3, camisa=1, kg ropa blanca=0...)
   orderLines     OrderLine[]
+  agreedPrices   ClientProductPrice[]
   category       ProductCategory? @relation(fields: [categoryId], references: [id])
   variants       ProductVariant[]
   itinerary      Itinerary?       @relation(fields: [itineraryId], references: [id])
@@ -260,6 +261,30 @@ model User {
   conversations      Conversation[] @relation("client_conversations")
   completedSteps     OrderLineStep[] @relation("step_completed_by")
   loginLogs          LoginLog[]     @relation("user_login_logs")
+  agreedPrices        ClientProductPrice[] @relation("client_agreed_prices")
+  agreedPricesCreated ClientProductPrice[] @relation("agreed_prices_created_by")
+}
+
+// Precios pactados por cliente y producto (sql/022_precios_pactados.sql).
+// Sustituyen a basePrice/bigClientPrice mientras están vigentes; la regla de
+// precio está en src/utils/precioLinea.js.
+model ClientProductPrice {
+  id        Int       @id @default(autoincrement())
+  clientId  Int       @map("client_id")
+  productId Int       @map("product_id")
+  price     Float     // con IVA incluido, como basePrice
+  validFrom DateTime  @map("valid_from") @db.Date
+  validTo   DateTime? @map("valid_to") @db.Date // null = indefinido; ambos días incluidos
+  note      String?   @db.VarChar(255)
+  createdBy Int?      @map("created_by")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  client    User      @relation("client_agreed_prices", fields: [clientId], references: [id], onDelete: Cascade)
+  product   Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  creator   User?     @relation("agreed_prices_created_by", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([clientId, productId], map: "client_product_price_client_product_idx")
+  @@map("client_product_price")
 }
 
 model LoginLog {

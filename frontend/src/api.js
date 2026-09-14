@@ -190,6 +190,35 @@ export function updateUser(token, id, data) {
     });
 }
 
+// ── Precios pactados por cliente (docs/precios-pactados.md) ──
+
+// Todos los acuerdos del cliente: { hoy, precios: [...] }
+export function fetchClientPrices(token, clientId) {
+    return request(`/users/${clientId}/prices`, token);
+}
+
+// Precios pactados vigentes hoy: { [productId]: { id, price, validTo, note } }
+export function fetchEffectivePrices(token, clientId) {
+    return request(`/users/${clientId}/effective-prices`, token);
+}
+
+export function createClientPrice(token, clientId, data) {
+    return request(`/users/${clientId}/prices`, token, {
+        method: 'POST', body: JSON.stringify(data),
+    });
+}
+
+export function updateClientPrice(token, clientId, priceId, data) {
+    return request(`/users/${clientId}/prices/${priceId}`, token, {
+        method: 'PUT', body: JSON.stringify(data),
+    });
+}
+
+// Finaliza el acuerdo desde hoy, o lo elimina si aún no había empezado
+export function endClientPrice(token, clientId, priceId) {
+    return request(`/users/${clientId}/prices/${priceId}`, token, {method: 'DELETE'});
+}
+
 // Historial global de inicios de sesión (solo admin)
 export function fetchLoginLogs(token, { page = 0, size = 50, success } = {}) {
     const params = new URLSearchParams({ page, size });

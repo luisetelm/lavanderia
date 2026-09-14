@@ -4,7 +4,7 @@ import {isValidSpanishPhone} from '../utils/validatePhone.js';
 import {crearFactura, crearRectificativa, convertBigIntToString} from "./invoices.js";
 import { sendCollectedNotification, sendReadyNotification } from '../services/notify.js';
 import { facturaDe } from '../utils/facturaDe.js';
-import { calcularLinea } from '../utils/precioLinea.js';
+import { calcularLinea, preciosPactadosVigentes } from '../utils/precioLinea.js';
 import { getWorkCalendar, getDayInfo, nextWorkingDay, ymd, addDays, mondayOf } from '../utils/workCalendar.js';
 import jwt from 'jsonwebtoken';
 import fs from 'fs';
@@ -88,30 +88,27 @@ export default async function (fastify, opts) {
         const lineCreates = [];
         const pendingAnnotations = []; // [{ lineIndex, notes, photos }]
 
-        // Obtener el cliente (ya calculado arriba) para conocer su descuento
-        const userDiscount = client?.discount ? Number(client.discount) : 0;
-        const discountPct = (!isNaN(userDiscount) && userDiscount > 0) ? Math.min(100, Math.max(0, userDiscount)) : 0;
+        // Precio de cada línea con la regla única de utils/precioLinea.js:
+        // precio pactado del cliente > tarifa de gran cliente > precio normal,
+        // y el descuento del cliente sólo sobre lo que no está pactado.
+        // Los pactados se cargan una sola vez para todo el pedido.
+        const pactados = await preciosPactadosVigentes(prisma, client?.id);
 
         for (const l of lines) {
-            const product = await prisma.product.findUnique({where: {id: l.productId}});
-            if (!product) return reply.status(400).send({error: `Producto inválido: ${l.productId}`});
-
-            // Determinar precio base según gran cliente
-            let unitPrice = product.basePrice;
-            if (client.isbigclient && product.bigClientPrice && product.bigClientPrice > 0) {
-                unitPrice = parseFloat(product.bigClientPrice);
+            let calculada;
+            try {
+                // Sin redondear el total de línea, como se ha guardado siempre.
+                calculada = await calcularLinea(
+                    prisma,
+                    {productId: l.productId, variantId: l.variantId, quantity: l.quantity},
+                    client,
+                    {pactados, redondear: false},
+                );
+            } catch (e) {
+                if (e.statusCode) return reply.status(e.statusCode).send({error: e.message});
+                throw e;
             }
-
-            // Aplicar modificador de variante si existe
-            if (l.variantId) {
-                const variant = await prisma.productVariant.findUnique({where: {id: l.variantId}});
-                if (variant) unitPrice += variant.priceModifier;
-            }
-
-            const quantity = l.quantity || 1;
-            // Calcular total con descuento por línea (mismo criterio que en PATCH /lines/:lineId)
-            const subtotal = unitPrice * quantity;
-            const totalPrice = discountPct > 0 ? subtotal * (1 - discountPct / 100) : subtotal;
+            const {unitPrice, quantity, discount: discountPct, totalPrice} = calculada;
 
             total += totalPrice;
 

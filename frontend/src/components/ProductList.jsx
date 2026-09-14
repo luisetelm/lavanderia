@@ -3,7 +3,8 @@ import './ProductList.css';
 
 // Catálogo de productos del POS: filtros por itinerario, buscador y rejilla.
 // `cartCounts` = { [productId]: unidades ya en el pedido } para marcar las tarjetas.
-export default function ProductList({products, searchProduct, setSearchProduct, onAdd, itineraries = [], cartCounts = {}}) {
+// `agreedPriceFor(productId)` = precio pactado del cliente elegido o null; si lo hay, se enseña en lugar del normal.
+export default function ProductList({products, searchProduct, setSearchProduct, onAdd, itineraries = [], cartCounts = {}, agreedPriceFor = null}) {
     const [itineraryFilter, setItineraryFilter] = useState(null); // null = todos
 
     // Itinerarios que realmente usa algún producto
@@ -62,6 +63,7 @@ export default function ProductList({products, searchProduct, setSearchProduct, 
                         {filtered.map((p) => {
                             const itin = itineraryName(p);
                             const inCart = cartCounts[p.id] || 0;
+                            const pactado = agreedPriceFor ? agreedPriceFor(p.id) : null;
                             return (
                                 <button
                                     key={p.id}
@@ -71,7 +73,10 @@ export default function ProductList({products, searchProduct, setSearchProduct, 
                                     uk-tooltip={p.description || undefined}
                                 >
                                     <span className="pl-item-name">{p.name}</span>
-                                    <span className="pl-item-price">{Number(p.basePrice).toFixed(2)} €</span>
+                                    <span className="pl-item-price">
+                                        {Number(pactado ?? p.basePrice).toFixed(2)} €
+                                        {pactado !== null && <em className="pl-item-agreed" title="Precio pactado con este cliente">pactado</em>}
+                                    </span>
                                     {itin && <span className="pl-item-itin">{itin}</span>}
                                     {inCart > 0 && <span className="pl-item-count" title="Unidades en el pedido">{inCart}</span>}
                                     <span className="pl-item-add" aria-hidden="true">+</span>
