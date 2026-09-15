@@ -25,13 +25,14 @@ No test framework is configured.
 
 **State management:** Plain React hooks (useState/useCallback). No Redux/Context. State flows from `App.jsx` down as props (token, user, setToken, setUser).
 
-**Routing (App.jsx):** `/pos`, `/productos`, `/tareas`, `/usuarios`, `/usuarios/:id`, `/ventas` (admin-only), `/login`. Root redirects to `/pos`.
+**Routing (App.jsx):** `/pos`, `/productos`, `/productos/:id`, `/tareas`, `/usuarios`, `/usuarios/:id`, `/ventas` (admin-only), `/login`. Root redirects to `/pos`.
 
 **Pages (`src/pages/`):**
 - `POS.jsx` — Main POS: cart, customer selection, delivery dates, payments, cash register (movements, closures). Largest file (~850 lines).
 - `Tasks.jsx` — Order list with status/search/date filters, debounced search (300ms).
 - `Ventas.jsx` — Sales dashboard with date range filters, invoice filtering, Excel export. Admin only.
-- `Inventory.jsx` — Product CRUD + CSV bulk import.
+- `Inventory.jsx` — Product catalog with inline editing; the name links to the product page. Only admins create/edit (the API enforces it).
+- `ProductDetail.jsx` — Product page (`/productos/:id`): data, order KPIs vs previous period, charts (`components/ProductCharts.jsx`, hand-made SVG), orders, top clients and agreed prices. Stats come from `GET /api/products/:id/stats`. See `docs/productos.md`.
 - `Users.jsx` — User list with role/search filters, pagination.
 - `UserEdit.jsx` — User detail with financial summary and order history.
 

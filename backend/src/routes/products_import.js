@@ -12,6 +12,7 @@ export default async function (fastify, opts) {
 
     // Espera que el CSV se envíe como texto en el body (puedes adaptar a multipart si quieres archivo real)
     fastify.post('/import', async (req, reply) => {
+        if (req.user?.role !== 'admin') return reply.status(403).send({ error: 'Sólo administración puede importar productos.' });
         const { csv } = req.body;
         if (!csv) return reply.status(400).send({ error: 'Falta campo csv con el contenido' });
 

@@ -214,9 +214,10 @@ export default async function dashboardRoutes(fastify) {
                 return reply.status(400).send({ error: 'Rango de fechas inválido' });
             }
 
-            // Excluimos pedidos cancelados
+            // Excluimos pedidos cancelados y líneas anuladas al ajustar un pedido
             const lines = await prisma.orderLine.findMany({
                 where: {
+                    voidedAt: null,
                     order: {
                         createdAt: { gte: from, lte: to },
                         status: { not: 'cancelled' },

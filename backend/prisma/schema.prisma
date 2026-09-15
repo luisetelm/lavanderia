@@ -76,6 +76,8 @@ model Order {
   // por lo que se quita y las nuevas por lo que se añade. Ver sql/009.
   invoiceTickets        invoiceTickets[]
   printJobs             print_job[]
+
+  @@index([createdAt], map: "idx_Order_createdAt") // sql/023
 }
 
 // Cola de impresión: encargos que deja un dispositivo sin impresora (la tablet
@@ -124,6 +126,8 @@ model OrderLine {
   steps      OrderLineStep[]
 
   @@index([invoicedInId])
+  @@index([productId], map: "idx_OrderLine_productId") // sql/023
+  @@index([orderId], map: "idx_OrderLine_orderId")     // sql/023
 }
 
 model ServiceStepConfig {

@@ -84,6 +84,29 @@ export function importProducts(token, formData) {
     });
 }
 
+// --- Ficha de producto ---
+export function fetchProduct(token, id) {
+    return request(`/products/${id}`, token);
+}
+
+export function fetchProductStats(token, id, {from, to} = {}) {
+    const params = new URLSearchParams();
+    if (from) params.set('from', from);
+    if (to) params.set('to', to);
+    return request(`/products/${id}/stats?${params}`, token);
+}
+
+export function fetchProductLines(token, id, {from, to, page = 0, size = 20} = {}) {
+    const params = new URLSearchParams({page: String(page), size: String(size)});
+    if (from) params.set('from', from);
+    if (to) params.set('to', to);
+    return request(`/products/${id}/lines?${params}`, token);
+}
+
+export function fetchProductAgreedPrices(token, id) {
+    return request(`/products/${id}/agreed-prices`, token);
+}
+
 
 export function createOrder(token, order) {
     return request('/orders', token, {
