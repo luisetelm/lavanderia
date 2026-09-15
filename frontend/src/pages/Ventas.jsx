@@ -10,6 +10,7 @@ import {
     fetchInvoicesReport
 } from '../api.js';
 import { formatEUR } from '../utils/format.js';
+import { FACTURA_SEPA_EN_CURSO } from '../utils/sepa.js';
 import {useNavigate} from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import VentaRow from '../components/VentaRow.jsx';
@@ -433,6 +434,8 @@ export default function Ventas({token}) {
         const invoiceIds = selectedOrders
             .map(orderId => ventas.find(v => v.id === orderId))
             .filter(v => v?.factura && v.factura.paid !== true && v.factura.paymentStatus !== 'paid')
+            // Con un adeudo SEPA en curso no se puede cobrar por otra vía
+            .filter(v => v.factura.paymentStatus !== FACTURA_SEPA_EN_CURSO)
             .map(v => v.factura.id);
 
         if (invoiceIds.length === 0) {

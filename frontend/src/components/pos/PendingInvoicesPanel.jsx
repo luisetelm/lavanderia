@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { fetchUnpaidInvoices, collectInvoice, downloadInvoicePDF } from '../../api.js';
 import { formatEUR } from '../../utils/format.js';
+import { FACTURA_SEPA_FALLIDA } from '../../utils/sepa.js';
 
 const METHODS = [
     { value: 'cash', label: 'Efectivo', icon: '💵' },
@@ -149,6 +150,15 @@ export default function PendingInvoicesPanel({ show, onClose, token, onCollected
                                                 }}>
                                                     {new Date(inv.issuedAt).toLocaleDateString('es-ES', { dateStyle: 'medium' })}
                                                 </span>
+                                                {inv.paymentStatus === FACTURA_SEPA_FALLIDA && (
+                                                    <span style={{
+                                                        fontSize: '0.7rem', fontWeight: 500, marginLeft: 8,
+                                                        padding: '1px 6px', borderRadius: 4,
+                                                        background: '#fef2f2', color: '#dc2626',
+                                                    }}>
+                                                        Adeudo SEPA devuelto
+                                                    </span>
+                                                )}
                                             </div>
                                             <div style={{ fontSize: '0.82rem', color: '#334155' }}>
                                                 {clientName}

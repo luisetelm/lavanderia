@@ -979,7 +979,10 @@ export default async function (fastify) {
                     { paid: false },
                     { paid: null },
                 ],
-                paymentStatus: { not: 'paid' },
+                // Fuera también las que tienen un adeudo SEPA en curso (services/sepa.js):
+                // ya se están cobrando y cobrarlas en caja las cobraría dos veces.
+                // Las de adeudo devuelto ('sepa_failed') sí salen: hay que cobrarlas.
+                paymentStatus: { notIn: ['paid', 'sepa_processing'] },
             };
 
             if (q) {
