@@ -1,8 +1,123 @@
-import { createCheckoutSession, constructWebhookEvent } from '../services/stripe.js';
+import stripe, { createCheckoutSession, constructWebhookEvent } from '../services/stripe.js';
 import { facturaDe } from '../utils/facturaDe.js';
+
+// Stripe da importes en céntimos y fechas en segundos Unix
+const aEuros = (centimos) => Number(((centimos || 0) / 100).toFixed(2));
+const aFecha = (segundos) => (segundos ? new Date(segundos * 1000).toISOString() : null);
+const saldoEur = (saldos) => aEuros((saldos || []).find(s => s.currency === 'eur')?.amount);
+
+function mapearTransferencia(p) {
+    // Con expand: ['data.destination'] la cuenta de destino llega como objeto
+    const destino = typeof p.destination === 'object' && p.destination ? p.destination : null;
+    return {
+        id: p.id,
+        amount: aEuros(p.amount),
+        status: p.status,
+        arrivalDate: aFecha(p.arrival_date),
+        created: aFecha(p.created),
+        automatic: p.automatic,
+        bankName: destino?.bank_name || destino?.brand || null,
+        last4: destino?.last4 || null,
+        failureMessage: p.failure_message || null,
+    };
+}
+
+// Movimientos del saldo de Stripe, cruzados con el Payment de la app por el
+// payment_intent para saber a qué pedido, factura y cliente corresponde cada uno.
+async function mapearMovimientos(prisma, movimientos) {
+    const intentos = [...new Set(movimientos.map(m => m.source?.payment_intent).filter(Boolean))];
+    const pagos = intentos.length ? await prisma.payment.findMany({
+        where: { stripePaymentId: { in: intentos } },
+        select: {
+            stripePaymentId: true,
+            order: { select: { id: true, orderNum: true } },
+            invoice: { select: { id: true, number: true } },
+            client: { select: { id: true, firstName: true, lastName: true } },
+        },
+    }) : [];
+    const pagoPorIntento = new Map(pagos.map(p => [p.stripePaymentId, p]));
+
+    return movimientos.map(m => {
+        const pago = pagoPorIntento.get(m.source?.payment_intent);
+        return {
+            id: m.id,
+            type: m.type,
+            status: m.status,
+            amount: aEuros(m.amount),
+            fee: aEuros(m.fee),
+            net: aEuros(m.net),
+            created: aFecha(m.created),
+            availableOn: aFecha(m.available_on),
+            description: m.description || null,
+            order: pago?.order || null,
+            invoice: pago?.invoice || null,
+            client: pago?.client || null,
+        };
+    });
+}
 
 export default async function (fastify) {
     const prisma = fastify.prisma;
+
+    const requireAdmin = (req, reply) => {
+        if (req.user?.role !== 'admin') {
+            reply.code(403).send({ error: 'Solo administradores' });
+            return false;
+        }
+        return true;
+    };
+
+    // Saldo de Stripe: lo retenido, lo disponible, las transferencias al banco y
+    // los últimos movimientos. Se lee en vivo de Stripe; aquí no se guarda nada.
+    fastify.get('/balance', async (req, reply) => {
+        if (!requireAdmin(req, reply)) return;
+        try {
+            const [saldo, transferencias, movimientos, cuenta] = await Promise.all([
+                stripe.balance.retrieve(),
+                stripe.payouts.list({ limit: 20, expand: ['data.destination'] }),
+                stripe.balanceTransactions.list({ limit: 50, expand: ['data.source'] }),
+                stripe.accounts.retrieveCurrent(),
+            ]);
+            const calendario = cuenta.settings?.payouts?.schedule || {};
+
+            return reply.send({
+                livemode: saldo.livemode,
+                available: saldoEur(saldo.available),
+                pending: saldoEur(saldo.pending),
+                schedule: {
+                    interval: calendario.interval || null,
+                    delayDays: calendario.delay_days ?? null,
+                    weeklyAnchor: calendario.weekly_anchor || null,
+                    monthlyAnchor: calendario.monthly_anchor || null,
+                },
+                payouts: transferencias.data.map(mapearTransferencia),
+                transactions: await mapearMovimientos(prisma, movimientos.data),
+            });
+        } catch (e) {
+            console.error('[Stripe] Error leyendo el saldo:', e);
+            return reply.code(502).send({ error: e.message || 'No se pudo consultar Stripe' });
+        }
+    });
+
+    // Qué cobros, devoluciones y comisiones componen una transferencia al banco
+    fastify.get('/payouts/:id/transactions', async (req, reply) => {
+        if (!requireAdmin(req, reply)) return;
+        const { id } = req.params;
+        if (!/^po_\w+$/.test(id)) {
+            return reply.code(400).send({ error: 'Transferencia no válida' });
+        }
+        try {
+            const movimientos = await stripe.balanceTransactions
+                .list({ payout: id, limit: 100, expand: ['data.source'] })
+                .autoPagingToArray({ limit: 1000 });
+            // La propia transferencia también aparece en la lista: se quita
+            const detalle = movimientos.filter(m => m.type !== 'payout');
+            return reply.send(await mapearMovimientos(prisma, detalle));
+        } catch (e) {
+            console.error('[Stripe] Error leyendo la transferencia:', e);
+            return reply.code(502).send({ error: e.message || 'No se pudo consultar Stripe' });
+        }
+    });
 
     // Crear sesión de checkout (requiere autenticación - admin/cashier)
     fastify.post('/checkout', async (req, reply) => {

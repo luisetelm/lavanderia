@@ -839,6 +839,16 @@ export function getPaymentLink(token, type, id) {
     return request(`/stripe/payment-link/${type}/${id}`, token);
 }
 
+// Saldo de Stripe: disponible, pendiente, transferencias al banco y últimos movimientos (solo admin)
+export function fetchStripeBalance(token) {
+    return request('/stripe/balance', token);
+}
+
+// Cobros, devoluciones y comisiones incluidos en una transferencia al banco
+export function fetchStripePayoutTransactions(token, payoutId) {
+    return request(`/stripe/payouts/${payoutId}/transactions`, token);
+}
+
 // Listado simple de facturas emitidas en el rango (por número), para exportar a gestoría
 export function fetchInvoicesReport(token, { from, to } = {}) {
     const params = new URLSearchParams();

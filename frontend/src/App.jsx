@@ -12,6 +12,7 @@ import AuthRedirect from './components/AuthRedirect';
 import UserEdit from './pages/UserEdit.jsx';
 import Reviews from './pages/Reviews.jsx';
 import CashAudit from './pages/CashAudit.jsx';
+import StripeBalance from './pages/StripeBalance.jsx';
 import TrackingBoard from './pages/TrackingBoard.jsx';
 import TrackingWorkshop from './pages/TrackingWorkshop.jsx';
 import ItineraryConfig from './pages/ItineraryConfig.jsx';
@@ -155,7 +156,7 @@ export default function App() {
     const [adminMenuOpen, setAdminMenuOpen] = useState(false);
 
     // Mantener menú admin abierto si la ruta actual es de administración
-    const adminPaths = ['/ventas', '/estadisticas', '/resenas', '/caja', '/horario', '/itinerarios', '/recursos', '/accesos', '/campanas', '/tracking/supervision'];
+    const adminPaths = ['/ventas', '/estadisticas', '/resenas', '/caja', '/stripe', '/horario', '/itinerarios', '/recursos', '/accesos', '/campanas', '/tracking/supervision'];
     useEffect(() => {
         if (adminPaths.some(p => location.pathname.startsWith(p))) {
             setAdminMenuOpen(true);
@@ -237,6 +238,7 @@ export default function App() {
                                         <li><NavLink to="/resenas"><span uk-icon="icon: star; ratio: 0.8"></span> Reseñas</NavLink></li>
                                         <li><NavLink to="/campanas"><span uk-icon="icon: bell; ratio: 0.8"></span> Campañas</NavLink></li>
                                         <li><NavLink to="/caja"><span uk-icon="icon: database; ratio: 0.8"></span> Caja</NavLink></li>
+                                        <li><NavLink to="/stripe"><span uk-icon="icon: credit-card; ratio: 0.8"></span> Stripe</NavLink></li>
                                         <li><NavLink to="/horario"><span uk-icon="icon: calendar; ratio: 0.8"></span> Horario</NavLink></li>
                                         <li><NavLink to="/itinerarios"><span uk-icon="icon: settings; ratio: 0.8"></span> Itinerarios</NavLink></li>
                                         <li><NavLink to="/recursos"><span uk-icon="icon: cog; ratio: 0.8"></span> Recursos</NavLink></li>
@@ -293,6 +295,7 @@ export default function App() {
                     <Route path="/resenas" element={<Reviews token={token}/>}/>
                     <Route path="/campanas" element={soloAdmin(<Campaigns token={token}/>)}/>
                     <Route path="/caja" element={soloAdmin(<CashAudit token={token}/>)}/>
+                    <Route path="/stripe" element={soloAdmin(<StripeBalance token={token}/>)}/>
                     <Route path="/horario" element={soloAdmin(<WorkSchedule token={token}/>)}/>
                     <Route path="/itinerarios" element={<ItineraryConfig token={token}/>}/>
                     <Route path="/recursos" element={<ResourceConfig token={token}/>}/>
