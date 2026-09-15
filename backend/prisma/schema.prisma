@@ -37,6 +37,7 @@ model Product {
   archivedAt     DateTime?        @map("archived_at") @db.Timestamptz(6) // archivado: fuera del TPV, conserva ficha y pedidos (sql/024)
   orderLines     OrderLine[]
   agreedPrices   ClientProductPrice[]
+  priceHistory   ProductPriceHistory[]
   category       ProductCategory? @relation(fields: [categoryId], references: [id])
   variants       ProductVariant[]
   itinerary      Itinerary?       @relation(fields: [itineraryId], references: [id])
@@ -268,6 +269,26 @@ model User {
   loginLogs          LoginLog[]     @relation("user_login_logs")
   agreedPrices        ClientProductPrice[] @relation("client_agreed_prices")
   agreedPricesCreated ClientProductPrice[] @relation("agreed_prices_created_by")
+  priceChanges        ProductPriceHistory[] @relation("price_changes")
+}
+
+// Cambios de precio de los productos (sql/025). Lo escribe utils/historialPrecios.js
+// desde el alta, la edición, el cambio en bloque y la importación.
+model ProductPriceHistory {
+  id        Int      @id @default(autoincrement())
+  productId Int      @map("product_id")
+  field     String   @db.VarChar(20)    // basePrice | bigClientPrice
+  oldPrice  Float?   @map("old_price")  // null = alta del producto
+  newPrice  Float    @map("new_price")  // IVA incluido, como el catálogo
+  source    String   @db.VarChar(20)    // alta | edicion | bloque | importacion
+  note      String?  @db.VarChar(255)
+  changedBy Int?     @map("changed_by")
+  changedAt DateTime @default(now()) @map("changed_at") @db.Timestamptz(6)
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user      User?    @relation("price_changes", fields: [changedBy], references: [id], onDelete: SetNull)
+
+  @@index([productId, changedAt], map: "product_price_history_product_idx")
+  @@map("product_price_history")
 }
 
 // Precios pactados por cliente y producto (sql/022_precios_pactados.sql).

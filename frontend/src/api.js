@@ -108,6 +108,18 @@ export function fetchProductAgreedPrices(token, id) {
     return request(`/products/${id}/agreed-prices`, token);
 }
 
+export function fetchProductPriceHistory(token, id) {
+    return request(`/products/${id}/price-history`, token);
+}
+
+// Sólo administración
+export function fetchProductTimes(token, id, {from, to} = {}) {
+    const params = new URLSearchParams();
+    if (from) params.set('from', from);
+    if (to) params.set('to', to);
+    return request(`/products/${id}/times?${params}`, token);
+}
+
 // --- Catálogo: actividad, categorías y acciones en bloque ---
 export function fetchProductsSummary(token) {
     return request('/products/summary', token);

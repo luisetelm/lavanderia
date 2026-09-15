@@ -11,6 +11,7 @@ const COLORES = {
     rejilla: '#eef2f6',
     eje: '#cbd5e1',
     tendencia: '#94a3b8',   // línea de las miniaturas; la semana actual va en el color de la serie
+    marca: '#475569',       // anotaciones sobre la gráfica (cambios de precio)
     texto: '#1e293b',
     textoSuave: '#64748b',
 };
@@ -46,9 +47,11 @@ function columna(x, y, w, h, r = 4) {
 
 /**
  * Columnas de una serie.
- * datos: [{clave, etiqueta, etiquetaLarga, valor, detalle?}]
+ * datos: [{clave, etiqueta, etiquetaLarga, valor, detalle?, nota?}]
+ * marcas: [{indice}] líneas verticales al inicio de esas columnas (p. ej. un
+ * cambio de precio); lo que significan va en la `nota` del dato y en la leyenda.
  */
-export function ColumnChart({datos, formato, formatoEje = formato, entero = false, alto = 220, etiqueta}) {
+export function ColumnChart({datos, formato, formatoEje = formato, entero = false, alto = 220, etiqueta, marcas = []}) {
     const ref = useRef(null);
     const ancho = useAncho(ref);
     const [activo, setActivo] = useState(null);
@@ -64,8 +67,8 @@ export function ColumnChart({datos, formato, formatoEje = formato, entero = fals
     const yDe = (v) => m.arr + plotH - (v / tope) * plotH;
     const cadaCuanto = Math.max(1, Math.ceil(n / Math.max(1, Math.floor(plotW / 58))));
     const iMax = max > 0 ? datos.findIndex((d) => d.valor === max) : -1;
-    const marcas = [];
-    for (let v = 0; v <= tope + paso / 1000; v += paso) marcas.push(v);
+    const divisiones = [];
+    for (let v = 0; v <= tope + paso / 1000; v += paso) divisiones.push(v);
 
     const d = activo != null ? datos[activo] : null;
     const xTooltip = d ? Math.min(Math.max(m.izq + activo * banda + banda / 2, 70), ancho - 70) : 0;
@@ -74,7 +77,7 @@ export function ColumnChart({datos, formato, formatoEje = formato, entero = fals
         <div ref={ref} style={{position: 'relative'}}>
             {ancho > 0 && (
                 <svg width={ancho} height={alto} role="img" aria-label={etiqueta} style={{display: 'block', overflow: 'visible'}}>
-                    {marcas.map((v) => (
+                    {divisiones.map((v) => (
                         <g key={v}>
                             <line x1={m.izq} x2={m.izq + plotW} y1={yDe(v)} y2={yDe(v)}
                                   stroke={v === 0 ? COLORES.eje : COLORES.rejilla} strokeWidth="1" shapeRendering="crispEdges"/>
@@ -84,16 +87,28 @@ export function ColumnChart({datos, formato, formatoEje = formato, entero = fals
                             </text>
                         </g>
                     ))}
+                    {marcas.map((mc) => {
+                        const xm = Math.round(m.izq + mc.indice * banda) + 0.5;
+                        return (
+                            <g key={`marca-${mc.indice}`} style={{pointerEvents: 'none'}}>
+                                <line x1={xm} x2={xm} y1={m.arr - 10} y2={m.arr + plotH} stroke={COLORES.marca} strokeWidth="1"/>
+                                <circle cx={xm} cy={m.arr - 10} r="3.5" fill={COLORES.marca} stroke="#fff" strokeWidth="1.5"/>
+                            </g>
+                        );
+                    })}
                     {datos.map((p, i) => {
                         const x = m.izq + i * banda;
                         const y = yDe(p.valor);
+                        // Etiqueta recortada si no cabe en el hueco que le toca
+                        const maxCar = Math.max(3, Math.floor((banda * cadaCuanto) / 6.5));
+                        const texto = p.etiqueta.length > maxCar ? `${p.etiqueta.slice(0, maxCar - 1)}…` : p.etiqueta;
                         return (
                             <g key={p.clave}>
                                 <path d={columna(x + (banda - anchoColumna) / 2, y, anchoColumna, m.arr + plotH - y)}
                                       fill={activo === i ? COLORES.serieActiva : COLORES.serie}/>
                                 {i % cadaCuanto === 0 && (
                                     <text x={x + banda / 2} y={alto - 8} textAnchor="middle" fontSize="11" fill={COLORES.textoSuave}>
-                                        {p.etiqueta}
+                                        {texto}
                                     </text>
                                 )}
                                 {i === iMax && activo == null && (
@@ -118,6 +133,7 @@ export function ColumnChart({datos, formato, formatoEje = formato, entero = fals
                 }}>
                     <div style={{fontWeight: 700, color: COLORES.texto}}>{formato(d.valor)}</div>
                     {d.detalle && <div style={{color: COLORES.textoSuave}}>{d.detalle}</div>}
+                    {d.nota && <div style={{color: COLORES.texto, marginTop: 2}}>{d.nota}</div>}
                     <div style={{color: COLORES.textoSuave}}>{d.etiquetaLarga}</div>
                 </div>
             )}

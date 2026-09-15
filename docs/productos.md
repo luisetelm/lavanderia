@@ -100,6 +100,46 @@ completo.
 - **Clientes.** Los 10 que más unidades han pedido en el rango.
 - **Precios pactados.** Clientes con precio acordado para el producto. Sólo
   lectura: se gestionan desde la ficha del cliente (ver `precios-pactados.md`).
+- **Historial de precios.** Cada cambio del precio o de la tarifa de gran
+  cliente: fecha, antes, después, variación, desde dónde se hizo y quién.
+- **Tiempos** (sólo administración). Ver más abajo.
+
+### Historial de precios
+
+Se registra en todos los sitios que cambian precios: alta del producto, edición
+(formulario y edición rápida), cambio en bloque (con el cambio aplicado, p. ej.
+«+5 %, redondeo 0,05 €») e importación CSV. Empieza a registrar cuando se
+ejecuta `sql/025`; no hay datos de antes.
+
+En la gráfica de evolución de «Estadísticas», cada cambio de precio del periodo
+aparece como una línea vertical al inicio de la columna en que ocurrió, y el
+detalle sale al pasar por esa columna. Así se ve el efecto de una subida en las
+unidades.
+
+El registro nunca impide guardar un precio: si falla (p. ej. falta la tabla),
+el precio se guarda y el log del backend lo avisa.
+
+### Tiempos
+
+Para las prendas del producto en pedidos del periodo que pasan por el taller:
+
+| Dato | Qué es |
+|---|---|
+| Tiempo hasta terminar | Mediana desde el alta del pedido hasta completar el último paso; y en cuánto se terminan 9 de cada 10 |
+| Plazo dado al cliente | Mediana desde el alta hasta la fecha de entrega |
+| Terminadas a tiempo | Terminadas el día de entrega o antes, sobre las que tienen fecha |
+| En curso | Sin terminar en pedidos no recogidos, y cuántas tienen ya la fecha pasada |
+| Por paso | Mediana desde el alta hasta completar cada paso del itinerario |
+
+**Por qué no se mide cuánto dura cada paso.** En el taller los pasos se marcan
+casi siempre al terminarlos, sin pulsar antes «Iniciar», y muchas veces varios a
+la vez. Con los datos de 2026, de 3.815 pasos terminados sólo 16 duraban más de
+un minuto: la duración de cada paso saldría a cero. Contar desde el alta del
+pedido sí es fiable.
+
+**Por qué «a tiempo» compara días.** La fecha de entrega se guarda a las 00:00
+del día, así que comparar con la hora exacta daría por tarde todo lo terminado
+ese mismo día.
 
 ## API
 
@@ -115,6 +155,8 @@ completo.
 | GET | `/api/products/:id/stats?from&to` | empleados |
 | GET | `/api/products/:id/lines?from&to&page&size` | empleados |
 | GET | `/api/products/:id/agreed-prices` | empleados |
+| GET | `/api/products/:id/price-history` | empleados |
+| GET | `/api/products/:id/times?from&to` | admin |
 | POST | `/api/products` | admin |
 | PUT | `/api/products/:id` | admin |
 | POST | `/api/products/import` | admin |
@@ -127,4 +169,7 @@ completo.
    desplegar el backend: sin la columna `archived_at` el TPV no carga productos.
    Si falla el índice único de categorías, hay nombres repetidos que unificar
    primero (la consulta está en el propio fichero).
-3. Desplegar backend (incluye `npx prisma generate`) y frontend.
+3. Ejecutar `backend/sql/025_historial_precios_productos.sql`. Puede ir antes o
+   después del backend, pero los cambios de precio no se registran hasta que
+   exista la tabla.
+4. Desplegar backend (incluye `npx prisma generate`) y frontend.

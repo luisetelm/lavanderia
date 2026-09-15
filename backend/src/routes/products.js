@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import { generateUniqueSku } from '../utils/generateSku.js';
 import { hoy, fechaTexto } from '../utils/precioLinea.js';
 import { addDays, mondayOf } from '../utils/workCalendar.js';
+import { registrarCambiosPrecio, historialPrecios } from '../utils/historialPrecios.js';
 
 // Consultar el catálogo y las fichas: cualquier empleado (el TPV lo necesita).
 // Crear y modificar productos: sólo administración, igual que los precios pactados.
@@ -280,7 +281,21 @@ export default async function (fastify, opts) {
         }
 
         const aplicar = body.aplicar === true && actualizaciones.length > 0;
-        if (aplicar) await prisma.$transaction(actualizaciones);
+        if (aplicar) {
+            await prisma.$transaction(actualizaciones);
+            const signo = valor > 0 ? '+' : '';
+            const cifra = valor.toLocaleString('es-ES', { maximumFractionDigits: 3 });
+            await registrarCambiosPrecio(
+                prisma,
+                cambios.map((c) => ({ productId: c.id, campo: c.campo, antes: c.antes, despues: c.despues })),
+                {
+                    origen: 'bloque',
+                    nota: `${signo}${cifra} ${body.modo === 'pct' ? '%' : '€'}, redondeo ${redondeo.toLocaleString('es-ES')} €`,
+                    userId: req.user?.userId,
+                    log: req.log,
+                },
+            );
+        }
         return { aplicado: aplicar, productos: productos.length, cambios };
     }));
 
@@ -374,6 +389,16 @@ export default async function (fastify, opts) {
         const porPeriodo = new Map(serie.map((p) => [p.periodo, p]));
         const porDia = new Map(semana.map((d) => [d.dia, d]));
 
+        // Cambios de precio del periodo, para marcarlos en la gráfica (el alta no es un cambio).
+        const historial = await historialPrecios(prisma, productId, {
+            desde: new Date(`${desde}T00:00:00`),
+            hasta: new Date(`${addDays(hasta, 1)}T00:00:00`),
+        });
+        const cambiosPrecio = (historial || [])
+            .filter((c) => c.antes !== null)
+            .reverse()
+            .map((c) => ({ dia: c.dia, campo: c.campo, antes: c.antes, despues: c.despues }));
+
         const kpis = (r) => ({ unidades: r.unidades, importe: r.importe, pedidos: r.pedidos, clientes: r.clientes });
 
         return {
@@ -392,6 +417,7 @@ export default async function (fastify, opts) {
                 unidades: porDia.get(dia)?.unidades || 0,
                 pedidos: porDia.get(dia)?.pedidos || 0,
             })),
+            cambiosPrecio,
             juntos: juntos.map((j) => ({ ...j, pct: actual.pedidos ? (j.pedidos / actual.pedidos) * 100 : 0 })),
             clientes: clientes.map((c) => ({
                 ...c,
@@ -487,6 +513,85 @@ export default async function (fastify, opts) {
         };
     }));
 
+    // Historial de cambios de precio (sql/025). disponible=false si falta la tabla.
+    fastify.get('/:id/price-history', conErrores(async (req) => {
+        const producto = await productoDe(req);
+        const cambios = await historialPrecios(prisma, producto.id);
+        return { disponible: cambios !== null, cambios: cambios || [] };
+    }));
+
+    // Tiempos de las prendas de este producto en pedidos del rango. Sólo
+    // administración: las métricas de tiempo son de gestión, no del taller.
+    //
+    // Se mide desde el alta del pedido hasta que se completa cada paso del
+    // itinerario. No se mide cuánto dura cada paso (completedAt - startedAt)
+    // porque en el taller casi siempre se marca «Completar» sin «Iniciar» y
+    // saldría a cero. «A tiempo» = terminada el día de entrega o antes.
+    fastify.get('/:id/times', conErrores(async (req) => {
+        if (!esAdmin(req)) throw errorHttp(403, 'Sólo administración puede ver los tiempos.');
+        const { id: productId } = await productoDe(req);
+        const { desde, hasta } = leerRango(req.query || {});
+        const filtro = lineasQueCuentan(desde, hasta);
+
+        const [[resumen], pasos] = await Promise.all([
+            prisma.$queryRaw`
+                WITH lineas AS (
+                    SELECT l.id,
+                           (o."createdAt" AT TIME ZONE 'UTC') AS alta,
+                           (o."fechaLimite" AT TIME ZONE 'UTC') AS limite,
+                           o.status AS estado,
+                           count(ls.id) AS pasos,
+                           count(ls.id) FILTER (WHERE ls.status = 'done') AS hechos,
+                           max(ls.completed_at) AS fin
+                    FROM "OrderLine" l
+                    JOIN "Order" o ON o.id = l."orderId"
+                    JOIN order_line_steps ls ON ls.order_line_id = l.id
+                    WHERE l."productId" = ${productId} AND ${filtro}
+                    GROUP BY l.id, o."createdAt", o."fechaLimite", o.status
+                ), t AS (
+                    SELECT *, hechos = pasos AS terminada, extract(epoch FROM fin - alta) / 3600 AS horas FROM lineas
+                )
+                SELECT count(*)::int AS "conSeguimiento",
+                       count(*) FILTER (WHERE terminada)::int AS terminadas,
+                       percentile_cont(0.5) WITHIN GROUP (ORDER BY horas) FILTER (WHERE terminada AND horas >= 0) AS "medianaHoras",
+                       percentile_cont(0.9) WITHIN GROUP (ORDER BY horas) FILTER (WHERE terminada AND horas >= 0) AS "p90Horas",
+                       percentile_cont(0.5) WITHIN GROUP (ORDER BY extract(epoch FROM limite - alta) / 3600) FILTER (WHERE limite IS NOT NULL) AS "plazoHoras",
+                       count(*) FILTER (WHERE terminada AND limite IS NOT NULL)::int AS "conFecha",
+                       count(*) FILTER (WHERE terminada AND limite IS NOT NULL
+                           AND (fin AT TIME ZONE ${ZONA})::date <= (limite AT TIME ZONE ${ZONA})::date)::int AS "aTiempo",
+                       count(*) FILTER (WHERE NOT terminada AND estado NOT IN ('collected', 'cancelled'))::int AS "enCurso",
+                       count(*) FILTER (WHERE NOT terminada AND estado NOT IN ('collected', 'cancelled') AND limite IS NOT NULL
+                           AND (limite AT TIME ZONE ${ZONA})::date < (now() AT TIME ZONE ${ZONA})::date)::int AS "enCursoFueraDePlazo"
+                FROM t`,
+            prisma.$queryRaw`
+                SELECT coalesce(s.step_label, sc.step_label, 'Otro') AS paso,
+                       min(coalesce(s.position, sc.position, 0)) AS orden,
+                       count(*)::int AS prendas,
+                       percentile_cont(0.5) WITHIN GROUP (ORDER BY extract(epoch FROM ls.completed_at - (o."createdAt" AT TIME ZONE 'UTC')) / 3600) AS "medianaHoras"
+                FROM order_line_steps ls
+                JOIN "OrderLine" l ON l.id = ls.order_line_id
+                JOIN "Order" o ON o.id = l."orderId"
+                LEFT JOIN itinerary_step s ON s.id = ls.itinerary_step_id
+                LEFT JOIN service_step_config sc ON sc.id = ls.step_config_id
+                WHERE l."productId" = ${productId} AND ls.status = 'done'
+                  AND ls.completed_at >= (o."createdAt" AT TIME ZONE 'UTC') AND ${filtro}
+                GROUP BY 1
+                ORDER BY 2, 1`,
+        ]);
+
+        const horas = (v) => (v == null ? null : Math.round(Number(v) * 10) / 10);
+        return {
+            range: { from: desde, to: hasta },
+            resumen: {
+                ...resumen,
+                medianaHoras: horas(resumen.medianaHoras),
+                p90Horas: horas(resumen.p90Horas),
+                plazoHoras: horas(resumen.plazoHoras),
+            },
+            pasos: pasos.map((p) => ({ paso: p.paso, prendas: p.prendas, medianaHoras: horas(p.medianaHoras) })),
+        };
+    }));
+
     fastify.post('/', async (req, reply) => {
         if (!esAdmin(req)) return reply.status(403).send({ error: SOLO_ADMIN });
         let { name, sku, basePrice, categoryId, description, type, weight, bigClientPrice, serviceOptions, itineraryId, labelCount, countsForLoad, workloadWeight, printWashLabel } = req.body;
@@ -523,6 +628,14 @@ export default async function (fastify, opts) {
                 }
             },
         });
+        await registrarCambiosPrecio(
+            prisma,
+            [
+                { productId: product.id, campo: 'basePrice', antes: null, despues: product.basePrice },
+                ...(Number(product.bigClientPrice) > 0 ? [{ productId: product.id, campo: 'bigClientPrice', antes: null, despues: product.bigClientPrice }] : []),
+            ],
+            { origen: 'alta', userId: req.user?.userId, log: req.log },
+        );
         return reply.status(201).send(product);
     });
 
@@ -547,10 +660,21 @@ export default async function (fastify, opts) {
             if (countsForLoad !== undefined) data.countsForLoad = !!countsForLoad;
             if (workloadWeight !== undefined) data.workloadWeight = Math.max(0, parseFloat(workloadWeight) || 0);
 
+            const previo = await prisma.product.findUnique({
+                where: { id: Number(id) },
+                select: { basePrice: true, bigClientPrice: true },
+            });
             const product = await prisma.product.update({
                 where: { id: Number(id) },
                 data,
             });
+            await registrarCambiosPrecio(
+                prisma,
+                Object.keys(CAMPOS_PRECIO)
+                    .filter((campo) => data[campo] !== undefined)
+                    .map((campo) => ({ productId: product.id, campo, antes: previo?.[campo], despues: product[campo] })),
+                { origen: 'edicion', userId: req.user?.userId, log: req.log },
+            );
             return product;
         } catch (e) {
             return reply.status(404).send({ error: 'Producto no encontrado' });

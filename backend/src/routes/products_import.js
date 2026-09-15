@@ -2,6 +2,7 @@
 import pkg from 'papaparse';
 const { parse } = pkg;
 import crypto from 'crypto';
+import { registrarCambiosPrecio } from '../utils/historialPrecios.js';
 
 function randomSKU() {
     return 'SKU-' + crypto.randomBytes(3).toString('hex').toUpperCase();
@@ -50,6 +51,7 @@ export default async function (fastify, opts) {
                 }
 
                 // Crear producto (evita duplicados por SKU)
+                const previo = await prisma.product.findUnique({ where: { sku }, select: { basePrice: true } });
                 const product = await prisma.product.upsert({
                     where: { sku },
                     update: {
@@ -64,6 +66,12 @@ export default async function (fastify, opts) {
                         categoryId: category ? category.id : null,
                     },
                 });
+
+                await registrarCambiosPrecio(
+                    prisma,
+                    [{ productId: product.id, campo: 'basePrice', antes: previo ? previo.basePrice : null, despues: product.basePrice }],
+                    { origen: previo ? 'importacion' : 'alta', userId: req.user?.userId, log: req.log },
+                );
 
                 created.push({ sku: product.sku, name: product.name });
             } catch (e) {

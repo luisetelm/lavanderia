@@ -1,6 +1,9 @@
 import React, {useEffect, useMemo, useState, useCallback} from 'react';
 import {Link, useNavigate, useParams} from 'react-router-dom';
-import {fetchProduct, fetchProductStats, fetchProductLines, fetchProductAgreedPrices, fetchItineraries, archiveProducts} from '../api.js';
+import {
+    fetchProduct, fetchProductStats, fetchProductLines, fetchProductAgreedPrices, fetchProductPriceHistory, fetchProductTimes,
+    fetchItineraries, archiveProducts,
+} from '../api.js';
 import {copiaDeProducto} from '../utils/productos.js';
 import {formatEUR} from '../utils/format.js';
 import {getDateRange} from '../utils/dates.js';
@@ -34,6 +37,18 @@ const ESTADOS_PACTO = {
     futuro: {texto: 'Próximo', cls: 'uk-label-warning'},
     finalizado: {texto: 'Finalizado', cls: ''},
 };
+
+const CAMPOS_PRECIO = {basePrice: 'Precio', bigClientPrice: 'Tarifa gran cliente'};
+const ORIGENES_PRECIO = {alta: 'Alta del producto', edicion: 'Edición', bloque: 'Cambio en bloque', importacion: 'Importación'};
+// Hasta 3 decimales: hay precios como 1,573 € que no deben verse redondeados.
+const eur3 = new Intl.NumberFormat('es-ES', {style: 'currency', currency: 'EUR', minimumFractionDigits: 2, maximumFractionDigits: 3});
+
+// Horas -> "5,5 h" o "3,8 días"
+function duracion(horas) {
+    if (horas == null) return '—';
+    if (horas < 48) return `${horas.toLocaleString('es-ES', {maximumFractionDigits: horas < 10 ? 1 : 0})} h`;
+    return `${(horas / 24).toLocaleString('es-ES', {maximumFractionDigits: 1})} días`;
+}
 
 const DIAS = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'];
 const AGRUPACION = {day: 'por día', week: 'por semana', month: 'por mes'};
@@ -159,7 +174,20 @@ function PestanaEstadisticas({stats}) {
     const [metrica, setMetrica] = useState('unidades');
     const [verTabla, setVerTabla] = useState(false);
 
-    const serie = useMemo(() => stats.serie.map((p) => {
+    // Cambios de precio del periodo, en la columna del periodo en que ocurrieron.
+    const cambiosPorIndice = useMemo(() => {
+        const mapa = new Map();
+        for (const c of stats.cambiosPrecio || []) {
+            let indice = -1;
+            stats.serie.forEach((p, i) => { if (p.periodo <= c.dia) indice = i; });
+            if (indice < 0) continue;
+            if (!mapa.has(indice)) mapa.set(indice, []);
+            mapa.get(indice).push(`${CAMPOS_PRECIO[c.campo]}: ${eur3.format(c.antes)} → ${eur3.format(c.despues)}`);
+        }
+        return mapa;
+    }, [stats]);
+
+    const serie = useMemo(() => stats.serie.map((p, i) => {
         const e = etiquetasPeriodo(p.periodo, stats.unidad);
         return {
             clave: p.periodo,
@@ -167,8 +195,9 @@ function PestanaEstadisticas({stats}) {
             etiquetaLarga: e.larga,
             valor: metrica === 'importe' ? p.importe : p.unidades,
             detalle: metrica === 'importe' ? `${formatEUR(sinIva(p.importe))} sin IVA` : `${formatEUR(p.importe)} con IVA`,
+            nota: cambiosPorIndice.get(i)?.join(' · '),
         };
-    }), [stats, metrica]);
+    }), [stats, metrica, cambiosPorIndice]);
 
     const semana = stats.diasSemana.map((d) => ({
         clave: d.dia,
@@ -201,11 +230,23 @@ function PestanaEstadisticas({stats}) {
                 formato={esImporte ? formatEUR : (v) => `${uds(v)} uds`}
                 formatoEje={esImporte ? (v) => `${uds(v)} €` : uds}
                 etiqueta={`Evolución de ${esImporte ? 'importe' : 'unidades'} ${AGRUPACION[stats.unidad]}`}
+                marcas={[...cambiosPorIndice.keys()].map((indice) => ({indice}))}
             />
-            <button type="button" className="uk-button uk-button-link" style={{fontSize: '0.75rem', marginTop: 4}}
-                    onClick={() => setVerTabla((v) => !v)}>
-                {verTabla ? 'Ocultar tabla' : 'Ver como tabla'}
-            </button>
+            <div style={{display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', marginTop: 4}}>
+                <button type="button" className="uk-button uk-button-link" style={{fontSize: '0.75rem'}}
+                        onClick={() => setVerTabla((v) => !v)}>
+                    {verTabla ? 'Ocultar tabla' : 'Ver como tabla'}
+                </button>
+                {cambiosPorIndice.size > 0 && (
+                    <span style={{fontSize: '0.75rem', color: '#64748b', display: 'inline-flex', alignItems: 'center', gap: 6}}>
+                        <svg width="8" height="14" aria-hidden="true">
+                            <line x1="4" x2="4" y1="4" y2="14" stroke="#475569" strokeWidth="1"/>
+                            <circle cx="4" cy="4" r="3" fill="#475569"/>
+                        </svg>
+                        Cambio de precio (el detalle, al pasar por la columna o en «Historial de precios»)
+                    </span>
+                )}
+            </div>
             {verTabla && (
                 <div className="uk-overflow-auto" style={{maxHeight: 280, marginTop: 6}}>
                     <table className="uk-table uk-table-divider uk-table-small" style={{margin: 0, fontVariantNumeric: 'tabular-nums'}}>
@@ -466,6 +507,156 @@ function PestanaPrecios({token, productoId}) {
     );
 }
 
+function PestanaHistorial({token, productoId}) {
+    const [datos, setDatos] = useState(null);
+    const [error, setError] = useState('');
+
+    useEffect(() => {
+        let vigente = true;
+        fetchProductPriceHistory(token, productoId)
+            .then((r) => { if (vigente) setDatos(r); })
+            .catch((e) => { if (vigente) setError(e.error || 'No se pudo cargar el historial de precios'); });
+        return () => { vigente = false; };
+    }, [token, productoId]);
+
+    if (error) return <div className="uk-alert-danger" uk-alert="true"><p>{error}</p></div>;
+    if (!datos) return <div key="cargando" className="uk-text-center" style={{padding: 16}}><div uk-spinner="ratio: 0.8"></div></div>;
+    if (!datos.disponible) return <div key="no-disponible" style={vacio}>El historial de precios todavía no está activado (falta ejecutar sql/025).</div>;
+
+    return (
+        <div key="datos">
+            <p style={nota}>Cada cambio del precio o de la tarifa de gran cliente, con IVA incluido. Los precios pactados con clientes tienen su propio histórico en la ficha del cliente.</p>
+            {datos.cambios.length === 0 ? (
+                <div style={vacio}>No hay cambios registrados. Se registran desde que se activó el historial.</div>
+            ) : (
+                <div className="uk-overflow-auto">
+                    <table className="uk-table uk-table-divider uk-table-small" style={{margin: 0}}>
+                        <thead>
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Precio</th>
+                            <th style={{textAlign: 'right'}}>Antes</th>
+                            <th style={{textAlign: 'right'}}>Después</th>
+                            <th style={{textAlign: 'right'}}>Variación</th>
+                            <th>Origen</th>
+                            <th>Quién</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {datos.cambios.map((c) => {
+                            const variacion = c.antes > 0 ? ((c.despues - c.antes) / c.antes) * 100 : null;
+                            return (
+                                <tr key={c.id}>
+                                    <td style={{fontSize: '0.8rem', color: '#64748b', whiteSpace: 'nowrap'}}>
+                                        {new Date(c.fecha).toLocaleString('es-ES', {dateStyle: 'medium', timeStyle: 'short'})}
+                                    </td>
+                                    <td style={{fontSize: '0.85rem', whiteSpace: 'nowrap'}}>{CAMPOS_PRECIO[c.campo] || c.campo}</td>
+                                    <td style={{textAlign: 'right', color: '#64748b', whiteSpace: 'nowrap'}}>{c.antes === null ? '—' : eur3.format(c.antes)}</td>
+                                    <td style={{textAlign: 'right', fontWeight: 700, whiteSpace: 'nowrap'}}>{eur3.format(c.despues)}</td>
+                                    <td style={{textAlign: 'right', fontSize: '0.8rem', whiteSpace: 'nowrap', color: '#64748b'}}>
+                                        {variacion === null ? '—' : `${variacion > 0 ? '▲ +' : variacion < 0 ? '▼ −' : ''}${Math.abs(variacion).toLocaleString('es-ES', {maximumFractionDigits: 1})} %`}
+                                    </td>
+                                    <td style={{fontSize: '0.8rem'}}>
+                                        {ORIGENES_PRECIO[c.origen] || c.origen}
+                                        {c.nota && <div style={{color: '#64748b', fontSize: '0.72rem'}}>{c.nota}</div>}
+                                    </td>
+                                    <td style={{fontSize: '0.8rem', color: '#64748b'}}>{c.usuario || '—'}</td>
+                                </tr>
+                            );
+                        })}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+        </div>
+    );
+}
+
+function PestanaTiempos({token, productoId, rango}) {
+    const [datos, setDatos] = useState(null);
+    const [cargando, setCargando] = useState(false);
+    const [error, setError] = useState('');
+
+    useEffect(() => {
+        let vigente = true;
+        setCargando(true);
+        setError('');
+        fetchProductTimes(token, productoId, {from: rango.from, to: rango.to})
+            .then((r) => { if (vigente) setDatos(r); })
+            .catch((e) => { if (vigente) setError(e.error || 'No se pudieron cargar los tiempos'); })
+            .finally(() => { if (vigente) setCargando(false); });
+        return () => { vigente = false; };
+    }, [token, productoId, rango.from, rango.to]);
+
+    if (error) return <div className="uk-alert-danger" uk-alert="true"><p>{error}</p></div>;
+    if (!datos) return <div key="cargando" className="uk-text-center" style={{padding: 16}}><div uk-spinner="ratio: 0.8"></div></div>;
+
+    const r = datos.resumen;
+    if (!r.conSeguimiento) {
+        return <div key="vacio" style={vacio}>No hay prendas de este producto con pasos de taller en el periodo.</div>;
+    }
+
+    const pctATiempo = r.conFecha ? (r.aTiempo / r.conFecha) * 100 : null;
+    const maxHoras = Math.max(0, ...datos.pasos.map((p) => p.medianaHoras || 0));
+    const enDias = maxHoras >= 48;
+    const pasos = datos.pasos.map((p, i) => ({
+        clave: `${i}-${p.paso}`,
+        etiqueta: p.paso,
+        etiquetaLarga: p.paso,
+        valor: enDias ? (p.medianaHoras || 0) / 24 : (p.medianaHoras || 0),
+        detalle: `mediana de ${uds(p.prendas)} prendas`,
+    }));
+
+    return (
+        <div key="datos" style={{opacity: cargando ? 0.5 : 1, transition: 'opacity 0.15s'}}>
+            <p style={nota}>
+                Prendas de pedidos del periodo que pasan por el taller, contando desde el alta del pedido hasta que se marca cada paso.
+                No se muestra cuánto dura cada paso por separado: en el taller los pasos se suelen marcar al terminarlos, sin iniciarlos antes, y saldría a cero.
+            </p>
+            <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 8, marginBottom: 18}}>
+                <Dato etiqueta="Tiempo hasta terminar" valor={duracion(r.medianaHoras)}
+                      detalle={r.p90Horas != null ? `mediana · 9 de cada 10 en ${duracion(r.p90Horas)}` : 'mediana'}/>
+                <Dato etiqueta="Plazo dado al cliente" valor={duracion(r.plazoHoras)} detalle="mediana hasta la fecha de entrega"/>
+                <Dato etiqueta="Terminadas a tiempo" valor={pctATiempo == null ? '—' : pctTexto(pctATiempo)}
+                      detalle={r.conFecha ? `${uds(r.aTiempo)} de ${uds(r.conFecha)}, el día de entrega o antes` : 'sin fecha de entrega'}/>
+                <Dato etiqueta="Terminadas" valor={uds(r.terminadas)} detalle={`de ${uds(r.conSeguimiento)} con seguimiento`}/>
+                <Dato etiqueta="En curso" valor={uds(r.enCurso)}
+                      detalle={r.enCurso ? `${uds(r.enCursoFueraDePlazo)} con la fecha de entrega pasada` : 'ninguna pendiente'}/>
+            </div>
+            {pasos.length > 0 && (
+                <>
+                    <h4 style={{...titulo, marginBottom: 8}}>Tiempo desde el alta hasta completar cada paso</h4>
+                    <ColumnChart
+                        datos={pasos}
+                        alto={200}
+                        formato={(v) => duracion(enDias ? v * 24 : v)}
+                        formatoEje={(v) => `${v.toLocaleString('es-ES', {maximumFractionDigits: 1})} ${enDias ? 'd' : 'h'}`}
+                        etiqueta="Mediana del tiempo desde el alta del pedido hasta completar cada paso"
+                    />
+                    <table className="uk-table uk-table-divider uk-table-small" style={{margin: '10px 0 0', fontVariantNumeric: 'tabular-nums'}}>
+                        <thead>
+                        <tr>
+                            <th>Paso</th>
+                            <th style={{textAlign: 'right'}}>Prendas</th>
+                            <th style={{textAlign: 'right'}}>Mediana desde el alta</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {datos.pasos.map((p) => (
+                            <tr key={p.paso}>
+                                <td>{p.paso}</td>
+                                <td style={{textAlign: 'right'}}>{uds(p.prendas)}</td>
+                                <td style={{textAlign: 'right'}}>{duracion(p.medianaHoras)}</td>
+                            </tr>
+                        ))}
+                        </tbody>
+                    </table>
+                </>
+            )}
+        </div>
+    );
+}
+
 export default function ProductDetail({token, user}) {
     const {id} = useParams();
     const productoId = Number(id);
@@ -659,12 +850,18 @@ export default function ProductDetail({token, user}) {
                                     <button type="button" style={tabStyle(pestana === 'orders')} onClick={() => setPestana('orders')}>Pedidos ({uds(a.pedidos)})</button>
                                     <button type="button" style={tabStyle(pestana === 'clients')} onClick={() => setPestana('clients')}>Clientes</button>
                                     <button type="button" style={tabStyle(pestana === 'prices')} onClick={() => setPestana('prices')}>Precios pactados</button>
+                                    <button type="button" style={tabStyle(pestana === 'history')} onClick={() => setPestana('history')}>Historial de precios</button>
+                                    {esAdmin && (
+                                        <button type="button" style={tabStyle(pestana === 'times')} onClick={() => setPestana('times')}>Tiempos</button>
+                                    )}
                                 </div>
                                 <div style={{padding: '14px 16px'}}>
                                     {pestana === 'stats' && <PestanaEstadisticas stats={stats}/>}
                                     {pestana === 'orders' && <PestanaPedidos token={token} productoId={productoId} rango={rango}/>}
                                     {pestana === 'clients' && <PestanaClientes stats={stats}/>}
                                     {pestana === 'prices' && <PestanaPrecios token={token} productoId={productoId}/>}
+                                    {pestana === 'history' && <PestanaHistorial token={token} productoId={productoId}/>}
+                                    {pestana === 'times' && esAdmin && <PestanaTiempos token={token} productoId={productoId} rango={rango}/>}
                                 </div>
                             </div>
                         </div>
