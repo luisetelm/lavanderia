@@ -609,7 +609,7 @@ export default function PaymentSection({token, orderId, onPaid, initialOrder = n
                 </div>
                 {(() => {
                     const pay = (order.payments || []).find(p => p.status === 'completed') || (order.payments || [])[0] || null;
-                    const METHOD = { cash: 'Efectivo', card_pos: 'Tarjeta (TPV)', card: 'Tarjeta', stripe: 'Stripe', transfer: 'Transferencia', none: 'Sin cobro' };
+                    const METHOD = { cash: 'Efectivo', card_pos: 'Tarjeta (TPV)', card: 'Tarjeta', stripe: 'Stripe', transfer: 'Transferencia', sepa: 'Adeudo SEPA', none: 'Sin cobro' };
                     const methodLabel = pay?.method
                         ? (METHOD[pay.method] || pay.method)
                         : (order.paymentMethod ? (order.paymentMethod === 'cash' ? 'Efectivo' : order.paymentMethod === 'none' ? 'Sin cobro' : 'Tarjeta') : 'No seleccionado');

@@ -7,6 +7,8 @@ import { formatEUR } from '../utils/format.js';
 import UserForm from '../components/UserForm.jsx';
 import PageToolbar from '../components/PageToolbar.jsx';
 import ClientPricesTab from '../components/ClientPricesTab.jsx';
+import ClientSepaTab from '../components/ClientSepaTab.jsx';
+import { FACTURA_SEPA_EN_CURSO, FACTURA_SEPA_FALLIDA } from '../utils/sepa.js';
 
 const STATUS_LABELS = {
   pending: { text: 'Pendiente', cls: 'uk-label-warning' },
@@ -163,6 +165,11 @@ export default function UserEdit({ token, user: loggedUser }) {
                     Precios pactados
                   </button>
                 )}
+                {!['admin', 'cashier', 'worker'].includes(user?.role) && loggedUser?.role === 'admin' && (
+                  <button type="button" style={tabStyle(activeTab === 'sepa')} onClick={() => setActiveTab('sepa')}>
+                    Domiciliación
+                  </button>
+                )}
                 <button type="button" style={tabStyle(activeTab === 'notifications')} onClick={() => setActiveTab('notifications')}>
                   Notificaciones ({notifications.length})
                 </button>
@@ -233,6 +240,8 @@ export default function UserEdit({ token, user: loggedUser }) {
                         <tbody>
                           {invoices.map(inv => {
                             const isPaid = inv.paid === true || inv.paymentStatus === 'paid';
+                            const sepaEnCurso = !isPaid && inv.paymentStatus === FACTURA_SEPA_EN_CURSO;
+                            const sepaFallido = !isPaid && inv.paymentStatus === FACTURA_SEPA_FALLIDA;
                             const typeLabel = inv.type === 'n' ? 'Normal' : inv.type === 's' ? 'Simplificada' : inv.type || '-';
                             return (
                               <tr key={inv.id}>
@@ -247,8 +256,8 @@ export default function UserEdit({ token, user: loggedUser }) {
                                 </td>
                                 <td style={{textAlign: 'right', fontWeight: 600}}>{formatEUR(Number(inv.totalGross))}</td>
                                 <td>
-                                  <span className={`uk-label ${isPaid ? 'uk-label-success' : 'uk-label-danger'}`} style={{fontSize: '0.65rem'}}>
-                                    {isPaid ? 'Cobrada' : 'Pendiente'}
+                                  <span className={`uk-label ${isPaid ? 'uk-label-success' : sepaEnCurso ? 'uk-label-warning' : 'uk-label-danger'}`} style={{fontSize: '0.65rem'}}>
+                                    {isPaid ? 'Cobrada' : sepaEnCurso ? 'Adeudo en curso' : sepaFallido ? 'Adeudo devuelto' : 'Pendiente'}
                                   </span>
                                 </td>
                               </tr>
@@ -258,6 +267,11 @@ export default function UserEdit({ token, user: loggedUser }) {
                       </table>
                     </div>
                   )
+                )}
+
+                {/* ── Domiciliación SEPA ── */}
+                {activeTab === 'sepa' && (
+                  <ClientSepaTab token={token} client={user} />
                 )}
 
                 {/* ── Precios pactados ── */}

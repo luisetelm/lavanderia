@@ -49,6 +49,7 @@ import PortalDashboard from './pages/portal/PortalDashboard.jsx';
 import PortalOrders from './pages/portal/PortalOrders.jsx';
 import PortalOrderDetail from './pages/portal/PortalOrderDetail.jsx';
 import PortalInvoices from './pages/portal/PortalInvoices.jsx';
+import PortalSepaResult from './pages/portal/PortalSepaResult.jsx';
 import { fetchMe } from './api.js';
 import ChatWidget from './components/chat/ChatWidget.jsx';
 import { MessagesProvider } from './context/MessagesContext.jsx';
@@ -77,6 +78,8 @@ function PortalApp() {
         <Routes>
             <Route path="login" element={<PortalLogin />} />
             <Route path="verify/:token" element={<PortalVerify onAuth={handlePortalAuth} />} />
+            {/* Vuelta de Stripe tras firmar la domiciliación desde un enlace: pública */}
+            <Route path="domiciliacion" element={<PortalSepaResult />} />
             {portalToken && portalUser ? (
                 <>
                     <Route index element={<PortalDashboard token={portalToken} user={portalUser} onLogout={handlePortalLogout} />} />

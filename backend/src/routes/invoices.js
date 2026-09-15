@@ -1083,6 +1083,10 @@ export default async function (fastify) {
             if (invoice.paid === true || invoice.paymentStatus === 'paid') {
                 return reply.code(400).send({error: 'La factura ya está cobrada'});
             }
+            // Adeudo SEPA lanzado y sin resolver (services/sepa.js): cobrarla ahora la cobraría dos veces
+            if (invoice.paymentStatus === 'sepa_processing') {
+                return reply.code(400).send({error: 'Hay un adeudo SEPA en curso: espera a que Stripe lo confirme o lo rechace'});
+            }
 
             await prisma.$transaction(async (tx) => {
                 // 1) Marcar factura como pagada
@@ -1171,6 +1175,9 @@ export default async function (fastify) {
 
                     if (!invoice || invoice.paid === true || invoice.paymentStatus === 'paid') {
                         continue; // Saltar facturas no encontradas o ya cobradas
+                    }
+                    if (invoice.paymentStatus === 'sepa_processing') {
+                        continue; // Adeudo SEPA en curso (services/sepa.js)
                     }
 
                     // Marcar factura como pagada

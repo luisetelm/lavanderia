@@ -555,6 +555,16 @@ export function portalFetchInvoices(token) {
     return request('/portal/invoices', token);
 }
 
+// Domiciliación SEPA del cliente del portal
+export function portalFetchSepa(token) {
+    return request('/portal/sepa', token);
+}
+
+// Devuelve la URL de la página de Stripe donde firmar la orden
+export function portalStartSepa(token) {
+    return request('/portal/sepa/setup', token, { method: 'POST' });
+}
+
 export function portalPay(token, { type, id }) {
     return request('/portal/pay', token, {
         method: 'POST',
@@ -847,6 +857,31 @@ export function fetchStripeBalance(token) {
 // Cobros, devoluciones y comisiones incluidos en una transferencia al banco
 export function fetchStripePayoutTransactions(token, payoutId) {
     return request(`/stripe/payouts/${payoutId}/transactions`, token);
+}
+
+// --- Domiciliación SEPA (solo admin, docs/domiciliacion-sepa.md) ---
+// Estado de la orden del cliente, sus facturas por cobrar y sus adeudos
+export function fetchClientSepa(token, clientId) {
+    return request(`/stripe/sepa/clients/${clientId}`, token);
+}
+
+// Enlace a la página de Stripe donde el cliente firma la orden (caduca en 24 h)
+export function createSepaMandateLink(token, clientId) {
+    return request(`/stripe/sepa/clients/${clientId}/link`, token, { method: 'POST' });
+}
+
+export function cancelSepaMandate(token, clientId) {
+    return request(`/stripe/sepa/clients/${clientId}/mandate`, token, { method: 'DELETE' });
+}
+
+// Lanza el adeudo de una factura contra la orden activa del cliente
+export function chargeInvoiceSepa(token, invoiceId) {
+    return request(`/stripe/sepa/invoices/${invoiceId}/charge`, token, { method: 'POST' });
+}
+
+// Adeudos recientes; attention = sólo rechazados o devueltos sin resolver
+export function fetchSepaDebits(token, { attention = false } = {}) {
+    return request(`/stripe/sepa/debits${attention ? '?attention=1' : ''}`, token);
 }
 
 // Listado simple de facturas emitidas en el rango (por número), para exportar a gestoría

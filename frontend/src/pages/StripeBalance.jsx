@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { fetchStripeBalance, fetchStripePayoutTransactions } from '../api.js';
+import { fetchStripeBalance, fetchStripePayoutTransactions, fetchSepaDebits } from '../api.js';
 import { formatEUR } from '../utils/format.js';
+import { ADEUDO_ESTADO } from '../utils/sepa.js';
 import PageToolbar from '../components/PageToolbar.jsx';
 
 // Saldo de Stripe. Todo se lee en vivo de Stripe: el dinero cobrado pasa unos días
@@ -123,6 +124,7 @@ export default function StripeBalance({ token }) {
     const [expandedId, setExpandedId] = useState(null);
     const [payoutDetails, setPayoutDetails] = useState({});
     const [detailLoading, setDetailLoading] = useState(null);
+    const [sepaDebits, setSepaDebits] = useState([]);
 
     const load = () => {
         setLoading(true);
@@ -131,6 +133,9 @@ export default function StripeBalance({ token }) {
             .then(setData)
             .catch(e => setError(e.error || 'No se pudo consultar Stripe'))
             .finally(() => setLoading(false));
+        fetchSepaDebits(token)
+            .then(setSepaDebits)
+            .catch(() => setSepaDebits([]));
     };
 
     useEffect(load, [token]);
@@ -220,6 +225,48 @@ export default function StripeBalance({ token }) {
                         Lo cobrado por Stripe queda <strong>pendiente</strong> durante los días de retención, pasa a <strong>disponible</strong> y
                         sale en la siguiente transferencia automática al banco.
                     </div>
+
+                    {/* Adeudos SEPA (docs/domiciliacion-sepa.md) */}
+                    {sepaDebits.length > 0 && (
+                        <div className="uk-card uk-card-default uk-card-body" style={{ marginBottom: 16 }}>
+                            <div style={headerStyle}>Adeudos SEPA</div>
+                            <div className="uk-overflow-auto">
+                                <table className="uk-table uk-table-small uk-table-divider" style={{ margin: 0, fontSize: '0.8rem', minWidth: 720 }}>
+                                    <thead>
+                                        <tr>
+                                            <th>Fecha</th>
+                                            <th>Cliente</th>
+                                            <th>Factura</th>
+                                            <th style={{ textAlign: 'right' }}>Importe</th>
+                                            <th>Estado</th>
+                                            <th>Detalle</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {sepaDebits.map(d => {
+                                            const estado = ADEUDO_ESTADO[d.status] || { texto: d.status, color: '#64748b', fondo: '#f1f5f9' };
+                                            return (
+                                                <tr key={d.id}>
+                                                    <td style={{ whiteSpace: 'nowrap' }}>{fmtDate(d.createdAt)}</td>
+                                                    <td>
+                                                        {d.client ? (
+                                                            <Link to={`/usuarios/${d.client.id}`}>
+                                                                {d.client.denominacionsocial || `${d.client.firstName} ${d.client.lastName}`}
+                                                            </Link>
+                                                        ) : '-'}
+                                                    </td>
+                                                    <td>{d.invoice?.number || '-'}</td>
+                                                    <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatEUR(Number(d.amount))}</td>
+                                                    <td><Badge label={estado.texto} color={estado.color} bg={estado.fondo} /></td>
+                                                    <td style={{ color: '#64748b' }}>{d.note || '-'}</td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Transferencias al banco */}
                     <div className="uk-card uk-card-default uk-card-body" style={{ marginBottom: 16 }}>

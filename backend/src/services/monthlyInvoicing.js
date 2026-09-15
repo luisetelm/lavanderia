@@ -1,11 +1,13 @@
 import { crearFactura } from '../routes/invoices.js';
+import { cobrarFacturaSepa, mandatoActivo } from './sepa.js';
 
 /**
  * Genera facturas normales para todos los clientes con autoMonthlyInvoice=true.
- * Factura los pedidos del mes anterior que no estén ya facturados.
+ * Factura los pedidos del mes anterior que no estén ya facturados y, si el
+ * cliente tiene la domiciliación SEPA activa, lanza el adeudo de la factura.
  *
  * @param {import('@prisma/client').PrismaClient} prisma
- * @returns {Promise<{processed: number, invoiced: number, errors: Array}>}
+ * @returns {Promise<{processed: number, invoiced: number, sepaCharged: number, errors: Array}>}
  */
 export async function generateMonthlyInvoices(prisma) {
     const now = new Date();
@@ -29,6 +31,7 @@ export async function generateMonthlyInvoices(prisma) {
 
     let processed = 0;
     let invoiced = 0;
+    let sepaCharged = 0;
     const errors = [];
 
     for (const client of clients) {
@@ -63,13 +66,24 @@ export async function generateMonthlyInvoices(prisma) {
             console.log(`[MonthlyInvoicing] Cliente ${client.id} (${client.firstName} ${client.lastName}): ${orders.length} pedidos, total ${totalAmount.toFixed(2)}€`);
 
             // Crear factura normal usando la función existente
-            await crearFactura(prisma, {
+            const factura = await crearFactura(prisma, {
                 orderIds,
                 type: 'n',
             });
 
             invoiced++;
             console.log(`[MonthlyInvoicing] Factura generada para cliente ${client.id}`);
+
+            // Domiciliación SEPA: el adeudo se lanza en el momento. Si falla, la
+            // factura ya está emitida y queda pendiente de cobro como siempre.
+            if (factura?.id && await mandatoActivo(prisma, client.id)) {
+                try {
+                    await cobrarFacturaSepa(prisma, factura.id);
+                    sepaCharged++;
+                } catch (err) {
+                    errors.push(`Cliente ${client.id} (${client.firstName} ${client.lastName}): factura emitida, pero el adeudo SEPA falló: ${err.message || err}`);
+                }
+            }
         } catch (err) {
             const errorMsg = `Cliente ${client.id} (${client.firstName} ${client.lastName}): ${err.message || err}`;
             console.error(`[MonthlyInvoicing] Error: ${errorMsg}`);
@@ -77,7 +91,7 @@ export async function generateMonthlyInvoices(prisma) {
         }
     }
 
-    const summary = { processed, invoiced, errors };
-    console.log(`[MonthlyInvoicing] Resumen: ${invoiced}/${processed} facturados, ${errors.length} errores`);
+    const summary = { processed, invoiced, sepaCharged, errors };
+    console.log(`[MonthlyInvoicing] Resumen: ${invoiced}/${processed} facturados, ${sepaCharged} adeudos SEPA, ${errors.length} errores`);
     return summary;
 }

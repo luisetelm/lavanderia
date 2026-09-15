@@ -19,7 +19,7 @@ const ETIQUETA = {
 
 const METODO = {
     cash: 'efectivo', card_pos: 'tarjeta', card: 'tarjeta',
-    stripe: 'Stripe', transfer: 'transferencia',
+    stripe: 'Stripe', transfer: 'transferencia', sepa: 'adeudo SEPA',
 };
 
 export default function OrderHistory({token, orderId, refreshKey = 0}) {

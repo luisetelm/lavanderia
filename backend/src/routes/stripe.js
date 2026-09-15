@@ -1,4 +1,8 @@
 import stripe, { createCheckoutSession, constructWebhookEvent } from '../services/stripe.js';
+import {
+    SEPA_EN_CURSO, crearEnlaceMandato, cancelarMandato, cobrarFacturaSepa, listarAdeudos,
+    guardarMandato, adeudoCobrado, adeudoRechazado, adeudoDevuelto, mandatoActualizado,
+} from '../services/sepa.js';
 import { facturaDe } from '../utils/facturaDe.js';
 
 // Stripe da importes en céntimos y fechas en segundos Unix
@@ -119,6 +123,74 @@ export default async function (fastify) {
         }
     });
 
+    // ── Domiciliación SEPA (services/sepa.js, docs/domiciliacion-sepa.md) ──
+
+    // Los errores de negocio traen statusCode; los de Stripe también, con su mensaje
+    const errorSepa = (reply, e, contexto) => {
+        if (!e.statusCode || e.statusCode >= 500) console.error(`[SEPA] ${contexto}:`, e);
+        return reply.code(e.statusCode || 502).send({ error: e.message || 'Error con Stripe' });
+    };
+
+    // Estado de la domiciliación de un cliente, sus facturas por cobrar y sus adeudos
+    fastify.get('/sepa/clients/:id', async (req, reply) => {
+        if (!requireAdmin(req, reply)) return;
+        const clientId = Number(req.params.id);
+        const [cliente, mandato, adeudos, pendientes] = await Promise.all([
+            prisma.user.findUnique({ where: { id: clientId }, select: { id: true, email: true } }),
+            prisma.sepaMandate.findFirst({ where: { clientId }, orderBy: { createdAt: 'desc' } }),
+            listarAdeudos(prisma, { clientId, limite: 20 }),
+            prisma.invoices.findMany({
+                where: {
+                    clientId,
+                    OR: [{ paid: null }, { paid: false }],
+                    paymentStatus: { notIn: ['paid', SEPA_EN_CURSO] },
+                    totalGross: { gt: 0 },
+                },
+                orderBy: { issuedAt: 'desc' },
+                select: { id: true, number: true, issuedAt: true, totalGross: true, paymentStatus: true },
+            }),
+        ]);
+        if (!cliente) return reply.code(404).send({ error: 'Cliente no encontrado' });
+        return reply.send({ hasEmail: !!cliente.email, mandate: mandato, debits: adeudos, pendingInvoices: pendientes });
+    });
+
+    // Enlace para que el cliente firme la orden (caduca en 24 h)
+    fastify.post('/sepa/clients/:id/link', async (req, reply) => {
+        if (!requireAdmin(req, reply)) return;
+        try {
+            return reply.send(await crearEnlaceMandato(prisma, Number(req.params.id)));
+        } catch (e) {
+            return errorSepa(reply, e, 'Error creando el enlace de firma');
+        }
+    });
+
+    fastify.delete('/sepa/clients/:id/mandate', async (req, reply) => {
+        if (!requireAdmin(req, reply)) return;
+        try {
+            await cancelarMandato(prisma, Number(req.params.id));
+            return reply.send({ ok: true });
+        } catch (e) {
+            return errorSepa(reply, e, 'Error cancelando la domiciliación');
+        }
+    });
+
+    fastify.post('/sepa/invoices/:id/charge', async (req, reply) => {
+        if (!requireAdmin(req, reply)) return;
+        if (!/^\d+$/.test(req.params.id)) return reply.code(400).send({ error: 'Factura no válida' });
+        try {
+            const intent = await cobrarFacturaSepa(prisma, req.params.id, { recordedBy: req.user?.userId || null });
+            return reply.send({ ok: true, paymentIntentId: intent.id });
+        } catch (e) {
+            return errorSepa(reply, e, 'Error lanzando el adeudo');
+        }
+    });
+
+    // Adeudos recientes; ?attention=1 sólo los rechazados o devueltos sin resolver
+    fastify.get('/sepa/debits', async (req, reply) => {
+        if (!requireAdmin(req, reply)) return;
+        return reply.send(await listarAdeudos(prisma, { atencion: req.query?.attention === '1' }));
+    });
+
     // Crear sesión de checkout (requiere autenticación - admin/cashier)
     fastify.post('/checkout', async (req, reply) => {
         try {
@@ -149,6 +221,9 @@ export default async function (fastify) {
                 if (!invoice) return reply.code(404).send({ error: 'Factura no encontrada' });
                 if (invoice.paid === true || invoice.paymentStatus === 'paid') {
                     return reply.code(400).send({ error: 'La factura ya está cobrada' });
+                }
+                if (invoice.paymentStatus === SEPA_EN_CURSO) {
+                    return reply.code(400).send({ error: 'Hay un adeudo SEPA en curso para esta factura' });
                 }
                 amount = Number(invoice.totalGross);
                 description = `Factura ${invoice.number}`;
@@ -218,6 +293,9 @@ export default async function (fastify) {
                 });
                 if (!invoice) return reply.code(404).send({ error: 'Factura no encontrada' });
                 if (invoice.paid === true) return reply.code(400).send({ error: 'La factura ya está cobrada' });
+                if (invoice.paymentStatus === SEPA_EN_CURSO) {
+                    return reply.code(400).send({ error: 'Hay un adeudo SEPA en curso para esta factura' });
+                }
                 amount = Number(invoice.totalGross);
                 description = `Factura ${invoice.number}`;
                 customerEmail = invoice.User?.email;
@@ -286,8 +364,28 @@ export async function stripeWebhookRoutes(fastify) {
             return reply.code(400).send({ error: `Webhook signature verification failed: ${err.message}` });
         }
 
-        // Procesar el evento
-        if (event.type === 'checkout.session.completed') {
+        // Domiciliación SEPA. Si algo falla se responde 500 para que Stripe
+        // reintente el aviso: los manejadores ignoran los avisos ya procesados.
+        try {
+            const objeto = event.data.object;
+            if (event.type === 'checkout.session.completed' && objeto.mode === 'setup') {
+                await guardarMandato(prisma, objeto);
+            } else if (event.type === 'payment_intent.succeeded' && objeto.metadata?.type === 'sepa_invoice') {
+                await adeudoCobrado(prisma, objeto);
+            } else if (event.type === 'payment_intent.payment_failed' && objeto.metadata?.type === 'sepa_invoice') {
+                await adeudoRechazado(prisma, objeto);
+            } else if (event.type === 'charge.dispute.created') {
+                await adeudoDevuelto(prisma, objeto);
+            } else if (event.type === 'mandate.updated') {
+                await mandatoActualizado(prisma, objeto);
+            }
+        } catch (err) {
+            console.error(`[SEPA] Error procesando ${event.type}:`, err);
+            return reply.code(500).send({ error: 'Error procesando el evento' });
+        }
+
+        // Pago con tarjeta desde Checkout (las sesiones en modo setup son de SEPA)
+        if (event.type === 'checkout.session.completed' && event.data.object.mode !== 'setup') {
             const session = event.data.object;
             const { type, id } = session.metadata || {};
 
@@ -378,7 +476,7 @@ export async function stripeWebhookRoutes(fastify) {
             }
         }
 
-        if (event.type === 'payment_intent.payment_failed') {
+        if (event.type === 'payment_intent.payment_failed' && event.data.object.metadata?.type !== 'sepa_invoice') {
             const intent = event.data.object;
             console.error(`[Stripe] Pago fallido: ${intent.id}, error: ${intent.last_payment_error?.message}`);
 

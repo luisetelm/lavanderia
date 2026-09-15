@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken';
 import { sendSMScustomer } from '../services/twilio.js';
 import { normalizePhone } from '../utils/validatePhone.js';
+import { SEPA_EN_CURSO, crearEnlaceMandato, mandatoActivo } from '../services/sepa.js';
 
 export default async function (fastify) {
     const prisma = fastify.prisma;
@@ -240,6 +241,9 @@ export default async function (fastify) {
             });
             if (!invoice) return reply.code(404).send({ error: 'Factura no encontrada' });
             if (invoice.paid === true) return reply.code(400).send({ error: 'La factura ya está cobrada' });
+            if (invoice.paymentStatus === SEPA_EN_CURSO) {
+                return reply.code(400).send({ error: 'Esta factura ya se está cobrando en tu cuenta bancaria' });
+            }
             amount = Number(invoice.totalGross);
             description = `Factura ${invoice.number}`;
         }
@@ -269,5 +273,32 @@ export default async function (fastify) {
         });
 
         return reply.send({ url: session.url });
+    });
+
+    // Domiciliación SEPA del cliente (services/sepa.js)
+    fastify.get('/sepa', { preHandler: requirePortalAuth }, async (req, reply) => {
+        const [cliente, mandato] = await Promise.all([
+            prisma.user.findUnique({ where: { id: req.user.id }, select: { email: true } }),
+            mandatoActivo(prisma, req.user.id),
+        ]);
+        return reply.send({
+            hasEmail: !!cliente?.email,
+            mandate: mandato ? { ibanLast4: mandato.ibanLast4, acceptedAt: mandato.acceptedAt, reference: mandato.reference } : null,
+        });
+    });
+
+    // Página de Stripe para firmar la orden; al terminar vuelve al portal
+    fastify.post('/sepa/setup', { preHandler: requirePortalAuth }, async (req, reply) => {
+        try {
+            const baseUrl = process.env.APP_URL || 'https://app.tinteyburbuja.com';
+            const { url } = await crearEnlaceMandato(prisma, req.user.id, {
+                successUrl: `${baseUrl}/portal?sepa=ok`,
+                cancelUrl: `${baseUrl}/portal?sepa=cancelado`,
+            });
+            return reply.send({ url });
+        } catch (e) {
+            if (!e.statusCode || e.statusCode >= 500) console.error('[Portal] Error iniciando la domiciliación:', e);
+            return reply.code(e.statusCode || 500).send({ error: e.message || 'No se pudo iniciar la domiciliación' });
+        }
     });
 }

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { fetchDashboard, updateOrder, fetchTrackingBoard } from '../api.js';
+import { fetchDashboard, updateOrder, fetchTrackingBoard, fetchSepaDebits } from '../api.js';
 import { formatEUR } from '../utils/format.js';
 import { useNavigate } from 'react-router-dom';
 import StatusChangeModal from '../components/StatusChangeModal.jsx';
@@ -70,6 +70,15 @@ export default function Dashboard({ token, user }) {
         return () => clearInterval(interval);
     }, [loadData]);
 
+    // Adeudos SEPA rechazados o devueltos cuya factura sigue sin cobrar (solo admin)
+    const [sepaAlerts, setSepaAlerts] = useState([]);
+    useEffect(() => {
+        if (user?.role !== 'admin') return;
+        fetchSepaDebits(token, { attention: true })
+            .then(setSepaAlerts)
+            .catch(() => setSepaAlerts([]));
+    }, [token, user?.role]);
+
     const askStatusChange = (orderId, newStatus, clientChannel) => {
         setConfirmModal({ orderId, newStatus, clientChannel: clientChannel || null });
     };
@@ -127,6 +136,24 @@ export default function Dashboard({ token, user }) {
                     ↻ Actualizar
                 </button>
             </div>
+
+            {sepaAlerts.length > 0 && (
+                <div
+                    className="uk-alert-danger"
+                    uk-alert=""
+                    style={{ marginBottom: 16, cursor: 'pointer' }}
+                    onClick={() => navigate('/stripe')}
+                >
+                    <p>
+                        <strong>
+                            {sepaAlerts.length === 1 ? '1 adeudo SEPA rechazado o devuelto' : `${sepaAlerts.length} adeudos SEPA rechazados o devueltos`}
+                        </strong>
+                        {' '}· {formatEUR(sepaAlerts.reduce((sum, d) => sum + Number(d.amount || 0), 0))} sin cobrar
+                        ({[...new Set(sepaAlerts.map(d => d.client?.denominacionsocial || `${d.client?.firstName || ''} ${d.client?.lastName || ''}`.trim()))].join(', ')}).
+                        Ver en Administración → Stripe.
+                    </p>
+                </div>
+            )}
 
             {/* KPIs del día */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 20 }}>

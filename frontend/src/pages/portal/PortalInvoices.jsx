@@ -3,6 +3,7 @@ import { avisar } from '../../utils/dialogo.js';
 import { Link } from 'react-router-dom';
 import { portalFetchInvoices, portalPay } from '../../api.js';
 import { formatEUR } from '../../utils/format.js';
+import { FACTURA_SEPA_EN_CURSO } from '../../utils/sepa.js';
 
 const API_BASE = import.meta.env.VITE_API_BASE || '/api';
 
@@ -61,6 +62,8 @@ export default function PortalInvoices({ token }) {
             ) : (
                 invoices.map(inv => {
                     const isPaid = inv.paid === true || inv.paymentStatus === 'paid';
+                    // Adeudo SEPA lanzado: se está cobrando en su cuenta, no se puede pagar otra vez
+                    const sepaEnCurso = !isPaid && inv.paymentStatus === FACTURA_SEPA_EN_CURSO;
                     const isNormal = inv.type === 'n';
                     return (
                         <div key={inv.id} style={{
@@ -87,10 +90,10 @@ export default function PortalInvoices({ token }) {
                                     </div>
                                     <span style={{
                                         fontSize: 11, padding: '2px 8px', borderRadius: 10,
-                                        background: isPaid ? '#5cb85c' : '#f0506e', color: '#fff',
+                                        background: isPaid ? '#5cb85c' : sepaEnCurso ? '#f0ad4e' : '#f0506e', color: '#fff',
                                         display: 'inline-block', marginTop: 4
                                     }}>
-                                        {isPaid ? 'Pagada' : 'Pendiente'}
+                                        {isPaid ? 'Pagada' : sepaEnCurso ? 'Cobrándose en tu cuenta' : 'Pendiente'}
                                     </span>
                                 </div>
                             </div>
@@ -105,7 +108,7 @@ export default function PortalInvoices({ token }) {
                                         Descargar PDF
                                     </button>
                                 )}
-                                {!isPaid && (
+                                {!isPaid && !sepaEnCurso && (
                                     <button
                                         onClick={() => handlePay(inv)}
                                         disabled={payingId === inv.id}

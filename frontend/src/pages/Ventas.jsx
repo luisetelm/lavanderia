@@ -132,7 +132,8 @@ export default function Ventas({token}) {
                 v.paymentMethod === 'card' ? 'Tarjeta' :
                     v.paymentMethod === 'cash' ? 'Efectivo' :
                         v.paymentMethod === 'transfer' ? 'Transferencia' :
-                            v.paymentMethod
+                            v.paymentMethod === 'sepa' ? 'Adeudo SEPA' :
+                                v.paymentMethod
             ) : '';
 
             return {
@@ -197,7 +198,8 @@ export default function Ventas({token}) {
         m === 'cash' ? 'Efectivo' :
             m === 'card_pos' ? 'Tarjeta' :
                 m === 'stripe' ? 'Stripe' :
-                    m === 'transfer' ? 'Transferencia' : (m || '')
+                    m === 'transfer' ? 'Transferencia' :
+                        m === 'sepa' ? 'Adeudo SEPA' : (m || '')
     );
 
     const totalIngresos = incomePayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);

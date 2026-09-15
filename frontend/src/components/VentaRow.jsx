@@ -2,8 +2,9 @@
 // Archivo: `frontend/src/components/VentaRow.jsx`
 import React, { useState, useEffect } from 'react';
 import { avisar } from '../utils/dialogo.js';
-import { createInvoice, downloadInvoicePDF, fetchOrder, collectInvoice, getPaymentLink } from '../api.js';
+import { createInvoice, downloadInvoicePDF, fetchOrder, collectInvoice, getPaymentLink, chargeInvoiceSepa } from '../api.js';
 import { formatEUR } from '../utils/format.js';
+import { FACTURA_SEPA_EN_CURSO, FACTURA_SEPA_FALLIDA } from '../utils/sepa.js';
 
 export default function VentaRow({
                                      venta,
@@ -91,6 +92,9 @@ export default function VentaRow({
     // Detectar si la factura está cobrada
     const invoiceObj = _inv;
     const isInvoicePaid = invoiceObj?.paid === true || invoiceObj?.paymentStatus === 'paid';
+    // Adeudo SEPA lanzado esperando a Stripe: no se puede cobrar por otra vía
+    const sepaEnCurso = !isInvoicePaid && invoiceObj?.paymentStatus === FACTURA_SEPA_EN_CURSO;
+    const sepaFallido = !isInvoicePaid && invoiceObj?.paymentStatus === FACTURA_SEPA_FALLIDA;
 
     const handleGetPaymentLink = async () => {
         if (!invoiceObj?.id) return;
@@ -111,7 +115,12 @@ export default function VentaRow({
         if (!invoiceObj?.id) return;
         setRowLoading(true);
         try {
-            await collectInvoice(token, invoiceObj.id, { method: collectMethod });
+            if (collectMethod === 'sepa') {
+                await chargeInvoiceSepa(token, invoiceObj.id);
+                avisar('Adeudo SEPA lanzado: Stripe lo confirmará en unos 6 días hábiles', 'success');
+            } else {
+                await collectInvoice(token, invoiceObj.id, { method: collectMethod });
+            }
             setShowCollectModal(false);
             await onRefresh(venta.id);
             await refetchOrderDetail();
@@ -127,6 +136,7 @@ export default function VentaRow({
         ? (venta.paymentMethod === 'card' ? 'Tarjeta'
             : venta.paymentMethod === 'cash' ? 'Efectivo'
             : venta.paymentMethod === 'transfer' ? 'Transferencia'
+            : venta.paymentMethod === 'sepa' ? 'Adeudo SEPA'
             : venta.paymentMethod)
         : '-';
 
@@ -307,7 +317,7 @@ export default function VentaRow({
                 >
                     Descargar
                 </button>
-                {!isInvoicePaid && (
+                {!isInvoicePaid && !sepaEnCurso && (
                     <>
                         <button
                             className="uk-button uk-button-primary uk-button-small"
@@ -363,9 +373,12 @@ export default function VentaRow({
                             <div style={{ marginTop: 4 }}>
                                 <span
                                     className={`uk-badge ${isInvoicePaid ? 'uk-badge-success' : 'uk-badge-warning'}`}
-                                    style={{ fontSize: '0.7em' }}
+                                    style={{ fontSize: '0.7em', ...(sepaFallido ? { background: '#ef4444' } : {}) }}
                                 >
-                                    {isInvoicePaid ? 'Cobrada' : 'Pendiente cobro'}
+                                    {isInvoicePaid ? 'Cobrada'
+                                        : sepaEnCurso ? 'Adeudo SEPA en curso'
+                                        : sepaFallido ? 'Adeudo SEPA devuelto'
+                                        : 'Pendiente cobro'}
                                 </span>
                             </div>
                         )}
@@ -426,6 +439,13 @@ export default function VentaRow({
                                     checked={collectMethod === 'card_pos'}
                                     onChange={() => setCollectMethod('card_pos')} />
                                 Tarjeta
+                            </label>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}
+                                   title="Carga la factura en la cuenta domiciliada del cliente (necesita la orden SEPA firmada)">
+                                <input type="radio" name={`collect-${venta.id}`} value="sepa"
+                                    checked={collectMethod === 'sepa'}
+                                    onChange={() => setCollectMethod('sepa')} />
+                                Adeudo SEPA
                             </label>
                             <button
                                 className="uk-button uk-button-primary uk-button-small"

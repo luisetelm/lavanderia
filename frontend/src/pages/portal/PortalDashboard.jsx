@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { portalFetchOrders, portalFetchInvoices } from '../../api.js';
+import { Link, useSearchParams } from 'react-router-dom';
+import { portalFetchOrders, portalFetchInvoices, portalFetchSepa, portalStartSepa } from '../../api.js';
 import { formatEUR } from '../../utils/format.js';
+import { avisar } from '../../utils/dialogo.js';
 
 const statusLabels = {
     pending: 'Pendiente',
@@ -21,16 +22,34 @@ export default function PortalDashboard({ token, user, onLogout }) {
     const [orders, setOrders] = useState([]);
     const [invoices, setInvoices] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [sepa, setSepa] = useState(null);
+    const [sepaStarting, setSepaStarting] = useState(false);
+    // Stripe devuelve al portal con ?sepa=ok o ?sepa=cancelado
+    const [searchParams] = useSearchParams();
+    const sepaResult = searchParams.get('sepa');
 
     useEffect(() => {
         Promise.all([
             portalFetchOrders(token).catch(() => []),
             portalFetchInvoices(token).catch(() => []),
-        ]).then(([o, i]) => {
+            portalFetchSepa(token).catch(() => null),
+        ]).then(([o, i, s]) => {
             setOrders(o);
             setInvoices(i);
+            setSepa(s);
         }).finally(() => setLoading(false));
     }, [token]);
+
+    const handleStartSepa = async () => {
+        setSepaStarting(true);
+        try {
+            const { url } = await portalStartSepa(token);
+            window.location.href = url;
+        } catch (err) {
+            avisar(err.error || 'No se pudo iniciar la domiciliación', 'danger');
+            setSepaStarting(false);
+        }
+    };
 
     const unpaidOrders = orders.filter(o => !o.paid && o.status !== 'cancelled');
     const unpaidInvoices = invoices.filter(i => i.paid !== true && i.paymentStatus !== 'paid');
@@ -90,6 +109,47 @@ export default function PortalDashboard({ token, user, onLogout }) {
                                 <div style={{ fontSize: 13, color: '#666' }}>Facturas</div>
                             </div>
                         </div>
+
+                        {/* Domiciliación bancaria (SEPA) */}
+                        {sepa && (
+                            <div style={{
+                                background: '#fff', borderRadius: 8, padding: 16, marginBottom: 16,
+                                boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+                                borderLeft: sepa.mandate ? '3px solid #5cb85c' : '3px solid #048ABF'
+                            }}>
+                                <h3 style={{ margin: '0 0 6px', fontSize: 16 }}>Domiciliación bancaria</h3>
+                                {sepa.mandate ? (
+                                    <div style={{ fontSize: 14, color: '#555' }}>
+                                        Tus facturas se cargan en la cuenta terminada en <strong>{sepa.mandate.ibanLast4}</strong>.
+                                        Recibirás un email antes de cada cargo.
+                                    </div>
+                                ) : sepaResult === 'ok' ? (
+                                    <div style={{ fontSize: 14, color: '#5cb85c' }}>
+                                        ¡Gracias! Estamos registrando tu domiciliación; en unos segundos aparecerá aquí.
+                                    </div>
+                                ) : (
+                                    <>
+                                        <div style={{ fontSize: 14, color: '#555', marginBottom: 10 }}>
+                                            Domicilia tus facturas y se cobrarán automáticamente en tu cuenta bancaria.
+                                            Recibirás un email antes de cada cargo.
+                                        </div>
+                                        {sepa.hasEmail ? (
+                                            <button
+                                                onClick={handleStartSepa}
+                                                disabled={sepaStarting}
+                                                className="uk-button uk-button-primary uk-button-small"
+                                            >
+                                                {sepaStarting ? 'Redirigiendo...' : 'Domiciliar pagos'}
+                                            </button>
+                                        ) : (
+                                            <div style={{ fontSize: 13, color: '#999' }}>
+                                                Para domiciliar necesitamos tu email: pídenos que lo añadamos a tu ficha.
+                                            </div>
+                                        )}
+                                    </>
+                                )}
+                            </div>
+                        )}
 
                         {/* Recent orders */}
                         <div style={{ background: '#fff', borderRadius: 8, padding: 16, marginBottom: 16, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
