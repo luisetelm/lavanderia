@@ -1,12 +1,15 @@
 import React, {useEffect, useState} from 'react';
-import {updateProduct, createProduct} from '../api.js';
+import {updateProduct, createProduct, fetchProductCategories, createProductCategory} from '../api.js';
 
 // Alta y edición de un producto. Lo usan el catálogo (Inventory) y la ficha de producto.
 
-export default function ProductModal({ onSave, initial, token, onClose, isOpen, itineraries }) {
+export default function ProductModal({ onSave, initial, token, onClose, isOpen, itineraries, titulo }) {
+    const [categorias, setCategorias] = useState([]);
+    const [nuevaCategoria, setNuevaCategoria] = useState(null); // null = eligiendo; texto = creando una
     const [form, setForm] = useState({
         name: '',
         sku: '',
+        categoryId: null,
         basePrice: 0,
         type: 'service',
         description: '',
@@ -37,8 +40,32 @@ export default function ProductModal({ onSave, initial, token, onClose, isOpen, 
             printWashLabel: src.printWashLabel ?? true,
             countsForLoad: src.countsForLoad ?? true,
             workloadWeight: src.workloadWeight ?? 1,
+            categoryId: src.categoryId ?? null,
         });
     }, [isOpen, initial?.id]);
+
+    useEffect(() => {
+        if (!isOpen) return;
+        setError('');
+        setNuevaCategoria(null);
+        fetchProductCategories(token)
+            .then((c) => setCategorias(Array.isArray(c) ? c : []))
+            .catch(() => setCategorias([]));
+    }, [isOpen, token]);
+
+    const crearCategoria = async () => {
+        const nombre = (nuevaCategoria || '').trim();
+        if (!nombre) return;
+        try {
+            const categoria = await createProductCategory(token, nombre);
+            setCategorias((cs) => [...cs, categoria].sort((a, b) => a.name.localeCompare(b.name, 'es')));
+            setForm((f) => ({...f, categoryId: categoria.id}));
+            setNuevaCategoria(null);
+            setError('');
+        } catch (err) {
+            setError(err.error || 'No se pudo crear la categoría');
+        }
+    };
 
     const submit = async (e) => {
         e.preventDefault();
@@ -53,14 +80,13 @@ export default function ProductModal({ onSave, initial, token, onClose, isOpen, 
                 printWashLabel: !!form.printWashLabel,
                 countsForLoad: !!form.countsForLoad,
                 workloadWeight: Math.max(0, parseFloat(form.workloadWeight) || 0),
+                categoryId: form.categoryId ? Number(form.categoryId) : null,
             };
 
-            if (initial && initial.id) {
-                await updateProduct(token, initial.id, payload);
-            } else {
-                await createProduct(token, payload);
-            }
-            onSave();
+            const guardado = initial && initial.id
+                ? await updateProduct(token, initial.id, payload)
+                : await createProduct(token, payload);
+            onSave(guardado);
         } catch (err) {
             setError(err.error || 'Fallo al guardar');
         }
@@ -74,7 +100,7 @@ export default function ProductModal({ onSave, initial, token, onClose, isOpen, 
             <div className="uk-modal-dialog uk-modal-body uk-margin-auto-vertical">
                 <button className="uk-modal-close-default" type="button" uk-close="true" onClick={onClose}></button>
                 <h4 className="uk-modal-title">
-                    {initial && initial.id ? "Editar producto" : "Nuevo producto"}
+                    {titulo || (initial && initial.id ? "Editar producto" : "Nuevo producto")}
                 </h4>
 
                 {error && (
@@ -107,6 +133,45 @@ export default function ProductModal({ onSave, initial, token, onClose, isOpen, 
                         </div>
                     </div>
                     
+                    <div className="uk-margin">
+                        <label className="uk-form-label">Categoría</label>
+                        <div className="uk-form-controls">
+                            {nuevaCategoria === null ? (
+                                <div style={{ display: 'flex', gap: 8 }}>
+                                    <select
+                                        className="uk-select"
+                                        value={form.categoryId || ''}
+                                        onChange={e => setForm(f => ({...f, categoryId: e.target.value ? Number(e.target.value) : null}))}
+                                    >
+                                        <option value="">Sin categoría</option>
+                                        {categorias.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                    </select>
+                                    <button type="button" className="uk-button uk-button-default" style={{ whiteSpace: 'nowrap' }}
+                                            onClick={() => setNuevaCategoria('')}>
+                                        Nueva
+                                    </button>
+                                </div>
+                            ) : (
+                                <div style={{ display: 'flex', gap: 8 }}>
+                                    <input
+                                        className="uk-input"
+                                        autoFocus
+                                        maxLength={80}
+                                        placeholder="Nombre de la categoría"
+                                        value={nuevaCategoria}
+                                        onChange={e => setNuevaCategoria(e.target.value)}
+                                        onKeyDown={e => {
+                                            if (e.key === 'Enter') { e.preventDefault(); crearCategoria(); }
+                                            if (e.key === 'Escape') setNuevaCategoria(null);
+                                        }}
+                                    />
+                                    <button type="button" className="uk-button uk-button-primary" onClick={crearCategoria}>Añadir</button>
+                                    <button type="button" className="uk-button uk-button-default" onClick={() => setNuevaCategoria(null)}>Cancelar</button>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
                     <div className="uk-grid-small" uk-grid="true">
                         <div className="uk-width-1-2@s">
                             <label className="uk-form-label">Precio base</label>

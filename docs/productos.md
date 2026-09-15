@@ -2,9 +2,62 @@
 
 ## Quién puede hacer qué
 
-- **Consultar** el catálogo y la ficha de cada producto: cualquier empleado.
-- **Crear, editar e importar** productos: sólo administración. La API responde
-  403 al resto y la interfaz no les muestra los botones.
+- **Consultar, filtrar y exportar** el catálogo y ver la ficha de cada producto:
+  cualquier empleado.
+- **Crear, editar, duplicar, archivar, importar, cambiar precios en bloque y
+  gestionar categorías**: sólo administración. La API responde 403 al resto y la
+  interfaz no les muestra los botones.
+
+## Catálogo
+
+`/productos`. Búsqueda (nombre, SKU, categoría o descripción), filtros y orden se
+recuerdan en cada navegador.
+
+- **Filtros**: estado (activos, archivados o todos), tipo, actividad (con pedidos
+  en los últimos 30 días, o sin pedidos en 90 días), categoría e itinerario.
+- **Columnas de actividad**: unidades pedidas en los últimos 30 días, una línea
+  con las unidades de las últimas 12 semanas y la fecha del último pedido. Mismo
+  criterio que la ficha (sin cancelados ni anuladas).
+- **Selección** (administración): marcando productos aparece la barra de acciones
+  en bloque: cambiar precios, archivar o restaurar y exportar la selección.
+- **Exportar a Excel**: los productos seleccionados o, si no hay selección, los
+  que se ven con los filtros actuales.
+
+### Archivar
+
+Para productos que ya no se ofrecen. Un producto archivado:
+
+- deja de salir en el TPV, en los ajustes de pedidos y al pactar precios con un
+  cliente;
+- conserva su ficha, sus pedidos, sus estadísticas y sus precios pactados;
+- se puede restaurar en cualquier momento.
+
+Los productos no se borran: las líneas de pedido y las facturas los referencian.
+Un pedido en curso que ya tuviera el producto en el carrito se puede terminar.
+
+### Duplicar
+
+Abre el formulario con los datos del producto, el nombre con «(copia)» y sin
+SKU, que se genera al guardar. Útil para dar de alta variantes.
+
+### Cambiar precios en bloque
+
+Sobre los productos seleccionados: precio, tarifa de gran cliente o los dos; en
+porcentaje o en importe fijo (en negativo para bajar); con redondeo al céntimo,
+a 5 o 10 céntimos, a 50 céntimos, al euro o sin redondear. Los precios llevan el
+IVA incluido.
+
+- Antes de aplicar se ve la tabla con el precio actual y el nuevo. La calcula el
+  backend con la misma fórmula que guarda, así que coincide exactamente.
+- Un precio a 0 (p. ej. un producto sin tarifa de gran cliente) se deja igual.
+- No se aplica si algún precio quedaría negativo.
+- No cambian los precios pactados con clientes ni los pedidos ya hechos.
+
+### Categorías
+
+Se crean desde el botón «Categorías» del catálogo o directamente en el
+formulario del producto («Nueva»). El nombre no se puede repetir. Borrar una
+categoría deja sus productos sin categoría.
 
 ## Ficha de producto
 
@@ -52,7 +105,12 @@ completo.
 
 | Método | Ruta | Quién |
 |---|---|---|
-| GET | `/api/products` | empleados |
+| GET | `/api/products` (activos; `?archived=all` o `only`) | empleados |
+| GET | `/api/products/summary` | empleados |
+| GET | `/api/products/categories` | empleados |
+| POST, PUT, DELETE | `/api/products/categories[/:id]` | admin |
+| POST | `/api/products/bulk-prices` (`aplicar: false` = vista previa) | admin |
+| POST | `/api/products/bulk-archive` (`archived: false` = restaurar) | admin |
 | GET | `/api/products/:id` | empleados |
 | GET | `/api/products/:id/stats?from&to` | empleados |
 | GET | `/api/products/:id/lines?from&to&page&size` | empleados |
@@ -65,4 +123,8 @@ completo.
 
 1. Ejecutar `backend/sql/023_indices_estadisticas_productos.sql` (índices; sin él
    la ficha funciona, pero recorre las tablas enteras).
-2. Desplegar backend y frontend.
+2. Ejecutar `backend/sql/024_productos_archivados_categorias.sql` **antes** de
+   desplegar el backend: sin la columna `archived_at` el TPV no carga productos.
+   Si falla el índice único de categorías, hay nombres repetidos que unificar
+   primero (la consulta está en el propio fichero).
+3. Desplegar backend (incluye `npx prisma generate`) y frontend.

@@ -1,6 +1,7 @@
 import React, {useEffect, useMemo, useState, useCallback} from 'react';
 import {Link, useNavigate, useParams} from 'react-router-dom';
-import {fetchProduct, fetchProductStats, fetchProductLines, fetchProductAgreedPrices, fetchItineraries} from '../api.js';
+import {fetchProduct, fetchProductStats, fetchProductLines, fetchProductAgreedPrices, fetchItineraries, archiveProducts} from '../api.js';
+import {copiaDeProducto} from '../utils/productos.js';
 import {formatEUR} from '../utils/format.js';
 import {getDateRange} from '../utils/dates.js';
 import {avisar} from '../utils/dialogo.js';
@@ -131,6 +132,7 @@ function FichaDatos({producto}) {
     const filas = [
         ['Tipo', producto.type === 'service' ? 'Servicio' : 'Ítem'],
         ['SKU', producto.sku || '—'],
+        ['Categoría', producto.category?.name || 'Sin categoría'],
         ['Precio', precio(producto.basePrice)],
         ['Tarifa gran cliente', Number(producto.bigClientPrice) > 0 ? precio(producto.bigClientPrice) : '—'],
         ['Itinerario', producto.itinerary?.name || 'Sin itinerario'],
@@ -474,6 +476,7 @@ export default function ProductDetail({token, user}) {
     const [error, setError] = useState('');
     const [itinerarios, setItinerarios] = useState([]);
     const [editando, setEditando] = useState(false);
+    const [duplicando, setDuplicando] = useState(false);
     const [rango, setRango] = useState(rangoInicial);
     const [stats, setStats] = useState(null);
     const [cargandoStats, setCargandoStats] = useState(false);
@@ -514,6 +517,17 @@ export default function ProductDetail({token, user}) {
         return () => { vigente = false; };
     }, [token, productoId, rango]);
 
+    const cambiarArchivado = async () => {
+        const archivar = !producto.archivedAt;
+        try {
+            await archiveProducts(token, [producto.id], archivar);
+            avisar(archivar ? 'Producto archivado: ya no sale en el TPV' : 'Producto restaurado: vuelve a salir en el TPV', 'success');
+            cargarProducto();
+        } catch (e) {
+            avisar(e.error || 'No se pudo cambiar el estado del producto', 'danger');
+        }
+    };
+
     const cambiarRango = ({from, to}) => {
         const r = {from, to};
         setRango(r);
@@ -533,9 +547,18 @@ export default function ProductDetail({token, user}) {
                             <span uk-icon="icon: arrow-left; ratio: 0.8" style={{marginRight: 4}}></span> Volver
                         </button>
                         {esAdmin && producto && (
-                            <button className="uk-button uk-button-small uk-button-primary" onClick={() => setEditando(true)}>
-                                <span uk-icon="icon: pencil; ratio: 0.8" style={{marginRight: 4}}></span> Editar
-                            </button>
+                            <>
+                                <button className="uk-button uk-button-small uk-button-default" onClick={cambiarArchivado}>
+                                    <span uk-icon={`icon: ${producto.archivedAt ? 'refresh' : 'folder'}; ratio: 0.8`} style={{marginRight: 4}}></span>
+                                    {producto.archivedAt ? 'Restaurar' : 'Archivar'}
+                                </button>
+                                <button className="uk-button uk-button-small uk-button-default" onClick={() => setDuplicando(true)}>
+                                    <span uk-icon="icon: copy; ratio: 0.8" style={{marginRight: 4}}></span> Duplicar
+                                </button>
+                                <button className="uk-button uk-button-small uk-button-primary" onClick={() => setEditando(true)}>
+                                    <span uk-icon="icon: pencil; ratio: 0.8" style={{marginRight: 4}}></span> Editar
+                                </button>
+                            </>
                         )}
                     </>
                 }
@@ -563,6 +586,29 @@ export default function ProductDetail({token, user}) {
                                 cargarProducto();
                             }}
                         />
+                    )}
+
+                    {esAdmin && (
+                        <ProductModal
+                            token={token}
+                            titulo="Duplicar producto"
+                            initial={copiaDeProducto(producto)}
+                            isOpen={duplicando}
+                            itineraries={itinerarios}
+                            onClose={() => setDuplicando(false)}
+                            onSave={(nuevo) => {
+                                setDuplicando(false);
+                                avisar('Producto duplicado', 'success');
+                                if (nuevo?.id) navigate(`/productos/${nuevo.id}`);
+                            }}
+                        />
+                    )}
+
+                    {producto.archivedAt && (
+                        <div className="uk-alert uk-alert-warning" style={{marginTop: 0}}>
+                            Archivado el {new Date(producto.archivedAt).toLocaleDateString('es-ES', {dateStyle: 'medium'})}.
+                            No sale en el TPV; su ficha, pedidos y estadísticas se conservan.
+                        </div>
                     )}
 
                     <FichaDatos producto={producto}/>

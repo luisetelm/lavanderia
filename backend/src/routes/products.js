@@ -43,6 +43,30 @@ const nombreCliente = (u) => (u
     ? `${u.firstName || ''} ${u.lastName || ''}`.replace(/\s+/g, ' ').trim() || u.denominacionsocial || `Cliente ${u.id}`
     : null);
 
+const leerIds = (v) => [...new Set((Array.isArray(v) ? v : []).map(Number).filter(Number.isInteger))];
+
+// Cambio de precios en bloque. Los precios van con IVA incluido; el redondeo es
+// el múltiplo de euros al que se ajusta el resultado (0,001 = sin redondear).
+const REDONDEOS = [0.001, 0.01, 0.05, 0.1, 0.5, 1];
+const CAMPOS_PRECIO = { basePrice: 'Precio', bigClientPrice: 'Tarifa gran cliente' };
+
+function precioNuevo(actual, modo, valor, redondeo) {
+    const bruto = modo === 'pct' ? actual * (1 + valor / 100) : actual + valor;
+    return Math.round(Math.round(bruto / redondeo) * redondeo * 1000) / 1000;
+}
+
+function nombreCategoria(v) {
+    const nombre = String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, 80);
+    if (!nombre) throw errorHttp(400, 'Indica el nombre de la categoría.');
+    return nombre;
+}
+
+// P2002: nombre repetido (índice único de sql/024).
+function errorCategoria(e, nombre) {
+    if (e?.code === 'P2002') throw errorHttp(409, `Ya existe la categoría ${nombre}.`);
+    throw e;
+}
+
 // Rango pedido por query, por defecto los últimos 30 días. El final no pasa de
 // hoy, para no comparar un periodo a medias con uno completo.
 function leerRango(query) {
@@ -121,12 +145,158 @@ export default async function (fastify, opts) {
         return r;
     };
 
+    // Por defecto sólo los activos, que es lo que necesitan el TPV, los ajustes de
+    // pedidos y los precios pactados. ?archived=all incluye los archivados y
+    // ?archived=only devuelve sólo ellos.
     fastify.get('/', async (req, reply) => {
+        const archived = req.query?.archived;
+        const where = archived === 'all' ? {} : archived === 'only' ? { archivedAt: { not: null } } : { archivedAt: null };
         const products = await prisma.product.findMany({
+            where,
             include: { variants: true, category: true, itinerary: { select: { id: true, name: true, steps: { where: { isOptional: true }, select: { id: true, stepKey: true, stepLabel: true, position: true }, orderBy: { position: 'asc' } } } } },
         });
         return products;
     });
+
+    // Actividad reciente de cada producto para el catálogo: unidades de los
+    // últimos 30 días, unidades de las últimas 12 semanas (de lunes a domingo,
+    // la actual incluida) y fecha del último pedido. Mismo criterio que la
+    // ficha: sin pedidos cancelados ni líneas anuladas.
+    fastify.get('/summary', conErrores(async (req) => {
+        if (!esEmpleado(req)) throw errorHttp(403, 'No autorizado.');
+        const h = hoy();
+        const desde30 = addDays(h, -29);
+        const semanas = Array.from({ length: 12 }, (_, i) => addDays(mondayOf(h), (i - 11) * 7));
+
+        const [porSemana, ultimos] = await Promise.all([
+            prisma.$queryRaw`
+                SELECT l."productId" AS "productId",
+                       to_char(date_trunc('week', ${fechaLocalSql}), 'YYYY-MM-DD') AS semana,
+                       sum(l.quantity)::int AS unidades,
+                       coalesce(sum(l.quantity) FILTER (WHERE o."createdAt" >= ${inicioUtc(desde30)}::timestamp), 0)::int AS "unidades30"
+                FROM "OrderLine" l
+                JOIN "Order" o ON o.id = l."orderId"
+                WHERE ${lineasQueCuentan(semanas[0], h)}
+                GROUP BY 1, 2`,
+            prisma.$queryRaw`
+                SELECT l."productId" AS "productId", to_char(max(${fechaLocalSql}), 'YYYY-MM-DD') AS "ultimoPedido"
+                FROM "OrderLine" l
+                JOIN "Order" o ON o.id = l."orderId"
+                WHERE l."voidedAt" IS NULL AND o.status IS DISTINCT FROM 'cancelled'
+                GROUP BY 1`,
+        ]);
+
+        const productos = {};
+        const de = (id) => (productos[id] ??= { unidades30: 0, semanas: semanas.map(() => 0), ultimoPedido: null });
+        for (const f of porSemana) {
+            const p = de(f.productId);
+            p.unidades30 += f.unidades30;
+            const i = semanas.indexOf(f.semana);
+            if (i >= 0) p.semanas[i] += f.unidades;
+        }
+        for (const u of ultimos) de(u.productId).ultimoPedido = u.ultimoPedido;
+        return { hoy: h, semanas, productos };
+    }));
+
+    fastify.get('/categories', conErrores(async (req) => {
+        if (!esEmpleado(req)) throw errorHttp(403, 'No autorizado.');
+        const categorias = await prisma.productCategory.findMany({
+            orderBy: { name: 'asc' },
+            include: { _count: { select: { products: true } } },
+        });
+        return categorias.map((c) => ({ id: c.id, name: c.name, productos: c._count.products }));
+    }));
+
+    const categoriaDe = async (req) => {
+        const id = Number(req.params.catId) || 0;
+        const categoria = await prisma.productCategory.findUnique({ where: { id } });
+        if (!categoria) throw errorHttp(404, 'Categoría no encontrada.');
+        return categoria;
+    };
+
+    fastify.post('/categories', conErrores(async (req, reply) => {
+        if (!esAdmin(req)) throw errorHttp(403, SOLO_ADMIN);
+        const name = nombreCategoria(req.body?.name);
+        const categoria = await prisma.productCategory.create({ data: { name } }).catch((e) => errorCategoria(e, name));
+        return reply.status(201).send({ id: categoria.id, name: categoria.name, productos: 0 });
+    }));
+
+    fastify.put('/categories/:catId', conErrores(async (req) => {
+        if (!esAdmin(req)) throw errorHttp(403, SOLO_ADMIN);
+        const { id } = await categoriaDe(req);
+        const name = nombreCategoria(req.body?.name);
+        await prisma.productCategory.update({ where: { id }, data: { name } }).catch((e) => errorCategoria(e, name));
+        return { id, name };
+    }));
+
+    // Borrar una categoría deja sus productos sin categoría; nada más cambia en ellos.
+    fastify.delete('/categories/:catId', conErrores(async (req) => {
+        if (!esAdmin(req)) throw errorHttp(403, SOLO_ADMIN);
+        const { id } = await categoriaDe(req);
+        const [liberados] = await prisma.$transaction([
+            prisma.product.updateMany({ where: { categoryId: id }, data: { categoryId: null } }),
+            prisma.productCategory.updateMany({ where: { parentId: id }, data: { parentId: null } }),
+            prisma.productCategory.delete({ where: { id } }),
+        ]);
+        return { eliminada: true, productos: liberados.count };
+    }));
+
+    // Cambio de precios en bloque (?aplicar=false sólo calcula la vista previa).
+    // La fórmula está únicamente aquí, para que lo que se ve sea lo que se guarda.
+    // Un precio a 0 significa que el producto no lo usa (p. ej. sin tarifa de gran
+    // cliente) y se deja igual. Los precios pactados con clientes no se tocan.
+    fastify.post('/bulk-prices', conErrores(async (req) => {
+        if (!esAdmin(req)) throw errorHttp(403, SOLO_ADMIN);
+        const body = req.body || {};
+        const ids = leerIds(body.ids);
+        const campos = body.campo === 'ambos' ? Object.keys(CAMPOS_PRECIO) : [body.campo];
+        const valor = Number(String(body.valor ?? '').replace(',', '.'));
+        const redondeo = Number(body.redondeo);
+        if (!ids.length) throw errorHttp(400, 'Elige al menos un producto.');
+        if (!campos.every((c) => CAMPOS_PRECIO[c])) throw errorHttp(400, 'Precio a cambiar no válido.');
+        if (!['pct', 'importe'].includes(body.modo)) throw errorHttp(400, 'Tipo de cambio no válido.');
+        if (!Number.isFinite(valor) || valor === 0) throw errorHttp(400, 'Indica cuánto cambia el precio.');
+        if (!REDONDEOS.includes(redondeo)) throw errorHttp(400, 'Redondeo no válido.');
+
+        const productos = await prisma.product.findMany({
+            where: { id: { in: ids } },
+            select: { id: true, name: true, basePrice: true, bigClientPrice: true },
+            orderBy: { name: 'asc' },
+        });
+        const cambios = [];
+        const actualizaciones = [];
+        for (const p of productos) {
+            const data = {};
+            for (const campo of campos) {
+                const antes = Number(p[campo] || 0);
+                if (antes <= 0) continue;
+                const despues = precioNuevo(antes, body.modo, valor, redondeo);
+                if (despues < 0) throw errorHttp(400, `${p.name} quedaría con ${CAMPOS_PRECIO[campo].toLowerCase()} negativo.`);
+                if (despues === antes) continue;
+                data[campo] = despues;
+                cambios.push({ id: p.id, name: p.name, campo, antes, despues });
+            }
+            if (Object.keys(data).length) actualizaciones.push(prisma.product.update({ where: { id: p.id }, data }));
+        }
+
+        const aplicar = body.aplicar === true && actualizaciones.length > 0;
+        if (aplicar) await prisma.$transaction(actualizaciones);
+        return { aplicado: aplicar, productos: productos.length, cambios };
+    }));
+
+    // Archivar (archived=true, por defecto) o restaurar productos. Archivar no
+    // borra nada: el producto sale del TPV y conserva su ficha y sus pedidos.
+    fastify.post('/bulk-archive', conErrores(async (req) => {
+        if (!esAdmin(req)) throw errorHttp(403, SOLO_ADMIN);
+        const ids = leerIds(req.body?.ids);
+        if (!ids.length) throw errorHttp(400, 'Elige al menos un producto.');
+        const archivar = req.body?.archived !== false;
+        const r = await prisma.product.updateMany({
+            where: { id: { in: ids }, archivedAt: archivar ? null : { not: null } },
+            data: { archivedAt: archivar ? new Date() : null },
+        });
+        return { actualizados: r.count };
+    }));
 
     fastify.get('/:id', async (req, reply) => {
         const { id } = req.params;
@@ -335,7 +505,7 @@ export default async function (fastify, opts) {
                 name,
                 sku,
                 basePrice: parseFloat(basePrice),
-                categoryId: categoryId || null,
+                categoryId: categoryId ? Number(categoryId) : null,
                 description,
                 type: type || 'service',
                 weight: weight != null ? parseFloat(weight) : 0,
@@ -365,7 +535,7 @@ export default async function (fastify, opts) {
             if (name !== undefined) data.name = name;
             if (sku !== undefined) data.sku = sku;
             if (basePrice !== undefined) data.basePrice = parseFloat(basePrice);
-            if (categoryId !== undefined) data.categoryId = categoryId;
+            if (categoryId !== undefined) data.categoryId = categoryId ? Number(categoryId) : null;
             if (description !== undefined) data.description = description;
             if (type !== undefined) data.type = type;
             if (weight !== undefined) data.weight = parseFloat(weight);

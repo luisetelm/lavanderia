@@ -9,7 +9,7 @@ datasource db {
 
 model ProductCategory {
   id       Int               @id @default(autoincrement())
-  name     String
+  name     String            @unique // sql/024
   parentId Int?
   products Product[]
   parent   ProductCategory?  @relation("CategoryParent", fields: [parentId], references: [id])
@@ -34,6 +34,7 @@ model Product {
   printWashLabel Boolean          @default(true) @map("print_wash_label") // si imprime etiquetas de lavado (no para KG ropa blanca, etc.)
   countsForLoad  Boolean          @default(true) @map("counts_for_load") // si computa en la carga de trabajo del día
   workloadWeight Float            @default(1) @map("workload_weight")    // factor de carga (traje=3, camisa=1, kg ropa blanca=0...)
+  archivedAt     DateTime?        @map("archived_at") @db.Timestamptz(6) // archivado: fuera del TPV, conserva ficha y pedidos (sql/024)
   orderLines     OrderLine[]
   agreedPrices   ClientProductPrice[]
   category       ProductCategory? @relation(fields: [categoryId], references: [id])

@@ -10,6 +10,7 @@ const COLORES = {
     pista: '#dbeef7',       // fondo de los medidores: el mismo azul, más claro
     rejilla: '#eef2f6',
     eje: '#cbd5e1',
+    tendencia: '#94a3b8',   // línea de las miniaturas; la semana actual va en el color de la serie
     texto: '#1e293b',
     textoSuave: '#64748b',
 };
@@ -121,6 +122,22 @@ export function ColumnChart({datos, formato, formatoEje = formato, entero = fals
                 </div>
             )}
         </div>
+    );
+}
+
+/** Tendencia en miniatura: línea gris con el último valor marcado en el color de la serie. */
+export function Sparkline({valores, etiqueta, ancho = 72, alto = 22}) {
+    const max = Math.max(1, ...valores);
+    const paso = valores.length > 1 ? (ancho - 6) / (valores.length - 1) : 0;
+    const puntos = valores.map((v, i) => [3 + i * paso, alto - 3 - (v / max) * (alto - 6)]);
+    const ultimo = puntos[puntos.length - 1];
+    return (
+        <svg width={ancho} height={alto} role="img" aria-label={etiqueta} style={{display: 'block', overflow: 'visible', flexShrink: 0}}>
+            <title>{etiqueta}</title>
+            <polyline points={puntos.map((p) => p.join(',')).join(' ')} fill="none" stroke={COLORES.tendencia}
+                      strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round"/>
+            {ultimo && <circle cx={ultimo[0]} cy={ultimo[1]} r="3" fill={COLORES.serie} stroke="#fff" strokeWidth="1.5"/>}
+        </svg>
     );
 }
 

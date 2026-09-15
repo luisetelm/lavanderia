@@ -62,8 +62,9 @@ export function register(data) {
     });
 }
 
-export function fetchProducts(token) {
-    return request('/products', token);
+// Sin opciones, sólo los productos activos. archived: 'all' | 'only'.
+export function fetchProducts(token, {archived} = {}) {
+    return request(`/products${archived ? `?archived=${archived}` : ''}`, token);
 }
 
 export function createProduct(token, product) {
@@ -105,6 +106,36 @@ export function fetchProductLines(token, id, {from, to, page = 0, size = 20} = {
 
 export function fetchProductAgreedPrices(token, id) {
     return request(`/products/${id}/agreed-prices`, token);
+}
+
+// --- Catálogo: actividad, categorías y acciones en bloque ---
+export function fetchProductsSummary(token) {
+    return request('/products/summary', token);
+}
+
+export function fetchProductCategories(token) {
+    return request('/products/categories', token);
+}
+
+export function createProductCategory(token, name) {
+    return request('/products/categories', token, {method: 'POST', body: JSON.stringify({name})});
+}
+
+export function updateProductCategory(token, id, name) {
+    return request(`/products/categories/${id}`, token, {method: 'PUT', body: JSON.stringify({name})});
+}
+
+export function deleteProductCategory(token, id) {
+    return request(`/products/categories/${id}`, token, {method: 'DELETE'});
+}
+
+// datos: {ids, campo: 'basePrice'|'bigClientPrice'|'ambos', modo: 'pct'|'importe', valor, redondeo, aplicar}
+export function bulkProductPrices(token, datos) {
+    return request('/products/bulk-prices', token, {method: 'POST', body: JSON.stringify(datos)});
+}
+
+export function archiveProducts(token, ids, archived = true) {
+    return request('/products/bulk-archive', token, {method: 'POST', body: JSON.stringify({ids, archived})});
 }
 
 

@@ -31,7 +31,7 @@ No test framework is configured.
 - `POS.jsx` — Main POS: cart, customer selection, delivery dates, payments, cash register (movements, closures). Largest file (~850 lines).
 - `Tasks.jsx` — Order list with status/search/date filters, debounced search (300ms).
 - `Ventas.jsx` — Sales dashboard with date range filters, invoice filtering, Excel export. Admin only.
-- `Inventory.jsx` — Product catalog with inline editing; the name links to the product page. Only admins create/edit (the API enforces it).
+- `Inventory.jsx` — Product catalog: filters and sort persisted in localStorage, activity columns (`GET /api/products/summary`), inline editing, Excel export, and admin-only duplicate, archive, bulk price change (`BulkPriceModal`, preview computed by the backend) and categories (`ProductCategoriesModal`). `GET /api/products` returns only active products unless `?archived=all`, so the POS never shows archived ones.
 - `ProductDetail.jsx` — Product page (`/productos/:id`): data, order KPIs vs previous period, charts (`components/ProductCharts.jsx`, hand-made SVG), orders, top clients and agreed prices. Stats come from `GET /api/products/:id/stats`. See `docs/productos.md`.
 - `Users.jsx` — User list with role/search filters, pagination.
 - `UserEdit.jsx` — User detail with financial summary and order history.
