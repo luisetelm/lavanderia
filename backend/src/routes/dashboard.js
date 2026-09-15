@@ -1,4 +1,6 @@
 // backend/src/routes/dashboard.js
+import { ymd } from '../utils/workCalendar.js';
+
 export default async function dashboardRoutes(fastify) {
     const prisma = fastify.prisma;
 
@@ -318,8 +320,11 @@ export default async function dashboardRoutes(fastify) {
      *   - stepsCompleted   : nº de procesos cerrados (status=done)
      *   - ordersCount      : nº de pedidos distintos en los que intervino
      *   - linesCount       : nº de líneas (prendas) distintas tocadas
-     *   - totalDurationMin : suma de tiempos (completedAt - startedAt)
-     *   - avgStepMin       : tiempo medio por proceso
+     *   - onTimePct        : % de procesos cerrados el día de entrega o antes
+     *
+     * No hay tiempos por proceso: en el taller se pulsa «Completar» sin «Iniciar»
+     * y completedAt - startedAt sale a cero. Los tiempos contados desde el alta
+     * del pedido están en la ficha de cada producto (GET /api/products/:id/times).
      *   - byStepLabel      : { 'Lavado': 12, 'Planchado': 7, ... }
      */
     fastify.get('/worker-performance', async (req, reply) => {
@@ -335,10 +340,12 @@ export default async function dashboardRoutes(fastify) {
                 return reply.status(400).send({ error: 'Rango de fechas inválido' });
             }
 
-            // Período anterior de IGUAL duración: termina justo antes de "from"
-            const rangeMs = to.getTime() - from.getTime();
-            const prevTo = new Date(from.getTime() - 1);
-            const prevFrom = new Date(prevTo.getTime() - rangeMs);
+            // Período anterior de IGUAL nº de días, terminando el día antes de "from".
+            // Se construye por días locales y no restando milisegundos, para que el
+            // cambio de hora no lo desplace.
+            const days = Math.max(1, Math.round((to - from) / (1000 * 60 * 60 * 24)));
+            const prevFrom = new Date(from.getFullYear(), from.getMonth(), from.getDate() - days, 0, 0, 0, 0);
+            const prevTo = new Date(from.getFullYear(), from.getMonth(), from.getDate() - 1, 23, 59, 59, 999);
 
             // Carga de pasos completados en ambos rangos
             const loadSteps = (gte, lte) => prisma.orderLineStep.findMany({
@@ -350,7 +357,6 @@ export default async function dashboardRoutes(fastify) {
                 select: {
                     id: true,
                     orderLineId: true,
-                    startedAt: true,
                     completedAt: true,
                     completedBy: true,
                     stepConfig:    { select: { stepLabel: true } },
@@ -446,7 +452,8 @@ export default async function dashboardRoutes(fastify) {
                     stepsCompleted: 0,
                     ordersCount: 0,
                     linesCount: 0,
-                    totalDurationMin: 0,
+                    onTimeEligible: 0,
+                    onTimeCount: 0,
                 };
                 const totalOrders = new Set();
                 const totalLines = new Set();
@@ -471,8 +478,6 @@ export default async function dashboardRoutes(fastify) {
                             stepsCompleted: 0,
                             _orders: new Set(),
                             _lines: new Set(),
-                            totalDurationMin: 0,
-                            _durationsCount: 0,
                             byStepLabel: {},
                             _onTimeEligible: 0,
                             _onTime: 0,
@@ -488,20 +493,16 @@ export default async function dashboardRoutes(fastify) {
                         row._lines.add(s.orderLineId);
                         totalLines.add(s.orderLineId);
                     }
-                    if (s.startedAt && s.completedAt) {
-                        const min = (new Date(s.completedAt) - new Date(s.startedAt)) / 60000;
-                        if (min >= 0 && min < 60 * 24) { // descartamos outliers > 24h
-                            row.totalDurationMin += min;
-                            row._durationsCount += 1;
-                            totals.totalDurationMin += min;
-                        }
-                    }
-                    // Puntualidad: ¿el paso se cerró antes de la fechaLimite del pedido?
+                    // Puntualidad: ¿el paso se cerró el día de entrega o antes? Se
+                    // comparan días locales porque fechaLimite se guarda a las 00:00
+                    // y con la hora exacta todo lo cerrado ese día contaría como tarde.
                     const limit = s.orderLine?.order?.fechaLimite;
                     if (limit && s.completedAt) {
                         row._onTimeEligible += 1;
-                        if (new Date(s.completedAt) <= new Date(limit)) {
+                        totals.onTimeEligible += 1;
+                        if (ymd(new Date(s.completedAt)) <= ymd(new Date(limit))) {
                             row._onTime += 1;
+                            totals.onTimeCount += 1;
                         }
                     }
                     const lbl = labelOf(s);
@@ -519,10 +520,6 @@ export default async function dashboardRoutes(fastify) {
                     stepsCompleted: r.stepsCompleted,
                     ordersCount: r._orders.size,
                     linesCount: r._lines.size,
-                    totalDurationMin: Math.round(r.totalDurationMin),
-                    avgStepMin: r._durationsCount > 0
-                        ? Number((r.totalDurationMin / r._durationsCount).toFixed(1))
-                        : null,
                     byStepLabel: r.byStepLabel,
                     onTimePct: r._onTimeEligible > 0
                         ? Number(((r._onTime / r._onTimeEligible) * 100).toFixed(1))
@@ -534,7 +531,9 @@ export default async function dashboardRoutes(fastify) {
                 totals.stepsCompleted = steps.length;
                 totals.ordersCount = totalOrders.size;
                 totals.linesCount = totalLines.size;
-                totals.totalDurationMin = Math.round(totals.totalDurationMin);
+                totals.onTimePct = totals.onTimeEligible > 0
+                    ? Number(((totals.onTimeCount / totals.onTimeEligible) * 100).toFixed(1))
+                    : null;
 
                 return { workers, totals };
             };
@@ -572,7 +571,8 @@ export default async function dashboardRoutes(fastify) {
                         current: {
                             workerId: w.workerId, name: w.name,
                             stepsCompleted: 0, ordersCount: 0, linesCount: 0,
-                            totalDurationMin: 0, avgStepMin: null, byStepLabel: {},
+                            byStepLabel: {},
+                            onTimePct: null, onTimeEligible: 0, onTimeCount: 0,
                         },
                         previous: w,
                     });
@@ -590,7 +590,6 @@ export default async function dashboardRoutes(fastify) {
                 const c = row.current;
                 const p = row.previous || {
                     stepsCompleted: 0, ordersCount: 0, linesCount: 0,
-                    totalDurationMin: 0, avgStepMin: null,
                     onTimePct: null, onTimeEligible: 0, onTimeCount: 0,
                     ordersFinishedCount: 0,
                     ordersFinishedAmount: 0,
@@ -607,8 +606,6 @@ export default async function dashboardRoutes(fastify) {
                         stepsCompleted: c.stepsCompleted,
                         ordersCount:    c.ordersCount,
                         linesCount:     c.linesCount,
-                        totalDurationMin: c.totalDurationMin,
-                        avgStepMin:     c.avgStepMin,
                         byStepLabel:    c.byStepLabel,
                         onTimePct:      c.onTimePct,
                         onTimeEligible: c.onTimeEligible,
@@ -620,8 +617,6 @@ export default async function dashboardRoutes(fastify) {
                         stepsCompleted: p.stepsCompleted,
                         ordersCount:    p.ordersCount,
                         linesCount:     p.linesCount,
-                        totalDurationMin: p.totalDurationMin,
-                        avgStepMin:     p.avgStepMin,
                         onTimePct:      p.onTimePct,
                         ordersFinishedCount: p.ordersFinishedCount || 0,
                         ordersFinishedAmount: p.ordersFinishedAmount || 0,
@@ -639,11 +634,10 @@ export default async function dashboardRoutes(fastify) {
                 };
             }).sort((a, b) => b.current.stepsCompleted - a.current.stepsCompleted);
 
-            const days = Math.max(1, Math.round((to - from) / (1000 * 60 * 60 * 24)) + 1);
-
             return reply.send({
-                range:    { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10), days },
-                previous: { from: prevFrom.toISOString().slice(0, 10), to: prevTo.toISOString().slice(0, 10) },
+                // Fechas en hora local: toISOString() daba la de inicio un día antes
+                range:    { from: ymd(from), to: ymd(to), days },
+                previous: { from: ymd(prevFrom), to: ymd(prevTo) },
                 totals: {
                     current:  cur.totals,
                     previous: prev.totals,

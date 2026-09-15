@@ -3,6 +3,7 @@ import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import PageToolbar from '../components/PageToolbar.jsx';
 import DateRangeSelector from '../components/DateRangeSelector.jsx';
 import { fetchWorkerPerformance } from '../api.js';
+import { formatDate } from '../utils/dates.js';
 
 // Paleta para los segmentos de cada tipo de proceso
 const STEP_PALETTE = [
@@ -15,14 +16,6 @@ function workerDisplayName(w) {
     if (!w) return '';
     const composed = `${w.firstName || ''} ${w.lastName || ''}`.trim();
     return composed || w.name || w.email || `Trabajadora #${w.workerId}`;
-}
-
-function formatMin(min) {
-    if (min == null) return '–';
-    if (min < 60) return `${Math.round(min)} min`;
-    const h = Math.floor(min / 60);
-    const m = Math.round(min % 60);
-    return m === 0 ? `${h} h` : `${h} h ${m} min`;
 }
 
 function formatEUR(amount) {
@@ -150,7 +143,7 @@ function KpiCard({ label, value, previous, delta, suffix = '' }) {
 
 export default function WorkerPerformance({ token }) {
     const today = new Date();
-    const formatDate = (d) => d.toISOString().slice(0, 10);
+    // Fechas locales: toISOString() cambia de día entre las 0:00 y las 2:00
     const defaultTo = formatDate(today);
     const defaultFrom = formatDate(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 29));
 
@@ -160,7 +153,7 @@ export default function WorkerPerformance({ token }) {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
 
-    const persist = (k, v) => { try { localStorage.setItem(k, String(v)); } catch (_) { /* noop */ } };
+    const persist = (k, v) => { try { localStorage.setItem(k, String(v)); } catch { /* noop */ } };
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -381,8 +374,6 @@ export default function WorkerPerformance({ token }) {
                                         <th className="uk-text-right" style={{ minWidth: 110 }}>Finalizados</th>
                                         <th className="uk-text-right" style={{ minWidth: 120 }}>Importe finalizado</th>
                                         <th className="uk-text-right" style={{ minWidth: 110 }}>Líneas</th>
-                                        <th className="uk-text-right" style={{ minWidth: 110 }}>Tiempo medio / proceso</th>
-                                        <th className="uk-text-right" style={{ minWidth: 110 }}>Tiempo total</th>
                                         <th className="uk-text-right" style={{ minWidth: 110 }}>Puntualidad</th>
                                         <th className="uk-text-right" style={{ minWidth: 90 }}>% del equipo</th>
                                         {topStepLabels.map(l => (
@@ -393,7 +384,7 @@ export default function WorkerPerformance({ token }) {
                                 <tbody>
                                     {data.workers.length === 0 ? (
                                         <tr>
-                                            <td colSpan={10 + topStepLabels.length} style={{ textAlign: 'center', padding: 30, color: '#94a3b8' }}>
+                                            <td colSpan={8 + topStepLabels.length} style={{ textAlign: 'center', padding: 30, color: '#94a3b8' }}>
                                                 No hay procesos cerrados en el período.
                                             </td>
                                         </tr>
@@ -440,18 +431,6 @@ export default function WorkerPerformance({ token }) {
                                                     previous={w.previous.linesCount}
                                                     delta={w.deltas.linesCountPct}
                                                 />
-                                            </td>
-                                            <td className="uk-text-right">
-                                                <div style={{ fontWeight: 600 }}>{formatMin(w.current.avgStepMin)}</div>
-                                                <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
-                                                    ant: {formatMin(w.previous.avgStepMin)}
-                                                </div>
-                                            </td>
-                                            <td className="uk-text-right">
-                                                <div style={{ fontWeight: 600 }}>{formatMin(w.current.totalDurationMin)}</div>
-                                                <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
-                                                    ant: {formatMin(w.previous.totalDurationMin)}
-                                                </div>
                                             </td>
                                             <td className="uk-text-right">
                                                 <PunctualityCell
@@ -511,9 +490,14 @@ export default function WorkerPerformance({ token }) {
                                                     delta={data.totals.deltas.linesCountPct}
                                                 />
                                             </td>
-                                            <td className="uk-text-right">–</td>
-                                            <td className="uk-text-right">{formatMin(data.totals.current.totalDurationMin)}</td>
-                                            <td className="uk-text-right">–</td>
+                                            <td className="uk-text-right">
+                                                <PunctualityCell
+                                                    current={data.totals.current.onTimePct}
+                                                    previous={data.totals.previous.onTimePct}
+                                                    eligible={data.totals.current.onTimeEligible}
+                                                    count={data.totals.current.onTimeCount}
+                                                />
+                                            </td>
                                             <td className="uk-text-right">100%</td>
                                             {topStepLabels.map(l => (
                                                 <td key={l} className="uk-text-right">
@@ -531,11 +515,14 @@ export default function WorkerPerformance({ token }) {
                         <strong>Cómo leer la tabla:</strong> "Procesos" cuenta cada paso del itinerario que la trabajadora cerró
                         (lavado, planchado, doblado…). "Finalizados" cuenta los pedidos que la trabajadora <em>cerró por completo</em>:
                         es decir, fue ella quien marcó el último paso pendiente, dejando el pedido listo. "Pedidos" cuenta cabeceras únicas: aunque cierre 8 pasos del mismo
-                        pedido, suma 1. El "tiempo medio" se calcula sólo cuando el paso tiene <em>inicio</em> y <em>fin</em>
-                        registrados (auto-progress o doble click). Las variaciones <Delta pct={12} /> / <Delta pct={-9} />
+                        pedido, suma 1. Las variaciones <Delta pct={12} /> / <Delta pct={-9} />{' '}
                         comparan con el período anterior de igual duración. La <strong>puntualidad</strong> es el % de
-                        procesos cerrados antes de la <em>fecha límite</em> del pedido (sólo se cuentan procesos de pedidos
-                        que tienen fecha límite asignada). Un <em>pp</em> = punto porcentual.
+                        procesos cerrados el día de la <em>fecha de entrega</em> del pedido o antes (sólo se cuentan procesos
+                        de pedidos que tienen fecha de entrega). Un <em>pp</em> = punto porcentual.
+                        <br/>
+                        <strong>Por qué no hay tiempos por proceso:</strong> en el taller los pasos se marcan al terminarlos,
+                        sin iniciarlos antes, así que no queda registrado cuánto duró cada uno y la media saldría a cero.
+                        Los tiempos desde el alta del pedido hasta cada paso están en la pestaña «Tiempos» de la ficha de cada producto.
                     </div>
                 </>
             )}
