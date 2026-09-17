@@ -354,6 +354,7 @@ export default function POS({token, user}) {
                             fechaLimite={draft.fechaLimite}
                             setFechaLimite={(d) => draft.setFechaLimite(d)}
                             token={token}
+                            esAdmin={user?.role === 'admin'}
                         />
                         <div className="pos-field">
                             <label htmlFor="pos-observaciones">Observaciones del pedido</label>
@@ -404,8 +405,14 @@ export default function POS({token, user}) {
                         {draft.cart.length > 0 && (
                             <div className="pos-cart-foot">
                                 {hasDiscount && <span className="pos-cart-dto">−{Number(draft.discount)}% dto.</span>}
+                                {draft.suplementoUrgencia.aplicado && (
+                                    <span className="pos-cart-dto" style={{ color: '#b45309' }}
+                                          title="Entrega anterior a la fecha sugerida">
+                                        Suplemento urgencia +{draft.suplementoUrgencia.pct}%: {draft.suplementoUrgencia.importe.toFixed(2)} €
+                                    </span>
+                                )}
                                 <span>Total</span>
-                                <span className="pos-cart-total">{draft.total.toFixed(2)} €</span>
+                                <span className="pos-cart-total">{draft.totalConSuplemento.toFixed(2)} €</span>
                             </div>
                         )}
                     </section>

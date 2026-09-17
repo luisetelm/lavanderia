@@ -6,7 +6,10 @@ import { sendCollectedNotification, sendReadyNotification } from '../services/no
 import { facturaDe } from '../utils/facturaDe.js';
 import { calcularLinea, preciosPactadosVigentes } from '../utils/precioLinea.js';
 import { getWorkCalendar, getDayInfo, nextWorkingDay, ymd, addDays, mondayOf } from '../utils/workCalendar.js';
-import { cargaPonderada, leerCargaMaxima } from '../utils/cargaTrabajo.js';
+import {
+    cargaPonderada, leerCargaMaxima, sugerirFecha, pedidosPorDia, calcularFechaSugerida,
+    leerSuplementoUrgencia, productoSuplementoUrgencia, importeSuplementoUrgencia,
+} from '../utils/cargaTrabajo.js';
 import jwt from 'jsonwebtoken';
 import fs from 'fs';
 import path from 'path';
@@ -153,6 +156,41 @@ export default async function (fastify, opts) {
             if (dayInfo && !dayInfo.isWorking) {
                 const motivo = dayInfo.label ? ` (${dayInfo.label})` : '';
                 return reply.status(400).send({error: `La lavandería está cerrada ese día${motivo}. Elige otra fecha de entrega.`});
+            }
+        }
+
+        // Entrega adelantada: si la fecha elegida es anterior a la sugerida por
+        // el calendario, se añade el suplemento de urgencia como una línea más
+        // (% sobre las líneas que computan en la carga). Administración puede
+        // eximirlo desde el TPV (sinSuplemento).
+        let suplementoUrgencia = null;
+        const fechaElegida = fechaLimiteRaw ? String(fechaLimiteRaw).slice(0, 10) : null;
+        const eximido = req.body.sinSuplemento === true && req.user?.role === 'admin';
+        if (fechaElegida && !eximido) {
+            const [sugerida, pct, producto] = await Promise.all([
+                calcularFechaSugerida(prisma),
+                leerSuplementoUrgencia(prisma),
+                productoSuplementoUrgencia(prisma),
+            ]);
+            if (sugerida && fechaElegida < sugerida && pct > 0) {
+                if (!producto) {
+                    console.error('[urgencia] Falta el producto SUPL-URGENCIA: ejecutar sql/026_suplemento_urgencia.sql');
+                } else {
+                    const importe = await importeSuplementoUrgencia(prisma, lineCreates, pct);
+                    if (importe > 0) {
+                        suplementoUrgencia = { fechaSugerida: sugerida, pct, importe };
+                        total += importe;
+                        lineCreates.push({
+                            productId: producto.id,
+                            variantId: null,
+                            quantity: 1,
+                            unitPrice: importe,
+                            discount: 0,
+                            totalPrice: importe,
+                            color: null,
+                        });
+                    }
+                }
             }
         }
 
@@ -1611,46 +1649,21 @@ export default async function (fastify, opts) {
             const start = mondayOf(startRaw);
             const end = addDays(start, weeks * 7 - 1);
 
-            // Rango para la fecha sugerida: desde hoy hasta 6 semanas vista.
-            const suggestFrom = addDays(todayStr, 2); // mínimo 2 días de margen
+            // Rango: calendario visible + horizonte de búsqueda de la sugerida (6 semanas).
             const suggestTo = addDays(todayStr, 42);
-
             const calFrom = start < todayStr ? start : todayStr;
             const calTo = end > suggestTo ? end : suggestTo;
-            const calendar = await getWorkCalendar(prisma, calFrom, calTo);
-
-            // Pedidos de todo el rango (calendario visible + búsqueda de sugerida)
-            const orders = await prisma.order.findMany({
-                where: {
-                    fechaLimite: {
-                        gte: new Date(`${calFrom}T00:00:00.000Z`),
-                        lte: new Date(`${calTo}T00:00:00.000Z`),
-                    },
-                    status: { notIn: ['cancelled'] },
-                },
-                include: {
-                    lines: { include: { product: true } },
-                    client: { select: { id: true, firstName: true, lastName: true } },
-                },
-            });
-            const byDay = {};
-            orders.forEach(o => {
-                const k = o.fechaLimite.toISOString().slice(0, 10);
-                (byDay[k] ||= []).push(o);
-            });
-
+            const [calendar, byDay, loadMax, urgencyPct] = await Promise.all([
+                getWorkCalendar(prisma, calFrom, calTo),
+                pedidosPorDia(prisma, calFrom, calTo),
+                leerCargaMaxima(prisma),
+                leerSuplementoUrgencia(prisma),
+            ]);
             const dayLoad = (k) => (byDay[k] || []).reduce((s, o) => s + cargaPonderada(o.lines), 0);
-            const loadMax = await leerCargaMaxima(prisma);
 
             // Fecha sugerida: primer día abierto, a 2+ días vista, que no esté lleno.
-            let suggestedDate = null;
-            let firstOpen = null;
-            for (let k = suggestFrom; k <= suggestTo; k = addDays(k, 1)) {
-                if (!calendar[k]?.isWorking) continue;
-                firstOpen ||= k;
-                if (dayLoad(k) < loadMax) { suggestedDate = k; break; }
-            }
-            suggestedDate ||= firstOpen;
+            // Entregar antes de esa fecha lleva suplemento de urgencia.
+            const suggestedDate = sugerirFecha({ calendar, dayLoad, todayStr, loadMax });
 
             const days = [];
             const loadByDay = {};
@@ -1669,7 +1682,7 @@ export default async function (fastify, opts) {
                 loadByDay[k] = byDay[k] || [];
             }
 
-            return { today: todayStr, start, end, days, loadByDay, suggestedDate, loadMax };
+            return { today: todayStr, start, end, days, loadByDay, suggestedDate, loadMax, urgencyPct };
         } catch (error) {
             console.error('Error in delivery-dates endpoint:', error);
             reply.status(500).send({ error: 'Error interno' });

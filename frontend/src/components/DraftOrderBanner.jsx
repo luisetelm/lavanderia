@@ -41,8 +41,9 @@ export default function DraftOrderBanner({ token, worker }) {
     if (!draft.isActive) return null;
 
     const {
-        cart, selectedUser, quickClient, fechaLimite, observaciones,
-        total, itemCount, clientName, discount, clearDraft, setSelectedUser, getPriceForItem,
+        cart, selectedUser, quickClient, fechaLimite, observaciones, sinSuplemento,
+        itemCount, clientName, discount, clearDraft, setSelectedUser, getPriceForItem,
+        suplementoUrgencia, totalConSuplemento: total,
     } = draft;
 
     const formattedDate = fechaLimite
@@ -82,6 +83,8 @@ export default function DraftOrderBanner({ token, worker }) {
             observaciones,
             fechaLimite: fechaLimite || undefined,
         };
+        // Sólo administración puede eximir el suplemento de urgencia (el backend lo comprueba)
+        if (sinSuplemento && suplementoUrgencia.adelantada) payload.sinSuplemento = true;
 
         if (selectedUser) {
             payload.clientId = selectedUser.id;
@@ -249,6 +252,14 @@ export default function DraftOrderBanner({ token, worker }) {
                         <span style={{ fontWeight: 700, color: '#5AB5BF', fontSize: '0.95rem' }}>
                             {total.toFixed(2)} €
                         </span>
+                        {suplementoUrgencia.aplicado && (
+                            <span title={`Entrega anterior a la fecha sugerida: +${suplementoUrgencia.pct}% de suplemento de urgencia`} style={{
+                                background: '#f59e0b', borderRadius: 6, padding: '1px 7px',
+                                fontSize: '0.68rem', fontWeight: 600,
+                            }}>
+                                urgente +{suplementoUrgencia.importe.toFixed(2)} €
+                            </span>
+                        )}
                         {hasDiscount && (
                             <span style={{
                                 background: '#10b981', borderRadius: 6, padding: '1px 7px',
@@ -328,6 +339,11 @@ export default function DraftOrderBanner({ token, worker }) {
                                 />
                             </div>
                             <div style={{ textAlign: 'right', fontWeight: 700, fontSize: '1rem', color: '#5AB5BF' }}>
+                                {suplementoUrgencia.aplicado && (
+                                    <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#f59e0b' }}>
+                                        Suplemento urgencia (+{suplementoUrgencia.pct}%): {suplementoUrgencia.importe.toFixed(2)} €
+                                    </div>
+                                )}
                                 Total: {total.toFixed(2)} €
                             </div>
                         </div>

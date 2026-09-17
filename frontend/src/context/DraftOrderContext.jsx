@@ -14,6 +14,7 @@ const defaultState = {
     quickClient: { firstName: '', lastName: '', phone: '', email: '' },
     fechaLimite: null,
     observaciones: '',
+    sinSuplemento: false,  // administración exime el suplemento de urgencia de este pedido
 };
 
 function loadFromStorage() {
@@ -57,6 +58,9 @@ function loadFromStorage() {
 export function DraftOrderProvider({ children, token }) {
     const [state, setState] = useState(() => loadFromStorage() || { ...defaultState, quickClient: { ...defaultState.quickClient } });
     const [bannerHeight, setBannerHeight] = useState(0);
+    // Lo que el calendario de entregas sabe hoy: fecha sugerida y % de suplemento
+    // por adelantarla. No se persiste: lo vuelve a mandar el servidor al cargar.
+    const [calendarInfo, setCalendarInfo] = useState({ suggestedDate: null, urgencyPct: 0 });
 
     // Persistir en sessionStorage (excluyendo fotos dataUrl — demasiado grandes)
     useEffect(() => {
@@ -92,6 +96,7 @@ export function DraftOrderProvider({ children, token }) {
                     type: product.type || 'service',
                     basePrice: Number(product.basePrice),
                     bigClientPrice: product.bigClientPrice ? Number(product.bigClientPrice) : 0,
+                    countsForLoad: product.countsForLoad !== false, // base del suplemento de urgencia
                     notes: '',
                     photos: [],
                     color: null,
@@ -171,6 +176,10 @@ export function DraftOrderProvider({ children, token }) {
 
     const setObservaciones = useCallback((text) => {
         setState(prev => ({ ...prev, observaciones: text }));
+    }, []);
+
+    const setSinSuplemento = useCallback((valor) => {
+        setState(prev => ({ ...prev, sinSuplemento: !!valor }));
     }, []);
 
     const clearDraft = useCallback(() => {
@@ -295,6 +304,25 @@ export function DraftOrderProvider({ children, token }) {
         [state.cart]
     );
 
+    // Suplemento de urgencia: si la entrega es anterior a la fecha sugerida,
+    // % sobre las prendas que computan en la carga (lo externo no se acelera).
+    // Es sólo una previsión; el importe que vale lo calcula el backend al crear
+    // el pedido (POST /api/orders), con la misma regla.
+    const suplementoUrgencia = useMemo(() => {
+        const { suggestedDate, urgencyPct } = calendarInfo;
+        const adelantada = !!(state.fechaLimite && suggestedDate && state.fechaLimite < suggestedDate);
+        if (!adelantada || !(urgencyPct > 0)) return { adelantada, pct: urgencyPct || 0, importe: 0, aplicado: false };
+        const base = (state.cart || []).reduce((sum, item) =>
+            sum + (item.countsForLoad === false ? 0 : getPriceForItem(item) * item.quantity), 0);
+        const importe = Math.round(base * urgencyPct) / 100;
+        return { adelantada, pct: urgencyPct, importe, aplicado: importe > 0 && !state.sinSuplemento };
+    }, [calendarInfo, state.fechaLimite, state.cart, state.sinSuplemento, getPriceForItem]);
+
+    const totalConSuplemento = useMemo(() =>
+        total + (suplementoUrgencia.aplicado ? suplementoUrgencia.importe : 0),
+        [total, suplementoUrgencia]
+    );
+
     const clientName = useMemo(() => {
         if (state.selectedUser) {
             return `${state.selectedUser.firstName || ''} ${state.selectedUser.lastName || ''}`.trim();
@@ -315,20 +343,23 @@ export function DraftOrderProvider({ children, token }) {
         quickClient: state.quickClient,
         fechaLimite: state.fechaLimite,
         observaciones: state.observaciones,
+        sinSuplemento: state.sinSuplemento,
         addToCart, updateQuantity, removeFromCart,
         setSelectedUser, setQuickClient,
-        setFechaLimite, setObservaciones,
+        setFechaLimite, setObservaciones, setSinSuplemento,
         clearDraft,
         updateLineNotes, addLinePhoto, removeLinePhoto, splitLine,
         toggleOptionalStep, setLineColor,
         getPriceForItem, agreedPriceFor,
         total, itemCount, clientName, discount, isActive,
+        calendarInfo, setCalendarInfo, suplementoUrgencia, totalConSuplemento,
         bannerHeight, setBannerHeight,
     }), [state, addToCart, updateQuantity, removeFromCart, setSelectedUser, setQuickClient,
-        setFechaLimite, setObservaciones, clearDraft,
+        setFechaLimite, setObservaciones, setSinSuplemento, clearDraft,
         updateLineNotes, addLinePhoto, removeLinePhoto, splitLine,
         toggleOptionalStep, setLineColor,
-        getPriceForItem, agreedPriceFor, total, itemCount, clientName, discount, isActive, bannerHeight]);
+        getPriceForItem, agreedPriceFor, total, itemCount, clientName, discount, isActive,
+        calendarInfo, suplementoUrgencia, totalConSuplemento, bannerHeight]);
 
     return (
         <DraftOrderContext.Provider value={value}>

@@ -775,10 +775,13 @@ export function fetchWorkSchedule(token) {
     return request('/tracking/schedule', token);
 }
 
-export function updateWorkSchedule(token, weekly, loadMax) {
+export function updateWorkSchedule(token, weekly, { loadMax, urgencyPct } = {}) {
+    const body = { weekly };
+    if (loadMax !== undefined) body.loadMax = loadMax;
+    if (urgencyPct !== undefined) body.urgencyPct = urgencyPct;
     return request('/tracking/schedule', token, {
         method: 'PUT',
-        body: JSON.stringify(loadMax === undefined ? { weekly } : { weekly, loadMax }),
+        body: JSON.stringify(body),
     });
 }
 

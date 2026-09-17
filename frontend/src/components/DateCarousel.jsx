@@ -3,6 +3,7 @@ import {Link} from 'react-router-dom';
 import UIkit from 'uikit';
 import {lineasActivas} from '../utils/lineas.js';
 import {fetchDates} from '../api';
+import {useDraftOrder} from '../hooks/useDraftOrder.js';
 import './DateCarousel.css';
 
 /* ── Utilidades de fecha (todo en 'YYYY-MM-DD', hora local) ── */
@@ -38,8 +39,11 @@ const WEEKS = 2;
 
 const loadLevel = (load, max) => (load >= max ? 'high' : load >= max / 2 ? 'mid' : 'low');
 
-export default function DateCarousel({fechaLimite, setFechaLimite, token}) {
+export default function DateCarousel({fechaLimite, setFechaLimite, token, esAdmin = false}) {
     const todayStr = ymd(new Date());
+    // Suplemento de urgencia (entrega anterior a la sugerida): la previsión la
+    // lleva el pedido en curso; aquí sólo se avisa y se le pasa lo que dice el servidor.
+    const draft = useDraftOrder();
     const [weekStart, setWeekStart] = useState(() => mondayOf(fechaLimite || todayStr));
     const [data, setData] = useState(null); // { days, loadByDay, suggestedDate, today }
     const [loading, setLoading] = useState(false);
@@ -78,6 +82,11 @@ export default function DateCarousel({fechaLimite, setFechaLimite, token}) {
     const loadByDay = data?.loadByDay || {};
     const suggestedDate = data?.suggestedDate || null;
     const loadMax = Number(data?.loadMax) > 0 ? Number(data.loadMax) : LOAD_MAX_FALLBACK;
+    const urgencyPct = Number(data?.urgencyPct) || 0;
+    const {setCalendarInfo, suplementoUrgencia, sinSuplemento, setSinSuplemento} = draft;
+    useEffect(() => {
+        if (data) setCalendarInfo({suggestedDate, urgencyPct});
+    }, [data, suggestedDate, urgencyPct, setCalendarInfo]);
     const weekEnd = addDays(weekStart, WEEKS * 7 - 1);
     const canGoBack = weekStart > mondayOf(todayStr);
 
@@ -312,6 +321,35 @@ export default function DateCarousel({fechaLimite, setFechaLimite, token}) {
                     <span className="uk-text-muted">Selecciona un día de entrega</span>
                 )}
             </div>
+
+            {/* Entrega anterior a la sugerida: suplemento de urgencia */}
+            {fechaLimite && suplementoUrgencia.adelantada && (
+                <div className={`dc-urgent ${suplementoUrgencia.aplicado ? '' : 'is-off'}`}>
+                    <span uk-icon="icon: bolt; ratio: 0.8"></span>
+                    <span className="dc-urgent-text">
+                        {suplementoUrgencia.pct > 0 ? (
+                            <>
+                                <strong>Entrega adelantada</strong>: antes de la fecha sugerida
+                                {suggestedDate && <> ({fmt(suggestedDate, {weekday: 'short', day: 'numeric', month: 'short'})})</>}.
+                                {suplementoUrgencia.aplicado
+                                    ? <> Se añade un suplemento de urgencia del {suplementoUrgencia.pct} %: <strong>{suplementoUrgencia.importe.toFixed(2)} €</strong>.</>
+                                    : suplementoUrgencia.importe > 0
+                                        ? <> Suplemento del {suplementoUrgencia.pct} % ({suplementoUrgencia.importe.toFixed(2)} €) eximido.</>
+                                        : <> El suplemento se calculará sobre las prendas del pedido.</>}
+                            </>
+                        ) : (
+                            <><strong>Entrega adelantada</strong>: antes de la fecha sugerida. El suplemento de urgencia está desactivado.</>
+                        )}
+                    </span>
+                    {esAdmin && suplementoUrgencia.pct > 0 && (
+                        <label className="dc-urgent-waive" title="Sólo administración">
+                            <input type="checkbox" className="uk-checkbox" checked={!!sinSuplemento}
+                                   onChange={e => setSinSuplemento(e.target.checked)}/>
+                            Sin suplemento
+                        </label>
+                    )}
+                </div>
+            )}
 
             <div className="dc-legend">
                 <span><i className="load-low"/>Poca carga</span>

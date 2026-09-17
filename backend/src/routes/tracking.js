@@ -1,7 +1,10 @@
 // backend/src/routes/tracking.js
 
 import { sendReadyNotification } from '../services/notify.js';
-import { leerCargaMaxima, guardarCargaMaxima, estadisticaCargaHistorica } from '../utils/cargaTrabajo.js';
+import {
+    leerCargaMaxima, guardarCargaMaxima, estadisticaCargaHistorica,
+    leerSuplementoUrgencia, guardarSuplementoUrgencia,
+} from '../utils/cargaTrabajo.js';
 
 // Verifica si todos los pasos de todas las líneas de un pedido están completados.
 // Si es así, marca el pedido como "ready" automáticamente y notifica al cliente.
@@ -766,11 +769,12 @@ export default async function (fastify, opts) {
             });
             // Tope de carga diaria y cómo se comparan los días del último año
             // con los pesos actuales, para calibrarlo desde la pantalla.
-            const [loadMax, loadStats] = await Promise.all([
+            const [loadMax, loadStats, urgencyPct] = await Promise.all([
                 leerCargaMaxima(prisma),
                 estadisticaCargaHistorica(prisma).catch((e) => { console.error('Error calculando carga histórica:', e); return null; }),
+                leerSuplementoUrgencia(prisma),
             ]);
-            return reply.send({ weekly, exceptions, loadMax, loadStats });
+            return reply.send({ weekly, exceptions, loadMax, loadStats, urgencyPct });
         } catch (err) {
             console.error('Error en GET /tracking/schedule:', err);
             return reply.status(500).send({ error: 'Error cargando calendario' });
@@ -783,11 +787,13 @@ export default async function (fastify, opts) {
             return reply.status(403).send({ error: 'Solo administradores' });
         }
 
-        const { weekly, loadMax } = req.body; // array de 7 objetos (+ tope de carga diaria opcional)
+        // array de 7 objetos (+ tope de carga diaria y % de suplemento de urgencia, opcionales)
+        const { weekly, loadMax, urgencyPct } = req.body;
         if (!Array.isArray(weekly)) return reply.status(400).send({ error: 'weekly debe ser un array' });
 
         try {
             if (loadMax !== undefined) await guardarCargaMaxima(prisma, loadMax);
+            if (urgencyPct !== undefined) await guardarSuplementoUrgencia(prisma, urgencyPct);
             for (const day of weekly) {
                 await prisma.workSchedule.upsert({
                     where: { dayOfWeek: day.dayOfWeek },
