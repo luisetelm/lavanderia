@@ -9,6 +9,7 @@ import { getWorkCalendar, getDayInfo, nextWorkingDay, ymd, addDays, mondayOf } f
 import {
     cargaDelDia, reservasPorDia, leerCargaMaxima, sugerirFecha, pedidosPorDia, calcularFechaSugerida,
     leerSuplementoUrgencia, productoSuplementoUrgencia, importeSuplementoUrgencia,
+    diasLaborablesAdelantados, porcentajeUrgencia,
 } from '../utils/cargaTrabajo.js';
 import jwt from 'jsonwebtoken';
 import fs from 'fs';
@@ -170,18 +171,21 @@ export default async function (fastify, opts) {
         const eximido = client?.isbigclient === true
             || (req.body.sinSuplemento === true && req.user?.role === 'admin');
         if (fechaElegida && !eximido) {
-            const [sugerida, pct, producto] = await Promise.all([
+            const [{ sugerida, calendar }, tramos, producto] = await Promise.all([
                 calcularFechaSugerida(prisma),
                 leerSuplementoUrgencia(prisma),
                 productoSuplementoUrgencia(prisma),
             ]);
-            if (sugerida && fechaElegida < sugerida && pct > 0) {
+            // Por tramos: % por cada día laborable adelantado, con tope.
+            const dias = diasLaborablesAdelantados(calendar, fechaElegida, sugerida);
+            const pct = porcentajeUrgencia(dias, tramos);
+            if (pct > 0) {
                 if (!producto) {
                     console.error('[urgencia] Falta el producto SUPL-URGENCIA: ejecutar sql/027_suplemento_urgencia.sql');
                 } else {
                     const importe = await importeSuplementoUrgencia(prisma, lineCreates, pct);
                     if (importe > 0) {
-                        suplementoUrgencia = { fechaSugerida: sugerida, pct, importe };
+                        suplementoUrgencia = { fechaSugerida: sugerida, dias, pct, importe };
                         total += importe;
                         lineCreates.push({
                             productId: producto.id,
@@ -1656,7 +1660,7 @@ export default async function (fastify, opts) {
             const suggestTo = addDays(todayStr, 42);
             const calFrom = start < todayStr ? start : todayStr;
             const calTo = end > suggestTo ? end : suggestTo;
-            const [calendar, byDay, loadMax, urgencyPct] = await Promise.all([
+            const [calendar, byDay, loadMax, tramosUrgencia] = await Promise.all([
                 getWorkCalendar(prisma, calFrom, calTo),
                 pedidosPorDia(prisma, calFrom, calTo),
                 leerCargaMaxima(prisma),
@@ -1686,11 +1690,16 @@ export default async function (fastify, opts) {
                     // parte de la carga reservada a grandes clientes cuyo pedido aún no ha entrado
                     reserved: Math.round(cargaDelDia(byDay, reservas, k).reservada * 10) / 10,
                     reservedClients: cargaDelDia(byDay, reservas, k).clientes.map(c => c.nombre),
+                    // Entregar este día adelanta N días laborables respecto a la sugerida → % de suplemento
+                    daysAhead: c.isWorking && suggestedDate && k < suggestedDate ? diasLaborablesAdelantados(calendar, k, suggestedDate) : 0,
                 });
                 loadByDay[k] = byDay[k] || [];
             }
 
-            return { today: todayStr, start, end, days, loadByDay, suggestedDate, loadMax, urgencyPct };
+            return {
+                today: todayStr, start, end, days, loadByDay, suggestedDate, loadMax,
+                urgency: { pctPerDay: tramosUrgencia.pctPorDia, maxPct: tramosUrgencia.pctMax },
+            };
         } catch (error) {
             console.error('Error in delivery-dates endpoint:', error);
             reply.status(500).send({ error: 'Error interno' });

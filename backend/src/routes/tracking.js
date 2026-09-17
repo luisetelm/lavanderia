@@ -769,12 +769,12 @@ export default async function (fastify, opts) {
             });
             // Tope de carga diaria y cómo se comparan los días del último año
             // con los pesos actuales, para calibrarlo desde la pantalla.
-            const [loadMax, loadStats, urgencyPct] = await Promise.all([
+            const [loadMax, loadStats, tramos] = await Promise.all([
                 leerCargaMaxima(prisma),
                 estadisticaCargaHistorica(prisma).catch((e) => { console.error('Error calculando carga histórica:', e); return null; }),
                 leerSuplementoUrgencia(prisma),
             ]);
-            return reply.send({ weekly, exceptions, loadMax, loadStats, urgencyPct });
+            return reply.send({ weekly, exceptions, loadMax, loadStats, urgencyPctPerDay: tramos.pctPorDia, urgencyMaxPct: tramos.pctMax });
         } catch (err) {
             console.error('Error en GET /tracking/schedule:', err);
             return reply.status(500).send({ error: 'Error cargando calendario' });
@@ -787,13 +787,15 @@ export default async function (fastify, opts) {
             return reply.status(403).send({ error: 'Solo administradores' });
         }
 
-        // array de 7 objetos (+ tope de carga diaria y % de suplemento de urgencia, opcionales)
-        const { weekly, loadMax, urgencyPct } = req.body;
+        // array de 7 objetos (+ tope de carga diaria y tramos del suplemento de urgencia, opcionales)
+        const { weekly, loadMax, urgencyPctPerDay, urgencyMaxPct } = req.body;
         if (!Array.isArray(weekly)) return reply.status(400).send({ error: 'weekly debe ser un array' });
 
         try {
             if (loadMax !== undefined) await guardarCargaMaxima(prisma, loadMax);
-            if (urgencyPct !== undefined) await guardarSuplementoUrgencia(prisma, urgencyPct);
+            if (urgencyPctPerDay !== undefined || urgencyMaxPct !== undefined) {
+                await guardarSuplementoUrgencia(prisma, { pctPorDia: urgencyPctPerDay, pctMax: urgencyMaxPct });
+            }
             for (const day of weekly) {
                 await prisma.workSchedule.upsert({
                     where: { dayOfWeek: day.dayOfWeek },

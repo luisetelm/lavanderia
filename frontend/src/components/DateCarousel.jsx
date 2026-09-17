@@ -82,11 +82,17 @@ export default function DateCarousel({fechaLimite, setFechaLimite, token, esAdmi
     const loadByDay = data?.loadByDay || {};
     const suggestedDate = data?.suggestedDate || null;
     const loadMax = Number(data?.loadMax) > 0 ? Number(data.loadMax) : LOAD_MAX_FALLBACK;
-    const urgencyPct = Number(data?.urgencyPct) || 0;
     const {setCalendarInfo, suplementoUrgencia, sinSuplemento, setSinSuplemento} = draft;
     useEffect(() => {
-        if (data) setCalendarInfo({suggestedDate, urgencyPct});
-    }, [data, suggestedDate, urgencyPct, setCalendarInfo]);
+        if (!data) return;
+        const daysAheadByDate = {};
+        (data.days || []).forEach(d => { daysAheadByDate[d.date] = d.daysAhead || 0; });
+        setCalendarInfo({
+            suggestedDate,
+            urgency: {pctPerDay: Number(data.urgency?.pctPerDay) || 0, maxPct: Number(data.urgency?.maxPct) || 0},
+            daysAheadByDate,
+        });
+    }, [data, suggestedDate, setCalendarInfo]);
     const weekEnd = addDays(weekStart, WEEKS * 7 - 1);
     const canGoBack = weekStart > mondayOf(todayStr);
 
@@ -332,21 +338,21 @@ export default function DateCarousel({fechaLimite, setFechaLimite, token, esAdmi
                     <span className="dc-urgent-text">
                         {suplementoUrgencia.granCliente ? (
                             <><strong>Entrega adelantada</strong>: antes de la fecha sugerida. Gran cliente con días de recogida y entrega pactados: sin suplemento.</>
-                        ) : suplementoUrgencia.pct > 0 ? (
+                        ) : suplementoUrgencia.pctPerDay > 0 ? (
                             <>
-                                <strong>Entrega adelantada</strong>: antes de la fecha sugerida
+                                <strong>Entrega adelantada</strong> {suplementoUrgencia.dias} día{suplementoUrgencia.dias !== 1 ? 's' : ''} laborable{suplementoUrgencia.dias !== 1 ? 's' : ''} respecto a la sugerida
                                 {suggestedDate && <> ({fmt(suggestedDate, {weekday: 'short', day: 'numeric', month: 'short'})})</>}.
                                 {suplementoUrgencia.aplicado
-                                    ? <> Se añade un suplemento de urgencia del {suplementoUrgencia.pct} %: <strong>{suplementoUrgencia.importe.toFixed(2)} €</strong>.</>
+                                    ? <> Suplemento de urgencia del {suplementoUrgencia.pct} % ({suplementoUrgencia.pctPerDay} % por día{suplementoUrgencia.maxPct > 0 ? `, máximo ${suplementoUrgencia.maxPct} %` : ''}): <strong>{suplementoUrgencia.importe.toFixed(2)} €</strong>.</>
                                     : suplementoUrgencia.importe > 0
                                         ? <> Suplemento del {suplementoUrgencia.pct} % ({suplementoUrgencia.importe.toFixed(2)} €) eximido.</>
-                                        : <> El suplemento se calculará sobre las prendas del pedido.</>}
+                                        : <> El suplemento ({suplementoUrgencia.pct} %) se calculará sobre las prendas del pedido.</>}
                             </>
                         ) : (
                             <><strong>Entrega adelantada</strong>: antes de la fecha sugerida. El suplemento de urgencia está desactivado.</>
                         )}
                     </span>
-                    {esAdmin && suplementoUrgencia.pct > 0 && !suplementoUrgencia.granCliente && (
+                    {esAdmin && suplementoUrgencia.pctPerDay > 0 && !suplementoUrgencia.granCliente && (
                         <label className="dc-urgent-waive" title="Sólo administración">
                             <input type="checkbox" className="uk-checkbox" checked={!!sinSuplemento}
                                    onChange={e => setSinSuplemento(e.target.checked)}/>

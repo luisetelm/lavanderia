@@ -6,17 +6,20 @@
 //
 // Entregas adelantadas: la fecha sugerida es el primer día abierto, a 2+ días
 // vista, que no esté lleno. Si el pedido se entrega antes de esa fecha, se
-// cobra un suplemento de urgencia (`urgency_surcharge_pct`, AppSettings) sobre
-// las líneas que computan en la carga, como una línea más del pedido con el
-// producto de SKU `SUPL-URGENCIA` (sql/027).
+// cobra un suplemento de urgencia por tramos: un % por cada día laborable que
+// se adelanta (`urgency_pct_per_day`, AppSettings) hasta un tope
+// (`urgency_pct_max`), sobre las líneas que computan en la carga, como una
+// línea más del pedido con el producto de SKU `SUPL-URGENCIA` (sql/027).
 
 import { getWorkCalendar, ymd, addDays } from './workCalendar.js';
 
 export const CARGA_MAX_POR_DEFECTO = 45;
-export const SUPLEMENTO_URGENCIA_POR_DEFECTO = 25; // %
+export const URGENCIA_PCT_POR_DIA_DEFECTO = 10; // % por día laborable adelantado
+export const URGENCIA_PCT_MAX_DEFECTO = 40;     // tope
 export const SKU_SUPLEMENTO_URGENCIA = 'SUPL-URGENCIA';
 const CLAVE_CARGA_MAX = 'daily_load_max';
-const CLAVE_SUPLEMENTO = 'urgency_surcharge_pct';
+const CLAVE_URGENCIA_POR_DIA = 'urgency_pct_per_day';
+const CLAVE_URGENCIA_MAX = 'urgency_pct_max';
 
 // Margen mínimo y horizonte de búsqueda de la fecha sugerida, en días.
 export const MARGEN_MINIMO_DIAS = 2;
@@ -51,14 +54,45 @@ export async function guardarCargaMaxima(prisma, valor) {
     return guardarAjuste(prisma, CLAVE_CARGA_MAX, Math.max(1, parseFloat(valor) || CARGA_MAX_POR_DEFECTO));
 }
 
-/** Porcentaje del suplemento por adelantar la entrega (0 = desactivado). */
+/**
+ * Tramos del suplemento por adelantar la entrega.
+ * @returns {Promise<{pctPorDia: number, pctMax: number}>} (pctPorDia = 0 desactiva el recargo)
+ */
 export async function leerSuplementoUrgencia(prisma) {
-    return leerAjuste(prisma, CLAVE_SUPLEMENTO, SUPLEMENTO_URGENCIA_POR_DEFECTO);
+    const [pctPorDia, pctMax] = await Promise.all([
+        leerAjuste(prisma, CLAVE_URGENCIA_POR_DIA, URGENCIA_PCT_POR_DIA_DEFECTO),
+        leerAjuste(prisma, CLAVE_URGENCIA_MAX, URGENCIA_PCT_MAX_DEFECTO),
+    ]);
+    return { pctPorDia, pctMax };
 }
 
-export async function guardarSuplementoUrgencia(prisma, valor) {
-    const n = parseFloat(valor);
-    return guardarAjuste(prisma, CLAVE_SUPLEMENTO, Number.isFinite(n) ? Math.min(500, Math.max(0, n)) : SUPLEMENTO_URGENCIA_POR_DEFECTO);
+export async function guardarSuplementoUrgencia(prisma, { pctPorDia, pctMax } = {}) {
+    const acotar = (v) => Math.min(500, Math.max(0, v));
+    const d = parseFloat(pctPorDia);
+    const m = parseFloat(pctMax);
+    if (Number.isFinite(d)) await guardarAjuste(prisma, CLAVE_URGENCIA_POR_DIA, acotar(d));
+    if (Number.isFinite(m)) await guardarAjuste(prisma, CLAVE_URGENCIA_MAX, acotar(m));
+    return leerSuplementoUrgencia(prisma);
+}
+
+/** % de suplemento que corresponde a adelantar `dias` días laborables. */
+export function porcentajeUrgencia(dias, { pctPorDia, pctMax }) {
+    if (!(dias > 0) || !(pctPorDia > 0)) return 0;
+    const pct = pctPorDia * dias;
+    return pctMax > 0 ? Math.min(pct, pctMax) : pct;
+}
+
+/** Días laborables que se adelanta una entrega: abiertos en (elegida, sugerida]. */
+export function diasLaborablesAdelantados(calendar, elegida, sugerida) {
+    if (!elegida || !sugerida || elegida >= sugerida) return 0;
+    let n = 0;
+    for (let k = addDays(elegida, 1); k <= sugerida; k = addDays(k, 1)) {
+        // Un día que no está en el calendario se cuenta si es de lunes a viernes.
+        const c = calendar[k];
+        const laborable = c ? !!c.isWorking : [1, 2, 3, 4, 5].includes(new Date(`${k}T12:00:00Z`).getUTCDay());
+        if (laborable) n++;
+    }
+    return n;
 }
 
 // Carga ponderada de un pedido: ignora productos que no computan.
@@ -171,19 +205,23 @@ export async function pedidosPorDia(prisma, from, to) {
     return byDay;
 }
 
-/** Fecha sugerida hoy, calculada desde cero (para validar un pedido al crearlo). */
+/**
+ * Fecha sugerida hoy, calculada desde cero (para validar un pedido al crearlo).
+ * Devuelve también el calendario (desde hoy) para contar los días que se adelanta.
+ * @returns {Promise<{sugerida: string|null, calendar: Object}>}
+ */
 export async function calcularFechaSugerida(prisma) {
     const todayStr = ymd(new Date());
     const from = addDays(todayStr, MARGEN_MINIMO_DIAS);
     const to = addDays(todayStr, HORIZONTE_DIAS);
     const [calendar, byDay, loadMax] = await Promise.all([
-        getWorkCalendar(prisma, from, to),
+        getWorkCalendar(prisma, todayStr, to),
         pedidosPorDia(prisma, from, to),
         leerCargaMaxima(prisma),
     ]);
     const reservas = await reservasPorDia(prisma, calendar, byDay);
     const dayLoad = (k) => cargaDelDia(byDay, reservas, k).total;
-    return sugerirFecha({ calendar, dayLoad, todayStr, loadMax });
+    return { sugerida: sugerirFecha({ calendar, dayLoad, todayStr, loadMax }), calendar };
 }
 
 /** Producto con el que se factura el suplemento de urgencia, o null si no está creado (sql/027). */

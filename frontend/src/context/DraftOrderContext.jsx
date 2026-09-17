@@ -60,7 +60,8 @@ export function DraftOrderProvider({ children, token }) {
     const [bannerHeight, setBannerHeight] = useState(0);
     // Lo que el calendario de entregas sabe hoy: fecha sugerida y % de suplemento
     // por adelantarla. No se persiste: lo vuelve a mandar el servidor al cargar.
-    const [calendarInfo, setCalendarInfo] = useState({ suggestedDate: null, urgencyPct: 0 });
+    // urgency: { pctPerDay, maxPct }; daysAheadByDate: días laborables que adelanta cada fecha cargada
+    const [calendarInfo, setCalendarInfo] = useState({ suggestedDate: null, urgency: { pctPerDay: 0, maxPct: 0 }, daysAheadByDate: {} });
 
     // Persistir en sessionStorage (excluyendo fotos dataUrl — demasiado grandes)
     useEffect(() => {
@@ -308,16 +309,33 @@ export function DraftOrderProvider({ children, token }) {
     // % sobre las prendas que computan en la carga (lo externo no se acelera).
     // Es sólo una previsión; el importe que vale lo calcula el backend al crear
     // el pedido (POST /api/orders), con la misma regla.
+    // Por tramos: % por cada día laborable adelantado, con tope. Los días los
+    // cuenta el servidor para las fechas cargadas en el calendario; para otra
+    // fecha se aproxima contando de lunes a viernes.
     // Los grandes clientes tienen días fijos de recogida y entrega: nunca lo pagan.
     const suplementoUrgencia = useMemo(() => {
-        const { suggestedDate, urgencyPct } = calendarInfo;
+        const { suggestedDate, urgency, daysAheadByDate } = calendarInfo;
+        const pctPerDay = Number(urgency?.pctPerDay) || 0;
+        const maxPct = Number(urgency?.maxPct) || 0;
         const adelantada = !!(state.fechaLimite && suggestedDate && state.fechaLimite < suggestedDate);
         const granCliente = !!state.selectedUser?.isbigclient;
-        if (!adelantada || !(urgencyPct > 0)) return { adelantada, granCliente, pct: urgencyPct || 0, importe: 0, aplicado: false };
+        const vacio = { adelantada, granCliente, dias: 0, pct: 0, pctPerDay, maxPct, importe: 0, aplicado: false };
+        if (!adelantada || !(pctPerDay > 0)) return vacio;
+        let dias = daysAheadByDate?.[state.fechaLimite];
+        if (dias == null) {
+            dias = 0;
+            const d = new Date(`${state.fechaLimite}T12:00:00Z`);
+            const fin = new Date(`${suggestedDate}T12:00:00Z`);
+            for (d.setUTCDate(d.getUTCDate() + 1); d <= fin; d.setUTCDate(d.getUTCDate() + 1)) {
+                if (d.getUTCDay() >= 1 && d.getUTCDay() <= 5) dias++;
+            }
+        }
+        const pct = maxPct > 0 ? Math.min(pctPerDay * dias, maxPct) : pctPerDay * dias;
+        if (!(pct > 0)) return vacio;
         const base = (state.cart || []).reduce((sum, item) =>
             sum + (item.countsForLoad === false ? 0 : getPriceForItem(item) * item.quantity), 0);
-        const importe = Math.round(base * urgencyPct) / 100;
-        return { adelantada, granCliente, pct: urgencyPct, importe, aplicado: importe > 0 && !granCliente && !state.sinSuplemento };
+        const importe = Math.round(base * pct) / 100;
+        return { adelantada, granCliente, dias, pct, pctPerDay, maxPct, importe, aplicado: importe > 0 && !granCliente && !state.sinSuplemento };
     }, [calendarInfo, state.fechaLimite, state.cart, state.sinSuplemento, state.selectedUser, getPriceForItem]);
 
     const totalConSuplemento = useMemo(() =>

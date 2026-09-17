@@ -15,8 +15,9 @@ export default function WorkSchedule({ token }) {
     // Tope de carga diaria (camisas equivalentes) y percentiles del último año
     const [loadMax, setLoadMax] = useState('');
     const [loadStats, setLoadStats] = useState(null);
-    // % de suplemento por entregar antes de la fecha sugerida (0 = sin recargo)
-    const [urgencyPct, setUrgencyPct] = useState('');
+    // Suplemento por entregar antes de la fecha sugerida: % por día laborable adelantado y tope (0 por día = sin recargo)
+    const [urgencyPctPerDay, setUrgencyPctPerDay] = useState('');
+    const [urgencyMaxPct, setUrgencyMaxPct] = useState('');
 
     // Nuevo festivo
     const [newException, setNewException] = useState({ date: '', label: '', isWorking: false, capacityMin: 0 });
@@ -28,7 +29,8 @@ export default function WorkSchedule({ token }) {
             setExceptions(result.exceptions || []);
             setLoadMax(result.loadMax ?? '');
             setLoadStats(result.loadStats || null);
-            setUrgencyPct(result.urgencyPct ?? '');
+            setUrgencyPctPerDay(result.urgencyPctPerDay ?? '');
+            setUrgencyMaxPct(result.urgencyMaxPct ?? '');
         } catch (err) {
             console.error('Error cargando calendario:', err);
         } finally {
@@ -41,10 +43,12 @@ export default function WorkSchedule({ token }) {
     const handleSaveWeekly = async () => {
         setSaving(true);
         try {
-            const pct = parseFloat(urgencyPct);
+            const porDia = parseFloat(urgencyPctPerDay);
+            const tope = parseFloat(urgencyMaxPct);
             const result = await updateWorkSchedule(token, weekly, {
                 loadMax: parseFloat(loadMax) || undefined,
-                urgencyPct: Number.isFinite(pct) ? pct : undefined,
+                urgencyPctPerDay: Number.isFinite(porDia) ? porDia : undefined,
+                urgencyMaxPct: Number.isFinite(tope) ? tope : undefined,
             });
             setWeekly(result);
             UIkit.notification({ message: 'Horario guardado', status: 'success', pos: 'top-right', timeout: 2000 });
@@ -189,21 +193,40 @@ export default function WorkSchedule({ token }) {
                 {/* Suplemento por adelantar la entrega respecto a la fecha sugerida */}
                 <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid #e2e8f0' }}>
                     <label className="uk-form-label" style={{ fontWeight: 600 }}>Suplemento por entrega adelantada</label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4 }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10, marginTop: 4 }}>
                         <input
                             type="number"
                             className="uk-input uk-form-small"
-                            style={{ width: 90 }}
+                            style={{ width: 80 }}
                             min="0"
                             max="500"
                             step="1"
-                            value={urgencyPct}
-                            onChange={e => setUrgencyPct(e.target.value)}
+                            value={urgencyPctPerDay}
+                            onChange={e => setUrgencyPctPerDay(e.target.value)}
                         />
-                        <span style={{ fontSize: '0.8rem', color: '#64748b' }}>% sobre las prendas del pedido cuando la entrega es anterior a la fecha sugerida (0 = sin recargo)</span>
+                        <span style={{ fontSize: '0.8rem', color: '#64748b' }}>% por cada día laborable que se adelanta la entrega respecto a la sugerida (0 = sin recargo), hasta un tope de</span>
+                        <input
+                            type="number"
+                            className="uk-input uk-form-small"
+                            style={{ width: 80 }}
+                            min="0"
+                            max="500"
+                            step="1"
+                            value={urgencyMaxPct}
+                            onChange={e => setUrgencyMaxPct(e.target.value)}
+                        />
+                        <span style={{ fontSize: '0.8rem', color: '#64748b' }}>%</span>
                     </div>
                     <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: 6 }}>
-                        Se añade al pedido como la línea «Suplemento urgencia», así sale en el ticket y en la factura.
+                        {(() => {
+                            const d = parseFloat(urgencyPctPerDay) || 0;
+                            const m = parseFloat(urgencyMaxPct) || 0;
+                            const pct = (n) => (m > 0 ? Math.min(d * n, m) : d * n);
+                            return d > 0
+                                ? <>Ejemplo: 1 día = {pct(1)} %, 2 días = {pct(2)} %, 3 días = {pct(3)} %, 5 días = {pct(5)} %. </>
+                                : <>Recargo desactivado. </>;
+                        })()}
+                        Se aplica sobre las prendas del pedido y se añade como la línea «Suplemento urgencia», así sale en el ticket y en la factura.
                         No se aplica a los servicios externos (peletero, alfombras) ni a los grandes clientes (tienen días de recogida y entrega pactados), y administración puede eximirlo en el TPV.
                     </div>
                 </div>

@@ -253,7 +253,7 @@ export default function DraftOrderBanner({ token, worker }) {
                             {total.toFixed(2)} €
                         </span>
                         {suplementoUrgencia.aplicado && (
-                            <span title={`Entrega anterior a la fecha sugerida: +${suplementoUrgencia.pct}% de suplemento de urgencia`} style={{
+                            <span title={`Entrega adelantada ${suplementoUrgencia.dias} día(s) laborable(s): +${suplementoUrgencia.pct}% de suplemento de urgencia`} style={{
                                 background: '#f59e0b', borderRadius: 6, padding: '1px 7px',
                                 fontSize: '0.68rem', fontWeight: 600,
                             }}>

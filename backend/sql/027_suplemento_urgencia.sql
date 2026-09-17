@@ -23,8 +23,11 @@ VALUES ('Suplemento urgencia', 'SUPL-URGENCIA', 'service', 0,
         now(), now(), FALSE, 0, FALSE, 1, now())
 ON CONFLICT (sku) DO NOTHING;
 
--- Porcentaje del suplemento (0 desactiva el recargo). Se edita en Horario laboral.
-INSERT INTO "AppSettings" (key, value) VALUES ('urgency_surcharge_pct', '25')
+-- Tramos del suplemento: % por cada día laborable que se adelanta la entrega
+-- respecto a la sugerida, con tope (1 día = 10 %, 3 días = 30 %, 4 o más = 40 %).
+-- 0 en el % por día desactiva el recargo. Se editan en Horario laboral.
+INSERT INTO "AppSettings" (key, value) VALUES ('urgency_pct_per_day', '10'), ('urgency_pct_max', '40')
 ON CONFLICT (key) DO NOTHING;
+DELETE FROM "AppSettings" WHERE key = 'urgency_surcharge_pct'; -- versión plana anterior, si llegó a crearse
 
 COMMIT;
