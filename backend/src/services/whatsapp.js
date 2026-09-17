@@ -121,10 +121,13 @@ export async function uploadMediaToWhatsApp(filePath, mimeType) {
     const url = `${getBaseUrl()}/media`;
     const fileName = path.basename(filePath);
 
-    // WhatsApp Cloud API expects multipart/form-data
-    const { FormData } = await import('undici');
-    // Use Node 18+ native fetch with FormData from undici or built-in
-    const formData = new (globalThis.FormData || FormData)();
+    // WhatsApp Cloud API expects multipart/form-data. FormData, Blob y fetch
+    // son globales desde Node 18; `undici` no es dependencia del proyecto y
+    // el import dinámico tumbaba el envío de adjuntos en producción.
+    if (typeof globalThis.FormData !== 'function' || typeof globalThis.Blob !== 'function') {
+        throw new Error('Este Node no tiene FormData/Blob nativos (hace falta Node 18 o superior)');
+    }
+    const formData = new FormData();
 
     const fileBuffer = fs.readFileSync(filePath);
     const blob = new Blob([fileBuffer], { type: mimeType });
