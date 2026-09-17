@@ -278,11 +278,11 @@ export default function UserForm({ initial = {}, onSave, token, onCancel, logged
         <div style={sectionStyle}>
           <h5 style={sectionTitle}>Recogida y entrega</h5>
           <div style={{ fontSize: '0.78rem', color: '#64748b', marginBottom: 10, maxWidth: 680 }}>
-            Los días de entrega marcados, el calendario del TPV reserva la carga habitual de este cliente aunque su pedido aún
-            no se haya creado, y la descuenta cuando entra. Así el día no se llena de particulares antes de recoger su ropa.
+            El calendario del TPV reparte la carga semanal de este cliente entre sus días de entrega y la reserva aunque su pedido
+            aún no se haya creado; la descuenta cuando entra. Así el día no se llena de particulares antes de recoger su ropa.
             {perfil && perfil.entregas > 0 && (
-              <> Según los últimos {perfil.meses} meses ({perfil.entregas} entregas): entrega los {diasTexto(perfil.porDiaEntrega)};
-                recoge los {diasTexto(perfil.porDiaRecogida)}; carga habitual <strong>{perfil.cargaMediana}</strong> por entrega.</>
+              <> Según los últimos {perfil.meses} meses ({perfil.entregas} entregas en {perfil.semanas} semanas): entrega los {diasTexto(perfil.porDiaEntrega)};
+                recoge los {diasTexto(perfil.porDiaRecogida)}; carga semanal habitual <strong>{perfil.cargaSemanalMediana}</strong>.</>
             )}
           </div>
           <div className="uk-grid-small" uk-grid="true">
@@ -304,16 +304,21 @@ export default function UserForm({ initial = {}, onSave, token, onCancel, logged
               </div>
             ))}
             <div className="uk-width-1-2@m">
-              <label className="uk-form-label">Carga habitual por entrega</label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <label className="uk-form-label">Carga semanal habitual</label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <input className="uk-input" type="number" min="0" step="0.5" style={{ width: 110 }}
                   value={form.expectedLoad}
                   onChange={e => set('expectedLoad', e.target.value)} />
-                <span style={{ fontSize: '0.78rem', color: '#64748b' }}>camisas equivalentes (0 = sin reserva)</span>
-                {perfil?.cargaMediana > 0 && Number(form.expectedLoad) !== perfil.cargaMediana && (
+                <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                  camisas equivalentes a la semana (0 = sin reserva)
+                  {Number(form.expectedLoad) > 0 && form.deliveryDays.length > 0 && (
+                    <> · {(Number(form.expectedLoad) / form.deliveryDays.length).toLocaleString('es-ES', { maximumFractionDigits: 1 })} por día de entrega</>
+                  )}
+                </span>
+                {perfil?.cargaSemanalMediana > 0 && Number(form.expectedLoad) !== perfil.cargaSemanalMediana && (
                   <button type="button" className="uk-button uk-button-text" style={{ fontSize: '0.75rem' }}
-                    onClick={() => set('expectedLoad', perfil.cargaMediana)}>
-                    Usar {perfil.cargaMediana}
+                    onClick={() => set('expectedLoad', perfil.cargaSemanalMediana)}>
+                    Usar {perfil.cargaSemanalMediana}
                   </button>
                 )}
               </div>

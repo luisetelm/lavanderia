@@ -109,9 +109,11 @@ export function cargaPonderada(lines) {
  * Reservas de carga para grandes clientes con días fijos de entrega (sql/028).
  * Su pedido no existe hasta que se recoge (el lunes para entregar el
  * miércoles), pero el calendario ya debe contar esa carga para no llenar el
- * miércoles de particulares. Cada cliente reserva `expectedLoad` en sus
- * `deliveryDays`, y la reserva se consume con sus pedidos reales de ese día:
- *   reservada = máx(0, expectedLoad − carga real del cliente ese día)
+ * miércoles de particulares. `expectedLoad` es la carga SEMANAL habitual del
+ * cliente; se reparte a partes iguales entre sus `deliveryDays` (si pasa de
+ * dos entregas a una, la semana no cambia), y la reserva de cada día se
+ * consume con sus pedidos reales de ese día:
+ *   reservada = máx(0, expectedLoad / nº días de entrega − carga real del cliente ese día)
  * @returns {Promise<Object<string, {reservada: number, clientes: Array<{id:number, nombre:string, reservada:number}>}>>}
  */
 export async function reservasPorDia(prisma, calendar, byDay) {
@@ -143,7 +145,7 @@ export async function reservasPorDia(prisma, calendar, byDay) {
             .map(c => ({
                 id: c.id,
                 nombre: c.denominacionsocial || `${c.firstName || ''} ${c.lastName || ''}`.trim(),
-                reservada: Math.max(0, Number(c.expectedLoad) - (realPorCliente[c.id] || 0)),
+                reservada: Math.max(0, Number(c.expectedLoad) / c.deliveryDays.length - (realPorCliente[c.id] || 0)),
             }))
             .filter(c => c.reservada > 0);
         if (detalle.length) {

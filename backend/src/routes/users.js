@@ -197,9 +197,10 @@ export default async function (fastify, opts) {
     });
 
     // ─── GET /api/users/:id/load-profile ── Cómo entrega este cliente ──
-    // Entregas de los últimos meses por día de la semana y carga (camisas
-    // equivalentes) por entrega, para rellenar sus días fijos y su carga
-    // habitual en la ficha (sql/028).
+    // Entregas de los últimos meses por día de la semana y carga SEMANAL
+    // (camisas equivalentes, mediana de las semanas con entrega), para
+    // rellenar sus días fijos y su carga habitual en la ficha (sql/028).
+    // La semana es la unidad estable: si pasa de dos entregas a una, no cambia.
     fastify.get('/:id/load-profile', async (req, reply) => {
         const id = Number(req.params.id);
         const meses = Math.min(Math.max(parseInt(req.query.meses) || 3, 1), 12);
@@ -207,6 +208,7 @@ export default async function (fastify, opts) {
             const filas = await prisma.$queryRaw`
                 WITH e AS (
                     SELECT (o."fechaLimite" AT TIME ZONE 'Europe/Madrid')::date AS dia,
+                           date_trunc('week', o."fechaLimite" AT TIME ZONE 'Europe/Madrid')::date AS semana,
                            EXTRACT(dow FROM o."fechaLimite" AT TIME ZONE 'Europe/Madrid')::int AS dow_entrega,
                            EXTRACT(dow FROM o."createdAt" AT TIME ZONE 'Europe/Madrid')::int AS dow_recogida,
                            SUM(l.quantity * CASE WHEN p.counts_for_load THEN p.workload_weight ELSE 0 END) AS carga
@@ -216,24 +218,25 @@ export default async function (fastify, opts) {
                     WHERE o."clientId" = ${id}
                       AND o."fechaLimite" >= now() - (${meses} || ' months')::interval
                       AND o.status <> 'cancelled' AND l."voidedAt" IS NULL
-                    GROUP BY 1, 2, 3
+                    GROUP BY 1, 2, 3, 4
                 )
-                SELECT dow_entrega, dow_recogida, carga FROM e`;
+                SELECT semana, dow_entrega, dow_recogida, carga FROM e`;
             const entregas = filas.length;
             const porDiaEntrega = {};
             const porDiaRecogida = {};
-            const cargas = [];
+            const porSemana = {};
             for (const f of filas) {
                 porDiaEntrega[f.dow_entrega] = (porDiaEntrega[f.dow_entrega] || 0) + 1;
                 porDiaRecogida[f.dow_recogida] = (porDiaRecogida[f.dow_recogida] || 0) + 1;
-                cargas.push(Number(f.carga) || 0);
+                const k = String(f.semana);
+                porSemana[k] = (porSemana[k] || 0) + (Number(f.carga) || 0);
             }
-            cargas.sort((a, b) => a - b);
-            const mediana = cargas.length ? cargas[Math.floor((cargas.length - 1) / 2)] : 0;
+            const semanales = Object.values(porSemana).sort((a, b) => a - b);
+            const mediana = semanales.length ? semanales[Math.floor((semanales.length - 1) / 2)] : 0;
             return reply.send({
-                meses, entregas,
+                meses, entregas, semanas: semanales.length,
                 porDiaEntrega, porDiaRecogida,
-                cargaMediana: Math.round(mediana * 10) / 10,
+                cargaSemanalMediana: Math.round(mediana * 10) / 10,
             });
         } catch (err) {
             console.error('Error en GET /users/:id/load-profile:', err);
