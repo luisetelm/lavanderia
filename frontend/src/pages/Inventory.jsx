@@ -56,6 +56,14 @@ function formatWeight(val) {
     return `${Number(val)} kg`;
 }
 
+// Carga de trabajo en camisas equivalentes (camisa = 1, servilleta = 0,05)
+function formatCarga(product) {
+    if (product.countsForLoad === false) return <span style={{ color: '#94a3b8', fontSize: '0.75rem' }}>No computa</span>;
+    const n = Number(product.workloadWeight);
+    if (Number.isNaN(n)) return '-';
+    return n.toLocaleString('es-ES', { maximumFractionDigits: 2 });
+}
+
 const fechaCorta = (s) => (s ? s.split('-').reverse().join('/') : '');
 const diasDesde = (s, hoy) => (Date.parse(`${hoy}T00:00:00Z`) - Date.parse(`${s}T00:00:00Z`)) / 86400000;
 const botonIcono = { padding: '2px 8px' };
@@ -134,6 +142,7 @@ export default function Inventory({ token, user }) {
         const valor = (p) => {
             if (key === 'unidades30') return actividad(p)?.unidades30 || 0;
             if (key === 'ultimoPedido') return actividad(p)?.ultimoPedido || '';
+            if (key === 'workloadWeight') return p.countsForLoad === false ? -1 : Number(p.workloadWeight) || 0;
             if (['basePrice', 'bigClientPrice', 'weight'].includes(key)) return Number(p[key]) || 0;
             return (p[key] ?? '').toString().toLowerCase();
         };
@@ -210,6 +219,8 @@ export default function Inventory({ token, user }) {
             bigClientPrice: product.bigClientPrice ?? 0,
             weight: product.weight ?? 0,
             itineraryId: product.itineraryId || '',
+            workloadWeight: product.workloadWeight ?? 1,
+            countsForLoad: product.countsForLoad !== false,
         });
     };
 
@@ -227,6 +238,8 @@ export default function Inventory({ token, user }) {
                 bigClientPrice: parseFloat(inlineValues.bigClientPrice) || 0,
                 weight: parseFloat(inlineValues.weight) || 0,
                 itineraryId: inlineValues.itineraryId ? Number(inlineValues.itineraryId) : null,
+                workloadWeight: Math.max(0, parseFloat(inlineValues.workloadWeight) || 0),
+                countsForLoad: !!inlineValues.countsForLoad,
             });
             setInlineEditId(null);
             setInlineValues({});
@@ -255,7 +268,7 @@ export default function Inventory({ token, user }) {
         const filas = seleccionados.length ? seleccionados : lista;
         const aoa = [[
             'Nombre', 'SKU', 'Tipo', 'Categoría', 'Itinerario', 'Precio (IVA incl.)', 'Precio sin IVA',
-            'Tarifa gran cliente (IVA incl.)', 'Peso (kg)', 'Uds. últimos 30 días', 'Último pedido', 'Estado',
+            'Tarifa gran cliente (IVA incl.)', 'Peso (kg)', 'Carga de trabajo', 'Uds. últimos 30 días', 'Último pedido', 'Estado',
         ]];
         for (const p of filas) {
             const a = resumen?.productos?.[p.id];
@@ -263,6 +276,7 @@ export default function Inventory({ token, user }) {
             aoa.push([
                 p.name, p.sku || '', p.type === 'service' ? 'Servicio' : 'Ítem', p.category?.name || '', p.itinerary?.name || '',
                 precio, Number((precio / (1 + IVA / 100)).toFixed(2)), Number(p.bigClientPrice) || 0, Number(p.weight) || 0,
+                p.countsForLoad === false ? 'No computa' : Number(p.workloadWeight) || 0,
                 a?.unidades30 ?? 0, fechaCorta(a?.ultimoPedido), p.archivedAt ? 'Archivado' : 'Activo',
             ]);
         }
@@ -443,6 +457,7 @@ export default function Inventory({ token, user }) {
                                 {cabecera('bigClientPrice', 'Tarifa G. Clientes')}
                                 <th>Itinerario</th>
                                 {cabecera('weight', 'Peso')}
+                                {cabecera('workloadWeight', 'Carga')}
                                 {cabecera('unidades30', 'Últimos 30 días')}
                                 {cabecera('ultimoPedido', 'Último pedido')}
                                 <th>Acciones</th>
@@ -520,6 +535,23 @@ export default function Inventory({ token, user }) {
                                             {editando ? campoRapido(product, 'weight', { type: 'number', step: '0.01', style: { width: 65 } }) : (
                                                 <span style={{ cursor: esAdmin ? 'pointer' : undefined }} onDoubleClick={() => startInlineEdit(product)}>
                                                     {formatWeight(product.weight)}
+                                                </span>
+                                            )}
+                                        </td>
+                                        <td style={{ whiteSpace: 'nowrap' }}>
+                                            {editando ? (
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                    {campoRapido(product, 'workloadWeight', { type: 'number', min: '0', step: '0.05', style: { width: 70 }, disabled: !inlineValues.countsForLoad })}
+                                                    <label title="Computa en la carga del día" style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: '0.72rem', color: '#64748b', cursor: 'pointer' }}>
+                                                        <input className="uk-checkbox" type="checkbox" checked={!!inlineValues.countsForLoad}
+                                                               onChange={e => setInlineValues(v => ({...v, countsForLoad: e.target.checked}))}/>
+                                                        computa
+                                                    </label>
+                                                </div>
+                                            ) : (
+                                                <span style={{ cursor: esAdmin ? 'pointer' : undefined, fontVariantNumeric: 'tabular-nums' }}
+                                                      title="Carga de trabajo en camisas equivalentes (camisa = 1)" onDoubleClick={() => startInlineEdit(product)}>
+                                                    {formatCarga(product)}
                                                 </span>
                                             )}
                                         </td>

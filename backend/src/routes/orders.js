@@ -6,6 +6,7 @@ import { sendCollectedNotification, sendReadyNotification } from '../services/no
 import { facturaDe } from '../utils/facturaDe.js';
 import { calcularLinea, preciosPactadosVigentes } from '../utils/precioLinea.js';
 import { getWorkCalendar, getDayInfo, nextWorkingDay, ymd, addDays, mondayOf } from '../utils/workCalendar.js';
+import { cargaPonderada, leerCargaMaxima } from '../utils/cargaTrabajo.js';
 import jwt from 'jsonwebtoken';
 import fs from 'fs';
 import path from 'path';
@@ -1638,22 +1639,16 @@ export default async function (fastify, opts) {
                 (byDay[k] ||= []).push(o);
             });
 
-            // Carga ponderada: ignora productos que no computan y pondera por workload_weight.
-            const weightedLoad = (order) => (order.lines || []).reduce((s, l) => {
-                const p = l.product || {};
-                if (p.countsForLoad === false) return s;
-                const w = (p.workloadWeight != null) ? Number(p.workloadWeight) : 1;
-                return s + (l.quantity || 0) * w;
-            }, 0);
-            const dayLoad = (k) => (byDay[k] || []).reduce((s, o) => s + weightedLoad(o), 0);
+            const dayLoad = (k) => (byDay[k] || []).reduce((s, o) => s + cargaPonderada(o.lines), 0);
+            const loadMax = await leerCargaMaxima(prisma);
 
-            // Fecha sugerida: primer día abierto, a 2+ días vista, con carga < 8.
+            // Fecha sugerida: primer día abierto, a 2+ días vista, que no esté lleno.
             let suggestedDate = null;
             let firstOpen = null;
             for (let k = suggestFrom; k <= suggestTo; k = addDays(k, 1)) {
                 if (!calendar[k]?.isWorking) continue;
                 firstOpen ||= k;
-                if (dayLoad(k) < 8) { suggestedDate = k; break; }
+                if (dayLoad(k) < loadMax) { suggestedDate = k; break; }
             }
             suggestedDate ||= firstOpen;
 
@@ -1674,7 +1669,7 @@ export default async function (fastify, opts) {
                 loadByDay[k] = byDay[k] || [];
             }
 
-            return { today: todayStr, start, end, days, loadByDay, suggestedDate };
+            return { today: todayStr, start, end, days, loadByDay, suggestedDate, loadMax };
         } catch (error) {
             console.error('Error in delivery-dates endpoint:', error);
             reply.status(500).send({ error: 'Error interno' });

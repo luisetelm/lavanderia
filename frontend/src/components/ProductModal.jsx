@@ -276,13 +276,13 @@ export default function ProductModal({ onSave, initial, token, onClose, isOpen, 
                                     className="uk-input"
                                     type="number"
                                     min="0"
-                                    step="0.5"
+                                    step="0.05"
                                     value={form.workloadWeight}
                                     onChange={e => setForm(f => ({...f, workloadWeight: e.target.value}))}
                                     disabled={!form.countsForLoad}
                                 />
                                 <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: 4 }}>
-                                    Peso de trabajo para planificar el día. Ej.: traje = 3, camisa = 1.
+                                    Peso de trabajo para planificar el día, en camisas equivalentes. Ej.: camisa = 1, traje = 2,5, servilleta = 0,05.
                                 </div>
                             </div>
                         </div>

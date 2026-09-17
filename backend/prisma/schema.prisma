@@ -27,13 +27,13 @@ model Product {
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
   weight         Decimal?         @default(0) @db.Decimal(12, 2)
-  bigClientPrice Decimal?         @default(0) @db.Decimal(12, 2)
+  bigClientPrice Decimal?         @default(0) @db.Decimal(12, 3) // 3 decimales: 1,815 = 1,50 € + IVA (sql/023)
   serviceOptions Json?            @default("{\"dryWash\": false, \"ironing\": false, \"wetWash\": false, \"externalService\": false}")
   itineraryId    Int?             @map("itinerary_id")
   labelCount     Int              @default(1) @map("label_count") // nº de etiquetas de ropa por unidad (traje 2 piezas = 2)
   printWashLabel Boolean          @default(true) @map("print_wash_label") // si imprime etiquetas de lavado (no para KG ropa blanca, etc.)
   countsForLoad  Boolean          @default(true) @map("counts_for_load") // si computa en la carga de trabajo del día
-  workloadWeight Float            @default(1) @map("workload_weight")    // factor de carga (traje=3, camisa=1, kg ropa blanca=0...)
+  workloadWeight Float            @default(1) @map("workload_weight")    // carga en camisas equivalentes (camisa=1, traje=2,5, servilleta=0,05); tope diario en AppSettings.daily_load_max (sql/025)
   archivedAt     DateTime?        @map("archived_at") @db.Timestamptz(6) // archivado: fuera del TPV, conserva ficha y pedidos (sql/024)
   orderLines     OrderLine[]
   agreedPrices   ClientProductPrice[]

@@ -33,10 +33,10 @@ const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 const fmtLoad = (n) => (Math.round(n * 10) / 10).toString().replace('.', ',');
 
 const WEEKDAYS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
-const LOAD_MAX = 8; // a partir de aquí el día se considera lleno
+const LOAD_MAX_FALLBACK = 50; // el tope real lo manda la API (Administración > Horario laboral)
 const WEEKS = 2;
 
-const loadLevel = (load) => (load >= LOAD_MAX ? 'high' : load >= LOAD_MAX / 2 ? 'mid' : 'low');
+const loadLevel = (load, max) => (load >= max ? 'high' : load >= max / 2 ? 'mid' : 'low');
 
 export default function DateCarousel({fechaLimite, setFechaLimite, token}) {
     const todayStr = ymd(new Date());
@@ -77,6 +77,7 @@ export default function DateCarousel({fechaLimite, setFechaLimite, token}) {
     const days = data?.days || [];
     const loadByDay = data?.loadByDay || {};
     const suggestedDate = data?.suggestedDate || null;
+    const loadMax = Number(data?.loadMax) > 0 ? Number(data.loadMax) : LOAD_MAX_FALLBACK;
     const weekEnd = addDays(weekStart, WEEKS * 7 - 1);
     const canGoBack = weekStart > mondayOf(todayStr);
 
@@ -174,7 +175,7 @@ export default function DateCarousel({fechaLimite, setFechaLimite, token}) {
                     const isSuggested = suggestedDate === day.date;
                     const closed = !day.isWorking;
                     const disabled = day.isPast || closed;
-                    const level = loadLevel(day.load);
+                    const level = loadLevel(day.load, loadMax);
                     const showMonth = day.date.endsWith('-01') || day.date === days[0].date;
                     const cls = [
                         'dc-day',
@@ -216,7 +217,7 @@ export default function DateCarousel({fechaLimite, setFechaLimite, token}) {
                                     <span className="dc-meta">&nbsp;</span>
                                 ) : (
                                     <>
-                                        <span className="dc-bar"><i style={{width: `${Math.min(day.load / LOAD_MAX, 1) * 100}%`}}/></span>
+                                        <span className="dc-bar"><i style={{width: `${Math.min(day.load / loadMax, 1) * 100}%`}}/></span>
                                         <span className="dc-meta">
                                             {orders.length > 0 ? `${orders.length} ped · ${fmtLoad(day.load)}` : 'libre'}
                                         </span>

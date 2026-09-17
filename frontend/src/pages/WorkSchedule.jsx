@@ -5,12 +5,16 @@ import UIkit from 'uikit';
 import PageToolbar from '../components/PageToolbar.jsx';
 
 const DAY_NAMES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+const fmtCarga = (n) => (n == null ? '—' : Number(n).toLocaleString('es-ES', { maximumFractionDigits: 1 }));
 
 export default function WorkSchedule({ token }) {
     const [weekly, setWeekly] = useState([]);
     const [exceptions, setExceptions] = useState([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    // Tope de carga diaria (camisas equivalentes) y percentiles del último año
+    const [loadMax, setLoadMax] = useState('');
+    const [loadStats, setLoadStats] = useState(null);
 
     // Nuevo festivo
     const [newException, setNewException] = useState({ date: '', label: '', isWorking: false, capacityMin: 0 });
@@ -20,6 +24,8 @@ export default function WorkSchedule({ token }) {
             const result = await fetchWorkSchedule(token);
             setWeekly(result.weekly || []);
             setExceptions(result.exceptions || []);
+            setLoadMax(result.loadMax ?? '');
+            setLoadStats(result.loadStats || null);
         } catch (err) {
             console.error('Error cargando calendario:', err);
         } finally {
@@ -32,7 +38,7 @@ export default function WorkSchedule({ token }) {
     const handleSaveWeekly = async () => {
         setSaving(true);
         try {
-            const result = await updateWorkSchedule(token, weekly);
+            const result = await updateWorkSchedule(token, weekly, parseFloat(loadMax) || undefined);
             setWeekly(result);
             UIkit.notification({ message: 'Horario guardado', status: 'success', pos: 'top-right', timeout: 2000 });
         } catch (e) {
@@ -144,6 +150,33 @@ export default function WorkSchedule({ token }) {
                             ))}
                         </tbody>
                     </table>
+                </div>
+
+                {/* Tope de carga diaria: a partir de aquí el calendario del TPV da el día por lleno */}
+                <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid #e2e8f0' }}>
+                    <label className="uk-form-label" style={{ fontWeight: 600 }}>Carga máxima por día</label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4 }}>
+                        <input
+                            type="number"
+                            className="uk-input uk-form-small"
+                            style={{ width: 90 }}
+                            min="1"
+                            step="1"
+                            value={loadMax}
+                            onChange={e => setLoadMax(e.target.value)}
+                        />
+                        <span style={{ fontSize: '0.8rem', color: '#64748b' }}>camisas equivalentes (camisa = 1, traje = 2,5, servilleta = 0,05)</span>
+                    </div>
+                    {loadStats && loadStats.dias > 0 && (
+                        <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: 6 }}>
+                            Últimos {loadStats.meses} meses ({loadStats.dias} días laborables, con los pesos actuales de los productos):
+                            día típico <strong>{fmtCarga(loadStats.p50)}</strong> · el 90 % de los días por debajo de <strong>{fmtCarga(loadStats.p90)}</strong> ·
+                            el 95 % por debajo de <strong>{fmtCarga(loadStats.p95)}</strong> · máximo <strong>{fmtCarga(loadStats.max)}</strong>.
+                            {loadStats.p90 != null && (
+                                <> Un tope cerca de {fmtCarga(loadStats.p90)} marca como lleno un día de cada diez.</>
+                            )}
+                        </div>
+                    )}
                 </div>
 
                 <button

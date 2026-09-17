@@ -1,6 +1,7 @@
 // backend/src/routes/tracking.js
 
 import { sendReadyNotification } from '../services/notify.js';
+import { leerCargaMaxima, guardarCargaMaxima, estadisticaCargaHistorica } from '../utils/cargaTrabajo.js';
 
 // Verifica si todos los pasos de todas las líneas de un pedido están completados.
 // Si es así, marca el pedido como "ready" automáticamente y notifica al cliente.
@@ -763,7 +764,13 @@ export default async function (fastify, opts) {
                 orderBy: { date: 'asc' },
                 take: 50
             });
-            return reply.send({ weekly, exceptions });
+            // Tope de carga diaria y cómo se comparan los días del último año
+            // con los pesos actuales, para calibrarlo desde la pantalla.
+            const [loadMax, loadStats] = await Promise.all([
+                leerCargaMaxima(prisma),
+                estadisticaCargaHistorica(prisma).catch((e) => { console.error('Error calculando carga histórica:', e); return null; }),
+            ]);
+            return reply.send({ weekly, exceptions, loadMax, loadStats });
         } catch (err) {
             console.error('Error en GET /tracking/schedule:', err);
             return reply.status(500).send({ error: 'Error cargando calendario' });
@@ -776,10 +783,11 @@ export default async function (fastify, opts) {
             return reply.status(403).send({ error: 'Solo administradores' });
         }
 
-        const { weekly } = req.body; // array de 7 objetos
+        const { weekly, loadMax } = req.body; // array de 7 objetos (+ tope de carga diaria opcional)
         if (!Array.isArray(weekly)) return reply.status(400).send({ error: 'weekly debe ser un array' });
 
         try {
+            if (loadMax !== undefined) await guardarCargaMaxima(prisma, loadMax);
             for (const day of weekly) {
                 await prisma.workSchedule.upsert({
                     where: { dayOfWeek: day.dayOfWeek },
