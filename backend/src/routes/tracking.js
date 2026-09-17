@@ -828,14 +828,16 @@ export default async function (fastify, opts) {
             return reply.status(403).send({ error: 'Solo administradores' });
         }
 
-        const { date, isWorking, startTime, endTime, capacityMin, label } = req.body;
+        const { date, isWorking, startTime, endTime, capacityMin, label, loadMax } = req.body;
         if (!date) return reply.status(400).send({ error: 'date es obligatorio' });
+        // Tope de carga propio del día (sólo tiene sentido abierto); null = el general
+        const tope = isWorking && Number(loadMax) > 0 ? Number(loadMax) : null;
 
         try {
             const exception = await prisma.workScheduleException.upsert({
                 where: { date: new Date(date) },
-                update: { isWorking: isWorking ?? false, startTime, endTime, capacityMin: capacityMin || 0, label },
-                create: { date: new Date(date), isWorking: isWorking ?? false, startTime, endTime, capacityMin: capacityMin || 0, label }
+                update: { isWorking: isWorking ?? false, startTime, endTime, capacityMin: capacityMin || 0, label, loadMax: tope },
+                create: { date: new Date(date), isWorking: isWorking ?? false, startTime, endTime, capacityMin: capacityMin || 0, label, loadMax: tope }
             });
             return reply.send(exception);
         } catch (err) {

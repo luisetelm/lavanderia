@@ -20,7 +20,8 @@ export default function WorkSchedule({ token }) {
     const [urgencyMaxPct, setUrgencyMaxPct] = useState('');
 
     // Nuevo festivo
-    const [newException, setNewException] = useState({ date: '', label: '', isWorking: false, capacityMin: 0 });
+    // loadMax: tope de carga propio del día (víspera de festivo); vacío = el general
+    const [newException, setNewException] = useState({ date: '', label: '', isWorking: false, capacityMin: 0, loadMax: '' });
 
     const load = useCallback(async () => {
         try {
@@ -64,7 +65,7 @@ export default function WorkSchedule({ token }) {
         try {
             const result = await addScheduleException(token, newException);
             setExceptions(prev => [...prev, result].sort((a, b) => new Date(a.date) - new Date(b.date)));
-            setNewException({ date: '', label: '', isWorking: false, capacityMin: 0 });
+            setNewException({ date: '', label: '', isWorking: false, capacityMin: 0, loadMax: '' });
             UIkit.notification({ message: 'Excepción añadida', status: 'success', pos: 'top-right', timeout: 2000 });
         } catch (e) {
             UIkit.notification({ message: 'Error añadiendo excepción', status: 'danger', pos: 'top-right', timeout: 2000 });
@@ -276,6 +277,23 @@ export default function WorkSchedule({ token }) {
                             Se trabaja
                         </label>
                     </div>
+                    {newException.isWorking && (
+                        <div>
+                            <label className="uk-form-label" style={{ fontSize: '0.75rem' }} htmlFor="exc-load-max">Tope de carga ese día</label>
+                            <input
+                                id="exc-load-max"
+                                type="number"
+                                className="uk-input uk-form-small"
+                                style={{ width: 90 }}
+                                min="1"
+                                step="1"
+                                placeholder={loadMax ? String(loadMax) : ''}
+                                title="Víspera de festivo, 24 de diciembre…: con un tope menor, la fecha sugerida salta al día siguiente al festivo para lo que no es urgente"
+                                value={newException.loadMax}
+                                onChange={e => setNewException(prev => ({ ...prev, loadMax: e.target.value }))}
+                            />
+                        </div>
+                    )}
                     <button
                         className="uk-button uk-button-primary uk-button-small"
                         onClick={handleAddException}
@@ -296,6 +314,7 @@ export default function WorkSchedule({ token }) {
                                 <th>Descripción</th>
                                 <th>Trabaja</th>
                                 <th>Min.</th>
+                                <th title="Tope de carga propio de ese día; vacío = el general">Tope carga</th>
                                 <th></th>
                             </tr>
                         </thead>
@@ -306,6 +325,7 @@ export default function WorkSchedule({ token }) {
                                     <td>{exc.label || '—'}</td>
                                     <td>{exc.isWorking ? 'Sí' : 'No'}</td>
                                     <td>{exc.capacityMin || 0}</td>
+                                    <td>{exc.isWorking && exc.loadMax > 0 ? exc.loadMax : '—'}</td>
                                     <td>
                                         <button
                                             className="uk-button uk-button-danger uk-button-small"

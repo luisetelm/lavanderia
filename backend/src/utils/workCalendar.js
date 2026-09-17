@@ -71,6 +71,8 @@ export async function getWorkCalendar(prisma, from, to) {
                 isWorking: !!exc.isWorking,
                 label: exc.label || (exc.isWorking ? 'Apertura especial' : 'Cerrado'),
                 capacityMin: exc.capacityMin || 0,
+                // tope de carga propio del día (sql/029); null = el general
+                loadMax: exc.loadMax != null && Number(exc.loadMax) > 0 ? Number(exc.loadMax) : null,
                 isException: true,
             };
         } else if (wk) {

@@ -165,19 +165,28 @@ export function cargaDelDia(byDay, reservas, k) {
     return { real, reservada, total: real + reservada, clientes: r?.clientes || [] };
 }
 
+/** Tope de carga de un día: el propio de la excepción (víspera de festivo) o el general. */
+export function topeDelDia(calendar, k, loadMax) {
+    const propio = calendar?.[k]?.loadMax;
+    return propio != null && propio > 0 ? propio : loadMax;
+}
+
 /**
  * Fecha sugerida a partir de un calendario y una función de carga por día:
- * primer día abierto, a MARGEN_MINIMO_DIAS+ vista, con carga < loadMax.
- * Si todos están llenos, el primer día abierto.
+ * primer día abierto, con MARGEN_MINIMO_DIAS días laborables de margen (un
+ * festivo o un fin de semana por medio no cuentan como tiempo de taller),
+ * cuya carga no llegue a su tope. Si todos están llenos, el primer día abierto.
  */
 export function sugerirFecha({ calendar, dayLoad, todayStr, loadMax }) {
-    const desde = addDays(todayStr, MARGEN_MINIMO_DIAS);
     const hasta = addDays(todayStr, HORIZONTE_DIAS);
+    let laborables = 0;
     let firstOpen = null;
-    for (let k = desde; k <= hasta; k = addDays(k, 1)) {
+    for (let k = addDays(todayStr, 1); k <= hasta; k = addDays(k, 1)) {
         if (!calendar[k]?.isWorking) continue;
+        laborables++;
+        if (laborables < MARGEN_MINIMO_DIAS) continue;
         firstOpen ||= k;
-        if (dayLoad(k) < loadMax) return k;
+        if (dayLoad(k) < topeDelDia(calendar, k, loadMax)) return k;
     }
     return firstOpen;
 }

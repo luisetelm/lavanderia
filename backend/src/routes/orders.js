@@ -9,7 +9,7 @@ import { getWorkCalendar, getDayInfo, nextWorkingDay, ymd, addDays, mondayOf } f
 import {
     cargaDelDia, reservasPorDia, leerCargaMaxima, sugerirFecha, pedidosPorDia, calcularFechaSugerida,
     leerSuplementoUrgencia, productoSuplementoUrgencia, importeSuplementoUrgencia,
-    diasLaborablesAdelantados, porcentajeUrgencia,
+    diasLaborablesAdelantados, porcentajeUrgencia, topeDelDia,
 } from '../utils/cargaTrabajo.js';
 import jwt from 'jsonwebtoken';
 import fs from 'fs';
@@ -1687,6 +1687,7 @@ export default async function (fastify, opts) {
                     isToday: k === todayStr,
                     orders: (byDay[k] || []).length,
                     load: Math.round(dayLoad(k) * 10) / 10,
+                    loadMax: topeDelDia(calendar, k, loadMax), // tope propio del día (víspera de festivo) o el general
                     // parte de la carga reservada a grandes clientes cuyo pedido aún no ha entrado
                     reserved: Math.round(cargaDelDia(byDay, reservas, k).reservada * 10) / 10,
                     reservedClients: cargaDelDia(byDay, reservas, k).clientes.map(c => c.nombre),

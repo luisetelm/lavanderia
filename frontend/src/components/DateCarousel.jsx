@@ -190,7 +190,8 @@ export default function DateCarousel({fechaLimite, setFechaLimite, token, esAdmi
                     const isSuggested = suggestedDate === day.date;
                     const closed = !day.isWorking;
                     const disabled = day.isPast || closed;
-                    const level = loadLevel(day.load, loadMax);
+                    const dayMax = Number(day.loadMax) > 0 ? Number(day.loadMax) : loadMax; // tope propio (víspera de festivo) o general
+                    const level = loadLevel(day.load, dayMax);
                     const showMonth = day.date.endsWith('-01') || day.date === days[0].date;
                     const cls = [
                         'dc-day',
@@ -232,7 +233,7 @@ export default function DateCarousel({fechaLimite, setFechaLimite, token, esAdmi
                                     <span className="dc-meta">&nbsp;</span>
                                 ) : (
                                     <>
-                                        <span className="dc-bar"><i style={{width: `${Math.min(day.load / loadMax, 1) * 100}%`}}/></span>
+                                        <span className="dc-bar"><i style={{width: `${Math.min(day.load / dayMax, 1) * 100}%`}}/></span>
                                         <span className="dc-meta">
                                             {orders.length > 0 ? `${orders.length} ped · ${fmtLoad(day.load)}` : (day.load > 0 ? `reserva · ${fmtLoad(day.load)}` : 'libre')}
                                         </span>
@@ -314,6 +315,9 @@ export default function DateCarousel({fechaLimite, setFechaLimite, token, esAdmi
                                 {selected.orders > 0 ? `${selected.orders} pedido${selected.orders !== 1 ? 's' : ''} · carga ${fmtLoad(selected.load)}` : (selected.load > 0 ? `sin pedidos · carga ${fmtLoad(selected.load)}` : 'sin pedidos')}
                                 {selected.reserved > 0 && (
                                     <> (incluye {fmtLoad(selected.reserved)} reservados para {(selected.reservedClients || []).join(', ') || 'grandes clientes'})</>
+                                )}
+                                {Number(selected.loadMax) > 0 && Number(selected.loadMax) !== loadMax && (
+                                    <> · tope de este día {fmtLoad(selected.loadMax)}{selected.label ? ` (${selected.label})` : ''}</>
                                 )}
                             </span>
                         )}

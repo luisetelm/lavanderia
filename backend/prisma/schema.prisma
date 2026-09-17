@@ -229,6 +229,7 @@ model WorkScheduleException {
   endTime     String?  @map("end_time")   @db.VarChar(5)
   capacityMin Int      @default(0) @map("capacity_min")
   label       String?  @db.VarChar(60)  // "Festivo", "Vacaciones"
+  loadMax     Float?   @map("load_max") // tope de carga propio del día (víspera de festivo); null = general (sql/029)
 
   @@map("work_schedule_exceptions")
 }
