@@ -22,11 +22,35 @@ function Users({token, user: loggedUser}) {
 
     const navigate = useNavigate();
 
+    // Filtros por rol y por propiedades del propio usuario (gran cliente, facturación automática...)
+    const [rol, setRol] = useState('');
+    const [propiedad, setPropiedad] = useState('');
+    const PROPIEDADES = [
+        ['gran_cliente', 'Grandes clientes'],
+        ['dias_fijos', 'Con días fijos de entrega'],
+        ['facturacion_automatica', 'Facturación automática'],
+        ['con_descuento', 'Con descuento'],
+        ['sin_notificaciones', 'Sin notificaciones'],
+        ['inactivos', 'Inactivos'],
+    ];
+    const ROLES = [['customer', 'Clientes'], ['cashier', 'Cajeros'], ['admin', 'Administración']];
+    const filtros = [
+        {label: 'Rol', active: rol !== '', options: [
+            {label: 'Todos', active: rol === '', onClick: () => { setRol(''); setCurrentPage(1); }},
+            ...ROLES.map(([v, l]) => ({label: l, active: rol === v, onClick: () => { setRol(v); setCurrentPage(1); }})),
+        ]},
+        {label: 'Propiedad', active: propiedad !== '', options: [
+            {label: 'Todas', active: propiedad === '', onClick: () => { setPropiedad(''); setCurrentPage(1); }},
+            ...PROPIEDADES.map(([v, l]) => ({label: l, active: propiedad === v, onClick: () => { setPropiedad(v); setCurrentPage(1); }})),
+        ]},
+    ];
+
     const load = async () => {
         setLoading(true);
         try {
             const {data, meta} = await fetchUsers(token, {
-                q: searchTerm, page: currentPage - 1, size: usersPerPage
+                q: searchTerm, role: rol || undefined, propiedad: propiedad || undefined,
+                page: currentPage - 1, size: usersPerPage
             });
             setUsers(data);
             setPaginationMeta(meta);
@@ -39,7 +63,7 @@ function Users({token, user: loggedUser}) {
 
     useEffect(() => {
         load();
-    }, [token, searchTerm, currentPage]);
+    }, [token, searchTerm, currentPage, rol, propiedad]);
 
     const saveDiscount = async (user, value) => {
         const d = Number(value);
@@ -60,6 +84,7 @@ function Users({token, user: loggedUser}) {
         <div>
             <PageToolbar
                 title="Usuarios"
+                filters={filtros}
                 actions={
                     <button
                         className="uk-button uk-button-primary"
