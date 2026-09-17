@@ -1,5 +1,9 @@
-import React, { useState } from 'react';
-import { createUser, updateUser } from '../api.js';
+import React, { useState, useEffect } from 'react';
+import { createUser, updateUser, fetchClientLoadProfile } from '../api.js';
+
+// Días fijos de recogida y entrega de los grandes clientes (0=Dom..6=Sáb)
+const DIAS = [[1, 'L'], [2, 'M'], [3, 'X'], [4, 'J'], [5, 'V'], [6, 'S'], [0, 'D']];
+const nombreDia = { 0: 'domingo', 1: 'lunes', 2: 'martes', 3: 'miércoles', 4: 'jueves', 5: 'viernes', 6: 'sábado' };
 
 const sectionStyle = {
   marginBottom: 20,
@@ -40,7 +44,31 @@ export default function UserForm({ initial = {}, onSave, token, onCancel, logged
     pais: initial.pais || '',
     discount: typeof initial.discount === 'number' ? initial.discount : 0,
     notifyChannel: initial.notifyChannel || 'whatsapp',
+    pickupDays: Array.isArray(initial.pickupDays) ? initial.pickupDays : [],
+    deliveryDays: Array.isArray(initial.deliveryDays) ? initial.deliveryDays : [],
+    expectedLoad: typeof initial.expectedLoad === 'number' ? initial.expectedLoad : 0,
   });
+
+  // Cómo ha entregado este cliente en los últimos meses, para rellenar sus días fijos
+  const [perfil, setPerfil] = useState(null);
+  useEffect(() => {
+    if (!isEdit || !form.isbigclient || !token) { setPerfil(null); return; }
+    let vigente = true;
+    fetchClientLoadProfile(token, initial.id)
+      .then((p) => { if (vigente) setPerfil(p); })
+      .catch(() => { if (vigente) setPerfil(null); });
+    return () => { vigente = false; };
+  }, [isEdit, form.isbigclient, token, initial.id]);
+
+  const toggleDia = (campo, dia) => setForm(f => {
+    const actual = new Set(f[campo]);
+    if (actual.has(dia)) actual.delete(dia); else actual.add(dia);
+    return { ...f, [campo]: [...actual].sort() };
+  });
+  const diasTexto = (conteo) => Object.entries(conteo || {})
+    .sort((a, b) => b[1] - a[1])
+    .map(([d, n]) => `${nombreDia[d]} (${n})`)
+    .join(', ');
 
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -244,6 +272,55 @@ export default function UserForm({ initial = {}, onSave, token, onCancel, logged
           </div>
         </div>
       </div>
+
+      {/* ── Recogida y entrega (grandes clientes con días fijos) ── */}
+      {form.isbigclient && (
+        <div style={sectionStyle}>
+          <h5 style={sectionTitle}>Recogida y entrega</h5>
+          <div style={{ fontSize: '0.78rem', color: '#64748b', marginBottom: 10, maxWidth: 680 }}>
+            Los días de entrega marcados, el calendario del TPV reserva la carga habitual de este cliente aunque su pedido aún
+            no se haya creado, y la descuenta cuando entra. Así el día no se llena de particulares antes de recoger su ropa.
+            {perfil && perfil.entregas > 0 && (
+              <> Según los últimos {perfil.meses} meses ({perfil.entregas} entregas): entrega los {diasTexto(perfil.porDiaEntrega)};
+                recoge los {diasTexto(perfil.porDiaRecogida)}; carga habitual <strong>{perfil.cargaMediana}</strong> por entrega.</>
+            )}
+          </div>
+          <div className="uk-grid-small" uk-grid="true">
+            {[['pickupDays', 'Días de recogida'], ['deliveryDays', 'Días de entrega']].map(([campo, label]) => (
+              <div className="uk-width-1-2@m" key={campo}>
+                <label className="uk-form-label">{label}</label>
+                <div style={{ display: 'flex', gap: 4 }}>
+                  {DIAS.map(([dia, letra]) => {
+                    const on = form[campo].includes(dia);
+                    return (
+                      <button type="button" key={dia} onClick={() => toggleDia(campo, dia)}
+                        className={`uk-button uk-button-small ${on ? 'uk-button-primary' : 'uk-button-default'}`}
+                        style={{ padding: '0 10px', minWidth: 34 }} aria-pressed={on} title={nombreDia[dia]}>
+                        {letra}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+            <div className="uk-width-1-2@m">
+              <label className="uk-form-label">Carga habitual por entrega</label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input className="uk-input" type="number" min="0" step="0.5" style={{ width: 110 }}
+                  value={form.expectedLoad}
+                  onChange={e => set('expectedLoad', e.target.value)} />
+                <span style={{ fontSize: '0.78rem', color: '#64748b' }}>camisas equivalentes (0 = sin reserva)</span>
+                {perfil?.cargaMediana > 0 && Number(form.expectedLoad) !== perfil.cargaMediana && (
+                  <button type="button" className="uk-button uk-button-text" style={{ fontSize: '0.75rem' }}
+                    onClick={() => set('expectedLoad', perfil.cargaMediana)}>
+                    Usar {perfil.cargaMediana}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Datos fiscales ── */}
       <div style={sectionStyle}>

@@ -8,7 +8,7 @@
 // vista, que no esté lleno. Si el pedido se entrega antes de esa fecha, se
 // cobra un suplemento de urgencia (`urgency_surcharge_pct`, AppSettings) sobre
 // las líneas que computan en la carga, como una línea más del pedido con el
-// producto de SKU `SUPL-URGENCIA` (sql/026).
+// producto de SKU `SUPL-URGENCIA` (sql/027).
 
 import { getWorkCalendar, ymd, addDays } from './workCalendar.js';
 
@@ -72,6 +72,66 @@ export function cargaPonderada(lines) {
 }
 
 /**
+ * Reservas de carga para grandes clientes con días fijos de entrega (sql/028).
+ * Su pedido no existe hasta que se recoge (el lunes para entregar el
+ * miércoles), pero el calendario ya debe contar esa carga para no llenar el
+ * miércoles de particulares. Cada cliente reserva `expectedLoad` en sus
+ * `deliveryDays`, y la reserva se consume con sus pedidos reales de ese día:
+ *   reservada = máx(0, expectedLoad − carga real del cliente ese día)
+ * @returns {Promise<Object<string, {reservada: number, clientes: Array<{id:number, nombre:string, reservada:number}>}>>}
+ */
+export async function reservasPorDia(prisma, calendar, byDay) {
+    let clientes = [];
+    try {
+        clientes = await prisma.user.findMany({
+            where: { isbigclient: true, isActive: true, expectedLoad: { gt: 0 } },
+            select: { id: true, firstName: true, lastName: true, denominacionsocial: true, deliveryDays: true, expectedLoad: true },
+        });
+    } catch (e) {
+        // Sin las columnas de sql/028 no hay reservas; el calendario sigue funcionando.
+        console.error('No se pudieron leer los días de entrega de los grandes clientes:', e.message);
+        return {};
+    }
+    clientes = clientes.filter(c => Array.isArray(c.deliveryDays) && c.deliveryDays.length > 0);
+    const reservas = {};
+    if (!clientes.length) return reservas;
+
+    for (const k of Object.keys(calendar)) {
+        if (!calendar[k]?.isWorking) continue;
+        const dow = new Date(`${k}T12:00:00Z`).getUTCDay();
+        const delDia = clientes.filter(c => c.deliveryDays.includes(dow));
+        if (!delDia.length) continue;
+        const realPorCliente = {};
+        for (const o of byDay[k] || []) {
+            if (o.client?.id) realPorCliente[o.client.id] = (realPorCliente[o.client.id] || 0) + cargaPonderada(o.lines);
+        }
+        const detalle = delDia
+            .map(c => ({
+                id: c.id,
+                nombre: c.denominacionsocial || `${c.firstName || ''} ${c.lastName || ''}`.trim(),
+                reservada: Math.max(0, Number(c.expectedLoad) - (realPorCliente[c.id] || 0)),
+            }))
+            .filter(c => c.reservada > 0);
+        if (detalle.length) {
+            reservas[k] = { reservada: detalle.reduce((s, c) => s + c.reservada, 0), clientes: detalle };
+        }
+    }
+    return reservas;
+}
+
+/**
+ * Carga de un día: los pedidos reales más lo que aún queda reservado para
+ * los grandes clientes con entrega ese día.
+ * @returns {{real: number, reservada: number, total: number, clientes: Array}}
+ */
+export function cargaDelDia(byDay, reservas, k) {
+    const real = (byDay[k] || []).reduce((s, o) => s + cargaPonderada(o.lines), 0);
+    const r = reservas?.[k];
+    const reservada = r?.reservada || 0;
+    return { real, reservada, total: real + reservada, clientes: r?.clientes || [] };
+}
+
+/**
  * Fecha sugerida a partir de un calendario y una función de carga por día:
  * primer día abierto, a MARGEN_MINIMO_DIAS+ vista, con carga < loadMax.
  * Si todos están llenos, el primer día abierto.
@@ -100,7 +160,7 @@ export async function pedidosPorDia(prisma, from, to) {
         },
         include: {
             lines: { include: { product: true } },
-            client: { select: { id: true, firstName: true, lastName: true } },
+            client: { select: { id: true, firstName: true, lastName: true, isbigclient: true } },
         },
     });
     const byDay = {};
@@ -121,11 +181,12 @@ export async function calcularFechaSugerida(prisma) {
         pedidosPorDia(prisma, from, to),
         leerCargaMaxima(prisma),
     ]);
-    const dayLoad = (k) => (byDay[k] || []).reduce((s, o) => s + cargaPonderada(o.lines), 0);
+    const reservas = await reservasPorDia(prisma, calendar, byDay);
+    const dayLoad = (k) => cargaDelDia(byDay, reservas, k).total;
     return sugerirFecha({ calendar, dayLoad, todayStr, loadMax });
 }
 
-/** Producto con el que se factura el suplemento de urgencia, o null si no está creado (sql/026). */
+/** Producto con el que se factura el suplemento de urgencia, o null si no está creado (sql/027). */
 export async function productoSuplementoUrgencia(prisma) {
     try {
         return await prisma.product.findUnique({ where: { sku: SKU_SUPLEMENTO_URGENCIA } });

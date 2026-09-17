@@ -7,7 +7,7 @@ import { facturaDe } from '../utils/facturaDe.js';
 import { calcularLinea, preciosPactadosVigentes } from '../utils/precioLinea.js';
 import { getWorkCalendar, getDayInfo, nextWorkingDay, ymd, addDays, mondayOf } from '../utils/workCalendar.js';
 import {
-    cargaPonderada, leerCargaMaxima, sugerirFecha, pedidosPorDia, calcularFechaSugerida,
+    cargaDelDia, reservasPorDia, leerCargaMaxima, sugerirFecha, pedidosPorDia, calcularFechaSugerida,
     leerSuplementoUrgencia, productoSuplementoUrgencia, importeSuplementoUrgencia,
 } from '../utils/cargaTrabajo.js';
 import jwt from 'jsonwebtoken';
@@ -177,7 +177,7 @@ export default async function (fastify, opts) {
             ]);
             if (sugerida && fechaElegida < sugerida && pct > 0) {
                 if (!producto) {
-                    console.error('[urgencia] Falta el producto SUPL-URGENCIA: ejecutar sql/026_suplemento_urgencia.sql');
+                    console.error('[urgencia] Falta el producto SUPL-URGENCIA: ejecutar sql/027_suplemento_urgencia.sql');
                 } else {
                     const importe = await importeSuplementoUrgencia(prisma, lineCreates, pct);
                     if (importe > 0) {
@@ -1662,7 +1662,9 @@ export default async function (fastify, opts) {
                 leerCargaMaxima(prisma),
                 leerSuplementoUrgencia(prisma),
             ]);
-            const dayLoad = (k) => (byDay[k] || []).reduce((s, o) => s + cargaPonderada(o.lines), 0);
+            // Carga del día = pedidos reales + reserva para grandes clientes con días fijos de entrega.
+            const reservas = await reservasPorDia(prisma, calendar, byDay);
+            const dayLoad = (k) => cargaDelDia(byDay, reservas, k).total;
 
             // Fecha sugerida: primer día abierto, a 2+ días vista, que no esté lleno.
             // Entregar antes de esa fecha lleva suplemento de urgencia.
@@ -1681,6 +1683,9 @@ export default async function (fastify, opts) {
                     isToday: k === todayStr,
                     orders: (byDay[k] || []).length,
                     load: Math.round(dayLoad(k) * 10) / 10,
+                    // parte de la carga reservada a grandes clientes cuyo pedido aún no ha entrado
+                    reserved: Math.round(cargaDelDia(byDay, reservas, k).reservada * 10) / 10,
+                    reservedClients: cargaDelDia(byDay, reservas, k).clientes.map(c => c.nombre),
                 });
                 loadByDay[k] = byDay[k] || [];
             }

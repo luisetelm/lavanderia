@@ -253,6 +253,11 @@ model User {
   provincia          String?        @db.VarChar
   tipopersona        String?        @db.VarChar
   isbigclient        Boolean        @default(false)
+  // Grandes clientes con días fijos (sql/028): 0=Dom..6=Sáb. El calendario del
+  // TPV reserva `expectedLoad` de carga cada día de entrega hasta que entra el pedido.
+  pickupDays         Int[]          @default([]) @map("pickup_days")
+  deliveryDays       Int[]          @default([]) @map("delivery_days")
+  expectedLoad       Float          @default(0) @map("expected_load")
   autoMonthlyInvoice Boolean        @default(false)
   discount           Float          @default(0)
   notifyChannel      String?        @db.VarChar(10) // 'sms', 'whatsapp', 'none'

@@ -233,11 +233,17 @@ export async function addLineAnnotation(token, lineId, data) {
     return res.json();
 }
 
-export async function fetchUsers(token, {q = '', role, page = 0, size = 50} = {}) {
+export async function fetchUsers(token, {q = '', role, propiedad, page = 0, size = 50} = {}) {
     const params = new URLSearchParams({page, size});
     if (q) params.set('q', q);
     if (role) params.set('role', role);
+    if (propiedad) params.set('propiedad', propiedad); // gran_cliente, facturacion_automatica, con_descuento, dias_fijos, sin_notificaciones, inactivos
     return request(`/users?${params}`, token, {})
+}
+
+// Entregas de un gran cliente por día de la semana y carga habitual (últimos meses)
+export function fetchClientLoadProfile(token, id, meses = 3) {
+    return request(`/users/${id}/load-profile?meses=${meses}`, token);
 }
 
 export function fetchUser(token, id) {

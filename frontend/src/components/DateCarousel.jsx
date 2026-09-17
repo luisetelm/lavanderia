@@ -228,7 +228,7 @@ export default function DateCarousel({fechaLimite, setFechaLimite, token, esAdmi
                                     <>
                                         <span className="dc-bar"><i style={{width: `${Math.min(day.load / loadMax, 1) * 100}%`}}/></span>
                                         <span className="dc-meta">
-                                            {orders.length > 0 ? `${orders.length} ped · ${fmtLoad(day.load)}` : 'libre'}
+                                            {orders.length > 0 ? `${orders.length} ped · ${fmtLoad(day.load)}` : (day.load > 0 ? `reserva · ${fmtLoad(day.load)}` : 'libre')}
                                         </span>
                                     </>
                                 )}
@@ -305,7 +305,10 @@ export default function DateCarousel({fechaLimite, setFechaLimite, token, esAdmi
                         )}
                         {selected && selected.isWorking && (
                             <span className="dc-summary-load">
-                                {selected.orders > 0 ? `${selected.orders} pedido${selected.orders !== 1 ? 's' : ''} · carga ${fmtLoad(selected.load)}` : 'sin pedidos'}
+                                {selected.orders > 0 ? `${selected.orders} pedido${selected.orders !== 1 ? 's' : ''} · carga ${fmtLoad(selected.load)}` : (selected.load > 0 ? `sin pedidos · carga ${fmtLoad(selected.load)}` : 'sin pedidos')}
+                                {selected.reserved > 0 && (
+                                    <> (incluye {fmtLoad(selected.reserved)} reservados para {(selected.reservedClients || []).join(', ') || 'grandes clientes'})</>
+                                )}
                             </span>
                         )}
                         {!selected && (

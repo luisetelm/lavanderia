@@ -106,7 +106,7 @@ export default async function (fastify, opts) {
 
     // Listar usuarios
     fastify.get('/', async (req, reply) => {
-        const {q, page = 0, size = 50, role} = req.query;
+        const {q, page = 0, size = 50, role, propiedad} = req.query;
         const pageNum = parseInt(page) || 0;
         const pageSize = parseInt(size) || 50;
         const skip = pageNum * pageSize;
@@ -118,6 +118,17 @@ export default async function (fastify, opts) {
         if (role) {
             where.role = role;
         }
+
+        // Filtro por propiedades del propio usuario (Usuarios > Propiedad)
+        const propiedades = {
+            gran_cliente: { isbigclient: true },
+            facturacion_automatica: { autoMonthlyInvoice: true },
+            con_descuento: { discount: { gt: 0 } },
+            dias_fijos: { isbigclient: true, expectedLoad: { gt: 0 } },
+            sin_notificaciones: { notifyChannel: 'none' },
+            inactivos: { isActive: false },
+        };
+        if (propiedad && propiedades[propiedad]) Object.assign(where, propiedades[propiedad]);
 
         if (q) {
             const words = q.trim().split(/\s+/);
@@ -185,6 +196,51 @@ export default async function (fastify, opts) {
         };
     });
 
+    // ─── GET /api/users/:id/load-profile ── Cómo entrega este cliente ──
+    // Entregas de los últimos meses por día de la semana y carga (camisas
+    // equivalentes) por entrega, para rellenar sus días fijos y su carga
+    // habitual en la ficha (sql/028).
+    fastify.get('/:id/load-profile', async (req, reply) => {
+        const id = Number(req.params.id);
+        const meses = Math.min(Math.max(parseInt(req.query.meses) || 3, 1), 12);
+        try {
+            const filas = await prisma.$queryRaw`
+                WITH e AS (
+                    SELECT (o."fechaLimite" AT TIME ZONE 'Europe/Madrid')::date AS dia,
+                           EXTRACT(dow FROM o."fechaLimite" AT TIME ZONE 'Europe/Madrid')::int AS dow_entrega,
+                           EXTRACT(dow FROM o."createdAt" AT TIME ZONE 'Europe/Madrid')::int AS dow_recogida,
+                           SUM(l.quantity * CASE WHEN p.counts_for_load THEN p.workload_weight ELSE 0 END) AS carga
+                    FROM "Order" o
+                    JOIN "OrderLine" l ON l."orderId" = o.id
+                    JOIN "Product" p ON p.id = l."productId"
+                    WHERE o."clientId" = ${id}
+                      AND o."fechaLimite" >= now() - (${meses} || ' months')::interval
+                      AND o.status <> 'cancelled' AND l."voidedAt" IS NULL
+                    GROUP BY 1, 2, 3
+                )
+                SELECT dow_entrega, dow_recogida, carga FROM e`;
+            const entregas = filas.length;
+            const porDiaEntrega = {};
+            const porDiaRecogida = {};
+            const cargas = [];
+            for (const f of filas) {
+                porDiaEntrega[f.dow_entrega] = (porDiaEntrega[f.dow_entrega] || 0) + 1;
+                porDiaRecogida[f.dow_recogida] = (porDiaRecogida[f.dow_recogida] || 0) + 1;
+                cargas.push(Number(f.carga) || 0);
+            }
+            cargas.sort((a, b) => a - b);
+            const mediana = cargas.length ? cargas[Math.floor((cargas.length - 1) / 2)] : 0;
+            return reply.send({
+                meses, entregas,
+                porDiaEntrega, porDiaRecogida,
+                cargaMediana: Math.round(mediana * 10) / 10,
+            });
+        } catch (err) {
+            console.error('Error en GET /users/:id/load-profile:', err);
+            return reply.status(500).send({error: 'Error calculando el perfil de entregas'});
+        }
+    });
+
     // Obtener uno
     fastify.get('/:id', async (req, reply) => {
         const {id} = req.params;
@@ -209,6 +265,9 @@ export default async function (fastify, opts) {
                 codigopostal: true,
                 pais: true,
                 discount: true,
+                pickupDays: true,
+                deliveryDays: true,
+                expectedLoad: true,
             },
         });
         if (!user) return reply.status(404).send({error: 'Usuario no encontrado'});
@@ -490,11 +549,19 @@ export default async function (fastify, opts) {
             pais,
             discount,
             notifyChannel,
+            pickupDays,
+            deliveryDays,
+            expectedLoad,
         } = req.body;
 
         // Normalizar teléfono
         const normalizedPhone = phone ? normalizePhone(phone) : '';
         const effectiveRole = role || 'customer';
+
+        // Días fijos de recogida y entrega de los grandes clientes (0=Dom..6=Sáb)
+        const diasSemana = (v) => Array.isArray(v)
+            ? [...new Set(v.map(Number).filter(n => Number.isInteger(n) && n >= 0 && n <= 6))].sort()
+            : undefined;
 
         // Teléfono obligatorio para clientes
         if (effectiveRole === 'customer' && !normalizedPhone) {
@@ -543,6 +610,9 @@ export default async function (fastify, opts) {
             }
             data.discount = d;
         }
+        if (pickupDays !== undefined) data.pickupDays = diasSemana(pickupDays) || [];
+        if (deliveryDays !== undefined) data.deliveryDays = diasSemana(deliveryDays) || [];
+        if (expectedLoad !== undefined) data.expectedLoad = Math.max(0, parseFloat(expectedLoad) || 0);
         // Asignación de notifyChannel si viene
         if (notifyChannel !== undefined) {
             data.notifyChannel = ['sms', 'whatsapp', 'none'].includes(notifyChannel) ? notifyChannel : null;
