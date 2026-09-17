@@ -643,9 +643,11 @@ export function fetchConversations(token) {
     return request('/messages/conversations', token);
 }
 
-export function fetchMessages(token, { conversationId, page = 0, size = 50 } = {}) {
-    const params = new URLSearchParams({ page, size });
+// Sin `before`: los últimos `size` mensajes; con `before` (ISO), los `size` anteriores a esa fecha
+export function fetchMessages(token, { conversationId, size = 50, before } = {}) {
+    const params = new URLSearchParams({ size });
     if (conversationId) params.set('conversationId', conversationId);
+    if (before) params.set('before', before);
     return request(`/messages?${params}`, token);
 }
 

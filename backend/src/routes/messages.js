@@ -114,26 +114,32 @@ export default async function (fastify) {
      *  GET / — Historial de mensajes de una conversación
      * ───────────────────────────────────────────── */
     fastify.get('/', async (req, reply) => {
-        const { conversationId, page = 0, size = 50 } = req.query;
+        // Sin `before`: los `size` mensajes más recientes (más todas las
+        // notificaciones automáticas). Con `before` (ISO): los `size`
+        // anteriores a esa fecha, para "cargar anteriores" al subir en el hilo.
+        const { conversationId, size = 50, before } = req.query;
 
         if (!conversationId) {
             return reply.code(400).send({ error: 'conversationId obligatorio' });
         }
 
         const convId = Number(conversationId);
+        const antesDe = before ? new Date(before) : null;
+        if (antesDe && Number.isNaN(antesDe.getTime())) {
+            return reply.code(400).send({ error: 'before no válido' });
+        }
+        const take = Math.min(Math.max(parseInt(size) || 50, 1), 200);
 
         try {
-            // Se pagina desde el final: la página 0 son los `size` mensajes más
-            // recientes (antes se cogían los más antiguos y, pasados 50, los
-            // nuevos ya no salían en el hilo).
             const messages = (await prisma.message.findMany({
-                where: { conversationId: convId },
+                where: { conversationId: convId, ...(antesDe ? { createdAt: { lt: antesDe } } : {}) },
                 orderBy: { createdAt: 'desc' },
-                skip: Number(page) * Number(size),
-                take: Number(size),
+                take,
             })).reverse();
 
-            const notifications = await prisma.notification.findMany({
+            // Las notificaciones van todas en la primera página; en las
+            // anteriores ya están cargadas.
+            const notifications = antesDe ? [] : await prisma.notification.findMany({
                 where: { conversationId: convId },
                 orderBy: { sentAt: 'asc' },
                 select: {

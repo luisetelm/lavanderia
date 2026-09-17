@@ -12,6 +12,7 @@ import {
 } from './chatUtils.js';
 
 const THREAD_POLL_MS = 10000;
+const THREAD_PAGE_SIZE = 50; // mensajes por página; se cargan más al subir en el hilo
 
 /**
  * Hilo de una conversación: cabecera, mensajes, plantillas, adjuntos y compositor.
@@ -39,23 +40,38 @@ export default function ChatThread({ token, conv, onBack, onToggleInfo, infoOpen
     const [lightboxSrc, setLightboxSrc] = useState(null);
 
     const messagesEndRef = useRef(null);
+    const listRef = useRef(null);
     const inputRef = useRef(null);
     const fileInputRef = useRef(null);
     const prevMessagesCountRef = useRef(0);
+    // Mensajes anteriores: se cargan al llegar arriba del hilo
+    const [hasOlder, setHasOlder] = useState(false);
+    const [loadingOlder, setLoadingOlder] = useState(false);
+    const loadingOlderRef = useRef(false);
+    const keepScrollRef = useRef(null); // altura previa para no saltar al prepender
 
     /* ── Carga y refresco del hilo ── */
     const loadMessages = useCallback(async (id, { silent = false } = {}) => {
         if (!id) return;
         if (!silent) setMsgLoading(true);
         try {
-            const data = await fetchMessages(token, { conversationId: id });
+            const data = await fetchMessages(token, { conversationId: id, size: THREAD_PAGE_SIZE });
+            if (!silent) setHasOlder(data.filter(m => m.source === 'message').length >= THREAD_PAGE_SIZE);
             setMessages(prev => {
-                if (prev.length === data.length) {
+                // El servidor manda la última página; se conservan los mensajes
+                // anteriores ya cargados al subir en el hilo.
+                const ids = new Set(data.map(m => m.id));
+                const primero = data.find(m => m.source === 'message');
+                const anteriores = primero
+                    ? prev.filter(m => !ids.has(m.id) && new Date(m.createdAt) < new Date(primero.createdAt))
+                    : [];
+                const next = anteriores.length ? [...anteriores, ...data].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt)) : data;
+                if (prev.length === next.length) {
                     const lastA = prev[prev.length - 1];
-                    const lastB = data[data.length - 1];
+                    const lastB = next[next.length - 1];
                     if (lastA && lastB && lastA.id === lastB.id && lastA.status === lastB.status) return prev;
                 }
-                return data;
+                return next;
             });
         } catch (err) {
             console.error('Error cargando mensajes:', err);
@@ -67,6 +83,8 @@ export default function ChatThread({ token, conv, onBack, onToggleInfo, infoOpen
     useEffect(() => {
         setMessages([]);
         prevMessagesCountRef.current = 0;
+        keepScrollRef.current = null;
+        setHasOlder(false);
         setShowTemplates(false);
         clearAttachment();
         if (!convId) return;
@@ -75,14 +93,50 @@ export default function ChatThread({ token, conv, onBack, onToggleInfo, infoOpen
         return () => clearInterval(interval);
     }, [convId, loadMessages]);
 
-    // Scroll al fondo sólo cuando aparecen mensajes nuevos
+    // Scroll al fondo sólo cuando aparecen mensajes nuevos. Al prepender
+    // anteriores se mantiene la posición (la lista crece por arriba).
     useEffect(() => {
         if (messages.length !== prevMessagesCountRef.current) {
-            const behavior = prevMessagesCountRef.current === 0 ? 'auto' : 'smooth';
-            messagesEndRef.current?.scrollIntoView({ behavior, block: 'end' });
+            if (keepScrollRef.current != null && listRef.current) {
+                const el = listRef.current;
+                el.scrollTop += el.scrollHeight - keepScrollRef.current;
+                keepScrollRef.current = null;
+            } else {
+                const behavior = prevMessagesCountRef.current === 0 ? 'auto' : 'smooth';
+                messagesEndRef.current?.scrollIntoView({ behavior, block: 'end' });
+            }
             prevMessagesCountRef.current = messages.length;
         }
     }, [messages]);
+
+    // Cargar anteriores al llegar arriba del hilo
+    const loadOlder = useCallback(async () => {
+        if (!convId || !hasOlder || loadingOlderRef.current) return;
+        const primero = messages.find(m => m.source === 'message');
+        if (!primero) { setHasOlder(false); return; }
+        loadingOlderRef.current = true;
+        setLoadingOlder(true);
+        try {
+            const data = await fetchMessages(token, { conversationId: convId, size: THREAD_PAGE_SIZE, before: primero.createdAt });
+            if (data.length < THREAD_PAGE_SIZE) setHasOlder(false);
+            if (data.length) {
+                keepScrollRef.current = listRef.current?.scrollHeight ?? null;
+                setMessages(prev => {
+                    const ids = new Set(prev.map(m => m.id));
+                    return [...data.filter(m => !ids.has(m.id)), ...prev];
+                });
+            }
+        } catch (err) {
+            console.error('Error cargando mensajes anteriores:', err);
+        } finally {
+            loadingOlderRef.current = false;
+            setLoadingOlder(false);
+        }
+    }, [convId, hasOlder, messages, token]);
+
+    const handleListScroll = (e) => {
+        if (e.currentTarget.scrollTop < 60) loadOlder();
+    };
 
     // Al insertar texto desde fuera, llevar el foco al compositor
     useEffect(() => {
@@ -260,7 +314,9 @@ export default function ChatThread({ token, conv, onBack, onToggleInfo, infoOpen
 
             {/* Mensajes */}
             <div
+                ref={listRef}
                 className={`msg-thread-body ${dragOver ? 'msg-drop-active' : ''}`}
+                onScroll={handleListScroll}
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
@@ -277,7 +333,21 @@ export default function ChatThread({ token, conv, onBack, onToggleInfo, infoOpen
                 ) : messages.length === 0 ? (
                     <div className="msg-empty" style={{ paddingTop: 40 }}>Sin mensajes</div>
                 ) : (
-                    <MessageList messages={messages} onImageClick={setLightboxSrc} />
+                    <>
+                        {hasOlder && (
+                            <div style={{ textAlign: 'center', padding: '6px 0 10px' }}>
+                                {loadingOlder ? (
+                                    <span style={{ fontSize: 12, color: '#888' }}><span uk-spinner="ratio: 0.5"></span> Cargando anteriores…</span>
+                                ) : (
+                                    <button type="button" onClick={loadOlder}
+                                            style={{ background: 'none', border: '1px solid #e2e8f0', borderRadius: 12, padding: '3px 12px', fontSize: 12, color: '#555', cursor: 'pointer' }}>
+                                        Cargar anteriores
+                                    </button>
+                                )}
+                            </div>
+                        )}
+                        <MessageList messages={messages} onImageClick={setLightboxSrc} />
+                    </>
                 )}
                 <div ref={messagesEndRef} />
             </div>
