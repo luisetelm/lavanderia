@@ -123,12 +123,15 @@ export default async function (fastify) {
         const convId = Number(conversationId);
 
         try {
-            const messages = await prisma.message.findMany({
+            // Se pagina desde el final: la página 0 son los `size` mensajes más
+            // recientes (antes se cogían los más antiguos y, pasados 50, los
+            // nuevos ya no salían en el hilo).
+            const messages = (await prisma.message.findMany({
                 where: { conversationId: convId },
-                orderBy: { createdAt: 'asc' },
+                orderBy: { createdAt: 'desc' },
                 skip: Number(page) * Number(size),
                 take: Number(size),
-            });
+            })).reverse();
 
             const notifications = await prisma.notification.findMany({
                 where: { conversationId: convId },
