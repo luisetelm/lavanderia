@@ -72,7 +72,15 @@ FROM (VALUES
 ) AS v(id, w)
 WHERE p.id = v.id;
 
--- Tope de carga diaria (camisas equivalentes) para el calendario del TPV
+-- Tope de carga diaria (camisas equivalentes) para el calendario del TPV.
+-- La tabla está en el schema de Prisma desde hace tiempo pero en producción
+-- nunca llegó a crearse (sólo la usaba la integración con Google).
+CREATE TABLE IF NOT EXISTS "AppSettings" (
+    id    SERIAL PRIMARY KEY,
+    key   TEXT NOT NULL,
+    value TEXT NOT NULL,
+    CONSTRAINT "AppSettings_key_key" UNIQUE (key)
+);
 INSERT INTO "AppSettings" (key, value) VALUES ('daily_load_max', '50')
 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
 

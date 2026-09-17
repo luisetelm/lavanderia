@@ -8,7 +8,13 @@ export const CARGA_MAX_POR_DEFECTO = 50;
 const CLAVE_CARGA_MAX = 'daily_load_max';
 
 export async function leerCargaMaxima(prisma) {
-    const fila = await prisma.appSettings.findUnique({ where: { key: CLAVE_CARGA_MAX } });
+    let fila = null;
+    try {
+        fila = await prisma.appSettings.findUnique({ where: { key: CLAVE_CARGA_MAX } });
+    } catch (e) {
+        // Sin tabla AppSettings (sql/025 aún no aplicado) el calendario sigue funcionando con el tope por defecto.
+        console.error('No se pudo leer daily_load_max, se usa el valor por defecto:', e.message);
+    }
     const n = parseFloat(fila?.value);
     return Number.isFinite(n) && n > 0 ? n : CARGA_MAX_POR_DEFECTO;
 }
