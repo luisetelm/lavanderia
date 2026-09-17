@@ -270,34 +270,6 @@ export default async function (fastify) {
             const data = await req.file();
             if (!data) return reply.code(400).send({ error: 'Se requiere un fichero' });
 
-            const fields = {};
-            for (const [key, field] of Object.entries(data.fields)) {
-                if (field.value !== undefined) fields[key] = field.value;
-            }
-
-            const { conversationId, caption, channel } = fields;
-            if (!conversationId) return reply.code(400).send({ error: 'conversationId obligatorio' });
-
-            const conversation = await prisma.conversation.findUnique({
-                where: { id: Number(conversationId) },
-                include: { client: { select: { id: true, phone: true } } },
-            });
-            if (!conversation) return reply.code(404).send({ error: 'Conversación no encontrada' });
-
-            const phone = conversation.client?.phone || conversation.phone;
-            if (!phone) return reply.code(400).send({ error: 'Sin teléfono para enviar' });
-
-            // Verificar ventana 24h de WhatsApp
-            if ((channel || 'whatsapp') !== 'sms') {
-                const win = await getWhatsAppWindow(prisma, conversation.id);
-                if (!win.open) {
-                    return reply.code(403).send({
-                        error: 'La ventana de 24h de WhatsApp está cerrada. Usa una plantilla para iniciar la conversación.',
-                        code: 'WA_WINDOW_CLOSED',
-                    });
-                }
-            }
-
             const mimeType = data.mimetype;
             const originalName = data.filename || 'file';
 
@@ -309,6 +281,11 @@ export default async function (fastify) {
                 return reply.code(400).send({ error: `Tipo de archivo no soportado: ${mimeType}` });
             }
 
+            // El archivo se guarda ANTES de leer los campos: @fastify/multipart
+            // sólo rellena data.fields con lo que precede al fichero hasta que
+            // se consume el stream, y el TPV mandaba el fichero primero
+            // ("conversationId obligatorio" al adjuntar). Si algo falla después,
+            // se borra.
             const mediaDir = path.join(process.cwd(), 'uploads', 'chat-media');
             if (!fs.existsSync(mediaDir)) fs.mkdirSync(mediaDir, { recursive: true });
 
@@ -318,6 +295,36 @@ export default async function (fastify) {
 
             await pipeline(data.file, fs.createWriteStream(filePath));
             const localMediaUrl = `chat-media/${filename}`;
+            const descartar = () => { try { fs.unlinkSync(filePath); } catch { /* ya no está */ } };
+
+            const fields = {};
+            for (const [key, field] of Object.entries(data.fields)) {
+                if (field.value !== undefined) fields[key] = field.value;
+            }
+
+            const { conversationId, caption, channel } = fields;
+            if (!conversationId) { descartar(); return reply.code(400).send({ error: 'conversationId obligatorio' }); }
+
+            const conversation = await prisma.conversation.findUnique({
+                where: { id: Number(conversationId) },
+                include: { client: { select: { id: true, phone: true } } },
+            });
+            if (!conversation) { descartar(); return reply.code(404).send({ error: 'Conversación no encontrada' }); }
+
+            const phone = conversation.client?.phone || conversation.phone;
+            if (!phone) { descartar(); return reply.code(400).send({ error: 'Sin teléfono para enviar' }); }
+
+            // Verificar ventana 24h de WhatsApp
+            if ((channel || 'whatsapp') !== 'sms') {
+                const win = await getWhatsAppWindow(prisma, conversation.id);
+                if (!win.open) {
+                    descartar();
+                    return reply.code(403).send({
+                        error: 'La ventana de 24h de WhatsApp está cerrada. Usa una plantilla para iniciar la conversación.',
+                        code: 'WA_WINDOW_CLOSED',
+                    });
+                }
+            }
 
             let externalId = null;
             if (channel !== 'sms') {

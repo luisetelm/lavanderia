@@ -669,11 +669,13 @@ export function linkConversationClient(token, conversationId, clientId) {
 }
 
 export async function sendMediaMessage(token, { file, conversationId, caption, channel }) {
+    // Los campos van ANTES del archivo: el backend (@fastify/multipart) sólo
+    // tiene disponibles los campos que preceden al fichero al leerlo.
     const formData = new FormData();
-    formData.append('file', file);
     formData.append('conversationId', String(conversationId));
     if (caption) formData.append('caption', caption);
     formData.append('channel', channel || 'whatsapp');
+    formData.append('file', file);
 
     const res = await fetch(`${API_BASE}/messages/send-media`, {
         method: 'POST',
