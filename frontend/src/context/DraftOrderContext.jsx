@@ -308,15 +308,17 @@ export function DraftOrderProvider({ children, token }) {
     // % sobre las prendas que computan en la carga (lo externo no se acelera).
     // Es sólo una previsión; el importe que vale lo calcula el backend al crear
     // el pedido (POST /api/orders), con la misma regla.
+    // Los grandes clientes tienen días fijos de recogida y entrega: nunca lo pagan.
     const suplementoUrgencia = useMemo(() => {
         const { suggestedDate, urgencyPct } = calendarInfo;
         const adelantada = !!(state.fechaLimite && suggestedDate && state.fechaLimite < suggestedDate);
-        if (!adelantada || !(urgencyPct > 0)) return { adelantada, pct: urgencyPct || 0, importe: 0, aplicado: false };
+        const granCliente = !!state.selectedUser?.isbigclient;
+        if (!adelantada || !(urgencyPct > 0)) return { adelantada, granCliente, pct: urgencyPct || 0, importe: 0, aplicado: false };
         const base = (state.cart || []).reduce((sum, item) =>
             sum + (item.countsForLoad === false ? 0 : getPriceForItem(item) * item.quantity), 0);
         const importe = Math.round(base * urgencyPct) / 100;
-        return { adelantada, pct: urgencyPct, importe, aplicado: importe > 0 && !state.sinSuplemento };
-    }, [calendarInfo, state.fechaLimite, state.cart, state.sinSuplemento, getPriceForItem]);
+        return { adelantada, granCliente, pct: urgencyPct, importe, aplicado: importe > 0 && !granCliente && !state.sinSuplemento };
+    }, [calendarInfo, state.fechaLimite, state.cart, state.sinSuplemento, state.selectedUser, getPriceForItem]);
 
     const totalConSuplemento = useMemo(() =>
         total + (suplementoUrgencia.aplicado ? suplementoUrgencia.importe : 0),

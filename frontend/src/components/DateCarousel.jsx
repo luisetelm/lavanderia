@@ -327,7 +327,9 @@ export default function DateCarousel({fechaLimite, setFechaLimite, token, esAdmi
                 <div className={`dc-urgent ${suplementoUrgencia.aplicado ? '' : 'is-off'}`}>
                     <span uk-icon="icon: bolt; ratio: 0.8"></span>
                     <span className="dc-urgent-text">
-                        {suplementoUrgencia.pct > 0 ? (
+                        {suplementoUrgencia.granCliente ? (
+                            <><strong>Entrega adelantada</strong>: antes de la fecha sugerida. Gran cliente con días de recogida y entrega pactados: sin suplemento.</>
+                        ) : suplementoUrgencia.pct > 0 ? (
                             <>
                                 <strong>Entrega adelantada</strong>: antes de la fecha sugerida
                                 {suggestedDate && <> ({fmt(suggestedDate, {weekday: 'short', day: 'numeric', month: 'short'})})</>}.
@@ -341,7 +343,7 @@ export default function DateCarousel({fechaLimite, setFechaLimite, token, esAdmi
                             <><strong>Entrega adelantada</strong>: antes de la fecha sugerida. El suplemento de urgencia está desactivado.</>
                         )}
                     </span>
-                    {esAdmin && suplementoUrgencia.pct > 0 && (
+                    {esAdmin && suplementoUrgencia.pct > 0 && !suplementoUrgencia.granCliente && (
                         <label className="dc-urgent-waive" title="Sólo administración">
                             <input type="checkbox" className="uk-checkbox" checked={!!sinSuplemento}
                                    onChange={e => setSinSuplemento(e.target.checked)}/>

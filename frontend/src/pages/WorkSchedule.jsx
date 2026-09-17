@@ -204,7 +204,7 @@ export default function WorkSchedule({ token }) {
                     </div>
                     <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: 6 }}>
                         Se añade al pedido como la línea «Suplemento urgencia», así sale en el ticket y en la factura.
-                        No se aplica a los servicios externos (peletero, alfombras) y administración puede eximirlo en el TPV.
+                        No se aplica a los servicios externos (peletero, alfombras) ni a los grandes clientes (tienen días de recogida y entrega pactados), y administración puede eximirlo en el TPV.
                     </div>
                 </div>
 

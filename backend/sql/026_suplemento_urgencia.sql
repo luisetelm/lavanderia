@@ -6,6 +6,8 @@
 -- importe = % sobre las líneas que computan en la carga del día (lo que va a
 -- servicio externo no se puede acelerar). Así sale en el ticket y en la
 -- factura sin tocar el modelo de precios, y administración puede quitarlo.
+-- Los grandes clientes (hoteles, restaurantes) tienen días fijos de recogida
+-- y entrega y no eligen fecha por disponibilidad: nunca lo pagan.
 --
 -- El producto nace archivado: no aparece en el catálogo del TPV ni se puede
 -- añadir a mano, pero conserva ficha y pedidos. No computa en la carga ni
