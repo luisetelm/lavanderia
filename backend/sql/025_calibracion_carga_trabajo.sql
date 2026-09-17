@@ -5,10 +5,12 @@
 -- Unidad: "camisas equivalentes" (camisa lavada y planchada = 1).
 -- El tracking no registra tiempos reales (todos los pasos se marcan con
 -- inicio = fin), así que los pesos no salen de cronometrar sino de una
--- escala razonada por itinerario y precio, revisada a mano:
+-- escala razonada por itinerario y precio, revisada a mano y contrastada
+-- con el hueco entre marcas consecutivas de "planchado" de la misma persona:
 --   · Servicio externo (peletero, alfombras) ........ no computa
---   · Ropa de hogar por kg / hostelería (kg, servilletas,
---     manteles, sábanas, toallas, fundas) ........... 0,05 – 0,5 por unidad
+--   · Ropa de hogar por kg / hostelería, planchada a
+--     mano (no hay calandra) ........................ kg 0,3 · servilleta 0,12
+--                                                     mantel 0,5–1 · sábana 0,6
 --   · Edredones, nórdicos, mantas (trabajo de máquina) precio / 12
 --   · Solo plancha ................................. precio / 6
 --   · Resto de prendas (lavado seco o mojado) ....... precio / 7, suavizado
@@ -18,10 +20,12 @@
 -- carga por fecha de entrega fue: mediana 26, p90 49, p95 58, máximo 133
 -- (15/04/2026, día de hostelería con 661 unidades). Pero ese histórico es lo
 -- que se ha llegado a sacar, no lo que se puede asumir. Por mes y día
--- laborable en 2026: marzo 31, abril 37, mayo 38, junio 41, julio 33,
--- agosto 32. Marzo, julio y agosto fueron cómodos; abril y mayo justos;
--- junio, de agobio. El tope diario se fija en 35 y se ajusta desde
--- Administración > Horario laboral.
+-- laborable en 2026, ya con la hostelería a mano (kg = 0,3): marzo 38,
+-- abril 58, mayo 54, junio 49, julio 43, agosto 45. Marzo, julio y agosto
+-- fueron cómodos; abril y mayo justos; junio, de agobio (con la hostelería
+-- a 0,1 por kg los meses no se separaban). El tope diario se fija en 45,
+-- el techo de los meses cómodos, y se ajusta desde Administración > Horario
+-- laboral.
 -- Con los pesos anteriores (todo a 1 y tope 8), 178 de 254 días salían llenos.
 
 BEGIN;
@@ -37,17 +41,19 @@ WHERE id IN (
 -- Pesos por producto
 UPDATE "Product" p SET counts_for_load = TRUE, workload_weight = v.w
 FROM (VALUES
-    -- Hostelería y hogar por unidad
-    (110, 0.1), (186, 0.1),                              -- kg ropa blanca
-    (150, 0.2), (173, 0.2),                              -- kg ropa de color
-    (158, 0.05), (85, 0.05), (91, 0.05),                 -- servilletas, paños
-    (76, 0.1), (77, 0.1), (78, 0.1),                     -- fundas almohada
-    (81, 0.1), (82, 0.1), (83, 0.1), (84, 0.1), (90, 0.1), -- toallas, alfombrilla
-    (72, 0.2), (73, 0.2), (74, 0.2), (75, 0.2),          -- sábanas
-    (155, 0.2), (159, 0.2), (176, 0.2),                  -- mantel pequeño, camino, funda silla
-    (156, 0.3), (177, 0.3), (37, 0.3), (79, 0.3), (80, 0.3), (64, 0.3), -- mantel mediano, funda mesa, fundas nórdicas, cojín pequeño
-    (157, 0.4),                                          -- mantel grande
-    (101, 0.5), (160, 0.5), (166, 0.5), (167, 0.5),      -- juego sábanas, cojín grande, mantel mesa, estor
+    -- Hostelería y hogar por unidad. Sin calandra: todo se plancha a mano.
+    -- El hueco entre marcas de "planchado" de la misma persona da ≈3 min/kg
+    -- de ropa blanca y ≈4-5 min por mantel, con la camisa en ≈9 min.
+    (110, 0.3), (186, 0.3),                              -- kg ropa blanca
+    (150, 0.5), (173, 0.5),                              -- kg ropa de color
+    (158, 0.12), (85, 0.12), (91, 0.12),                 -- servilletas, paños (≈1 min a mano)
+    (76, 0.15), (77, 0.15), (78, 0.15),                  -- fundas almohada
+    (81, 0.1), (82, 0.1), (83, 0.1), (84, 0.1), (90, 0.1), -- toallas, alfombrilla (sólo doblar)
+    (72, 0.6), (73, 0.6), (74, 0.6), (75, 0.6),          -- sábanas
+    (155, 0.5), (156, 0.75), (157, 1),                   -- mantel pequeño, mediano, grande
+    (159, 0.3), (176, 0.3), (177, 0.5), (166, 1),        -- camino, funda silla, funda mesa, mantel mesa
+    (37, 0.8), (79, 0.8), (80, 0.8), (101, 1.2),         -- fundas nórdicas, juego de sábanas
+    (64, 0.3), (160, 0.5), (167, 0.5),                   -- cojines, estor
     -- Edredones, nórdicos, mantas y similares (máquina)
     (9, 2.5), (130, 2.5), (92, 2.5), (114, 2.5),
     (13, 2), (16, 2), (63, 2), (98, 2), (129, 2), (15, 2),
@@ -85,7 +91,7 @@ CREATE TABLE IF NOT EXISTS "AppSettings" (
     value TEXT NOT NULL,
     CONSTRAINT "AppSettings_key_key" UNIQUE (key)
 );
-INSERT INTO "AppSettings" (key, value) VALUES ('daily_load_max', '35')
+INSERT INTO "AppSettings" (key, value) VALUES ('daily_load_max', '45')
 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
 
 COMMIT;
