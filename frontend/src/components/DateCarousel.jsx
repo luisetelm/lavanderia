@@ -33,7 +33,7 @@ const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 const fmtLoad = (n) => (Math.round(n * 10) / 10).toString().replace('.', ',');
 
 const WEEKDAYS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
-const LOAD_MAX_FALLBACK = 50; // el tope real lo manda la API (Administración > Horario laboral)
+const LOAD_MAX_FALLBACK = 25; // el tope real lo manda la API (Administración > Horario laboral)
 const WEEKS = 2;
 
 const loadLevel = (load, max) => (load >= max ? 'high' : load >= max / 2 ? 'mid' : 'low');

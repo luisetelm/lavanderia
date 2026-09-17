@@ -4,7 +4,7 @@
 // de `daily_load_max` (AppSettings) el calendario del TPV lo da por lleno.
 // Ver sql/025 para la calibración inicial con el histórico.
 
-export const CARGA_MAX_POR_DEFECTO = 50;
+export const CARGA_MAX_POR_DEFECTO = 25;
 const CLAVE_CARGA_MAX = 'daily_load_max';
 
 export async function leerCargaMaxima(prisma) {
