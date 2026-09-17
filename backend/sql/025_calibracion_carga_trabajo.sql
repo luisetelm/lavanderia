@@ -17,9 +17,10 @@
 -- Con estos pesos, en los 254 días laborables de sept-2025 a sept-2026 la
 -- carga por fecha de entrega fue: mediana 26, p90 49, p95 58, máximo 133
 -- (15/04/2026, día de hostelería con 661 unidades). Pero ese histórico es lo
--- que se ha llegado a sacar, no lo que se puede asumir: con cargas de 24-36 el
--- taller ya va desbordado, así que el tope diario se fija en 25 (≈ el día
--- típico); agosto de 2026 salió a 31,7 por día laborable. Se ajusta desde
+-- que se ha llegado a sacar, no lo que se puede asumir. Por mes y día
+-- laborable en 2026: marzo 31, abril 37, mayo 38, junio 41, julio 33,
+-- agosto 32. Marzo, julio y agosto fueron cómodos; abril y mayo justos;
+-- junio, de agobio. El tope diario se fija en 35 y se ajusta desde
 -- Administración > Horario laboral.
 -- Con los pesos anteriores (todo a 1 y tope 8), 178 de 254 días salían llenos.
 
@@ -84,7 +85,7 @@ CREATE TABLE IF NOT EXISTS "AppSettings" (
     value TEXT NOT NULL,
     CONSTRAINT "AppSettings_key_key" UNIQUE (key)
 );
-INSERT INTO "AppSettings" (key, value) VALUES ('daily_load_max', '25')
+INSERT INTO "AppSettings" (key, value) VALUES ('daily_load_max', '35')
 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
 
 COMMIT;
