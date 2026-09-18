@@ -1691,6 +1691,8 @@ export default async function (fastify, opts) {
                     // parte de la carga reservada a grandes clientes cuyo pedido aún no ha entrado
                     reserved: Math.round(cargaDelDia(byDay, reservas, k).reservada * 10) / 10,
                     reservedClients: cargaDelDia(byDay, reservas, k).clientes.map(c => c.nombre),
+                    // grandes clientes cuya reserva se ha liberado: pasó su recogida y no hay pedido suyo para este día
+                    releasedClients: cargaDelDia(byDay, reservas, k).liberadas.map(c => c.nombre),
                     // Entregar este día adelanta N días laborables respecto a la sugerida → % de suplemento
                     daysAhead: c.isWorking && suggestedDate && k < suggestedDate ? diasLaborablesAdelantados(calendar, k, suggestedDate) : 0,
                 });

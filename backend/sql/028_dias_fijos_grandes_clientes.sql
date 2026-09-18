@@ -9,7 +9,9 @@
 -- si el cliente pasa de dos entregas a una, no cambia), y la reserva de cada
 -- día se va consumiendo con sus pedidos reales:
 --   carga del día = pedidos reales + Σ máx(0, expected_load / nº días entrega − carga real del cliente)
--- Los días de recogida son informativos (ficha del cliente).
+-- Los días de recogida sirven para liberar la reserva: lo recogido un día se
+-- entrega en la siguiente entrega, y pasada esa recogida sin pedido la reserva
+-- deja de contar (reservasPorDia, backend/src/utils/cargaTrabajo.js).
 -- Días: 0 = domingo ... 6 = sábado, como getDay().
 
 BEGIN;

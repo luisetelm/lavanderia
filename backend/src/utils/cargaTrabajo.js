@@ -25,6 +25,12 @@ const CLAVE_URGENCIA_MAX = 'urgency_pct_max';
 export const MARGEN_MINIMO_DIAS = 2;
 const HORIZONTE_DIAS = 42;
 
+// Hora a la que se da por cerrada la recogida del día de un gran cliente: las
+// recogidas y entregas se hacen antes de las 11. El pedido tiene que estar dado
+// de alta para entonces; si se registra más tarde, hasta que entre el día se ve
+// sin esa carga.
+const HORA_LIBERACION_RESERVA = 11;
+
 async function leerAjuste(prisma, clave, porDefecto, { minimo = 0 } = {}) {
     let fila = null;
     try {
@@ -82,15 +88,20 @@ export function porcentajeUrgencia(dias, { pctPorDia, pctMax }) {
     return pctMax > 0 ? Math.min(pct, pctMax) : pct;
 }
 
+const diaSemana = (k) => new Date(`${k}T12:00:00Z`).getUTCDay();
+
+// Un día que no está en el calendario se cuenta como laborable si es de lunes a viernes.
+function esLaborable(calendar, k) {
+    const c = calendar[k];
+    return c ? !!c.isWorking : [1, 2, 3, 4, 5].includes(diaSemana(k));
+}
+
 /** Días laborables que se adelanta una entrega: abiertos en (elegida, sugerida]. */
 export function diasLaborablesAdelantados(calendar, elegida, sugerida) {
     if (!elegida || !sugerida || elegida >= sugerida) return 0;
     let n = 0;
     for (let k = addDays(elegida, 1); k <= sugerida; k = addDays(k, 1)) {
-        // Un día que no está en el calendario se cuenta si es de lunes a viernes.
-        const c = calendar[k];
-        const laborable = c ? !!c.isWorking : [1, 2, 3, 4, 5].includes(new Date(`${k}T12:00:00Z`).getUTCDay());
-        if (laborable) n++;
+        if (esLaborable(calendar, k)) n++;
     }
     return n;
 }
@@ -114,14 +125,20 @@ export function cargaPonderada(lines) {
  * dos entregas a una, la semana no cambia), y la reserva de cada día se
  * consume con sus pedidos reales de ese día:
  *   reservada = máx(0, expectedLoad / nº días de entrega − carga real del cliente ese día)
- * @returns {Promise<Object<string, {reservada: number, clientes: Array<{id:number, nombre:string, reservada:number}>}>>}
+ *
+ * La reserva se libera sola: lo que se recoge un día se entrega en la siguiente
+ * entrega del cliente que quede a MARGEN_MINIMO_DIAS laborables o más (el
+ * tiempo estándar de taller), así que cuando ya ha pasado la última recogida
+ * que alimenta una entrega (`ultimaRecogidaDe`), lo que no haya entrado ya no
+ * va a entrar y ese día sólo cuenta la carga real. Nadie tiene que marcar nada.
+ * @returns {Promise<Object<string, {reservada: number, clientes: Array<{id:number, nombre:string, reservada:number}>, liberadas: Array<{id:number, nombre:string}>}>>}
  */
-export async function reservasPorDia(prisma, calendar, byDay) {
+export async function reservasPorDia(prisma, calendar, byDay, ahora = new Date()) {
     let clientes = [];
     try {
         clientes = await prisma.user.findMany({
             where: { isbigclient: true, isActive: true, expectedLoad: { gt: 0 } },
-            select: { id: true, firstName: true, lastName: true, denominacionsocial: true, deliveryDays: true, expectedLoad: true },
+            select: { id: true, firstName: true, lastName: true, denominacionsocial: true, pickupDays: true, deliveryDays: true, expectedLoad: true },
         });
     } catch (e) {
         // Sin las columnas de sql/028 no hay reservas; el calendario sigue funcionando.
@@ -132,6 +149,9 @@ export async function reservasPorDia(prisma, calendar, byDay) {
     const reservas = {};
     if (!clientes.length) return reservas;
 
+    const hoy = ymd(ahora);
+    const recogidaCerrada = (dia) => dia < hoy || (dia === hoy && ahora.getHours() >= HORA_LIBERACION_RESERVA);
+
     for (const k of Object.keys(calendar)) {
         if (!calendar[k]?.isWorking) continue;
         const dow = new Date(`${k}T12:00:00Z`).getUTCDay();
@@ -141,30 +161,75 @@ export async function reservasPorDia(prisma, calendar, byDay) {
         for (const o of byDay[k] || []) {
             if (o.client?.id) realPorCliente[o.client.id] = (realPorCliente[o.client.id] || 0) + cargaPonderada(o.lines);
         }
-        const detalle = delDia
-            .map(c => ({
-                id: c.id,
-                nombre: c.denominacionsocial || `${c.firstName || ''} ${c.lastName || ''}`.trim(),
-                reservada: Math.max(0, Number(c.expectedLoad) / c.deliveryDays.length - (realPorCliente[c.id] || 0)),
-            }))
-            .filter(c => c.reservada > 0);
-        if (detalle.length) {
-            reservas[k] = { reservada: detalle.reduce((s, c) => s + c.reservada, 0), clientes: detalle };
+        const detalle = [];
+        const liberadas = [];
+        for (const c of delDia) {
+            const nombre = c.denominacionsocial || `${c.firstName || ''} ${c.lastName || ''}`.trim();
+            const real = realPorCliente[c.id] || 0;
+            const recogida = ultimaRecogidaDe(c, k, calendar);
+            if (recogida && recogidaCerrada(recogida)) {
+                // Sólo se avisa si el día se queda sin nada suyo: si entregó, su pedido ya ocupa el hueco.
+                if (real === 0 && k > hoy) liberadas.push({ id: c.id, nombre });
+                continue;
+            }
+            const reservada = Math.max(0, Number(c.expectedLoad) / c.deliveryDays.length - real);
+            if (reservada > 0) detalle.push({ id: c.id, nombre, reservada });
+        }
+        if (detalle.length || liberadas.length) {
+            reservas[k] = { reservada: detalle.reduce((s, c) => s + c.reservada, 0), clientes: detalle, liberadas };
         }
     }
     return reservas;
 }
 
 /**
+ * Última recogida que alimenta la entrega del día `k`. Lo recogido un día va a
+ * la primera entrega del cliente que quede a MARGEN_MINIMO_DIAS laborables o
+ * más: con recogida de lunes a viernes y entrega lunes y viernes, lo del
+ * miércoles es lo último que llega al viernes, y lo del jueves va al lunes.
+ * Es, por tanto, el día de recogida abierto más cercano hacia atrás con ese
+ * margen. Si esa recogida en realidad sale en una entrega anterior (recoge
+ * L-M-X-V y entrega L y V: al lunes no llega ninguna con margen), la entrega se
+ * alimenta de la recogida más cercana aunque vaya justa, sin pasar de la
+ * entrega anterior. null (la reserva no se libera) si el cliente no tiene días
+ * de recogida o no cae ninguno en esa ventana.
+ */
+function ultimaRecogidaDe(cliente, k, calendar) {
+    const recogidas = Array.isArray(cliente.pickupDays) ? cliente.pickupDays : [];
+    if (!recogidas.length) return null;
+    const esRecogida = (d) => recogidas.includes(diaSemana(d)) && esLaborable(calendar, d);
+    const esEntrega = (d) => cliente.deliveryDays.includes(diaSemana(d)) && esLaborable(calendar, d);
+
+    let laborables = esLaborable(calendar, k) ? 1 : 0; // laborables en (d, k]
+    buscar: for (let d = addDays(k, -1), i = 0; i < 14; d = addDays(d, -1), i++) {
+        if (laborables >= MARGEN_MINIMO_DIAS && esRecogida(d)) {
+            // ¿Le da tiempo a salir en una entrega anterior a `k`? Entonces no alimenta ésta.
+            for (let e = addDays(d, 1); e < k; e = addDays(e, 1)) {
+                if (esEntrega(e) && diasLaborablesAdelantados(calendar, d, e) >= MARGEN_MINIMO_DIAS) break buscar;
+            }
+            return d;
+        }
+        if (esLaborable(calendar, d)) laborables++;
+    }
+
+    // Ninguna recogida llega con margen: la más cercana, hasta la entrega anterior (incluida).
+    for (let d = addDays(k, -1), i = 0; i < 7; d = addDays(d, -1), i++) {
+        if (esRecogida(d)) return d;
+        if (esEntrega(d)) return null;
+    }
+    return null;
+}
+
+/**
  * Carga de un día: los pedidos reales más lo que aún queda reservado para
  * los grandes clientes con entrega ese día.
- * @returns {{real: number, reservada: number, total: number, clientes: Array}}
+ * @returns {{real: number, reservada: number, total: number, clientes: Array, liberadas: Array}}
  */
 export function cargaDelDia(byDay, reservas, k) {
     const real = (byDay[k] || []).reduce((s, o) => s + cargaPonderada(o.lines), 0);
     const r = reservas?.[k];
     const reservada = r?.reservada || 0;
-    return { real, reservada, total: real + reservada, clientes: r?.clientes || [] };
+    return { real, reservada, total: real + reservada, clientes: r?.clientes || [], liberadas: r?.liberadas || [] };
 }
 
 /** Tope de carga de un día: el propio de la excepción (víspera de festivo) o el general. */

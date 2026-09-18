@@ -280,6 +280,9 @@ export default function UserForm({ initial = {}, onSave, token, onCancel, logged
           <div style={{ fontSize: '0.78rem', color: '#64748b', marginBottom: 10, maxWidth: 680 }}>
             El calendario del TPV reparte la carga semanal de este cliente entre sus días de entrega y la reserva aunque su pedido
             aún no se haya creado; la descuenta cuando entra. Así el día no se llena de particulares antes de recoger su ropa.
+            Lo que se recoge un día se entrega en su siguiente día de entrega que quede a dos días laborables o más: cuando pasa
+            la última recogida que llega a tiempo (a las 11:00), lo que no haya entrado ya no se reserva. Sin días de recogida
+            marcados, la reserva no se libera.
             {perfil && perfil.entregas > 0 && (
               <> Según los últimos {perfil.meses} meses ({perfil.entregas} entregas en {perfil.semanas} semanas): entrega los {diasTexto(perfil.porDiaEntrega)};
                 recoge los {diasTexto(perfil.porDiaRecogida)}; carga semanal habitual <strong>{perfil.cargaSemanalMediana}</strong>.</>

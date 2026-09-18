@@ -140,9 +140,16 @@
     background: #f1f5f9;
     overflow: hidden;
 }
-.dc-bar i { display: block; height: 100%; border-radius: 2px; background: var(--dc-low); min-width: 0; }
+.dc-bar { display: flex; }
+.dc-bar i { display: block; height: 100%; border-radius: 2px; background: var(--dc-low); min-width: 0; flex: none; }
 .load-mid .dc-bar i { background: var(--dc-mid); }
 .load-high .dc-bar i { background: var(--dc-high); }
+/* Reservado a grandes clientes que aún no han entregado: mismo color, rayado */
+.dc-bar i.is-reserved {
+    border-radius: 0 2px 2px 0;
+    -webkit-mask-image: repeating-linear-gradient(90deg, #000 0 2px, transparent 2px 4px);
+    mask-image: repeating-linear-gradient(90deg, #000 0 2px, transparent 2px 4px);
+}
 
 .dc-meta {
     margin-top: 4px;

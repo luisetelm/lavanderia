@@ -233,7 +233,13 @@ export default function DateCarousel({fechaLimite, setFechaLimite, token, esAdmi
                                     <span className="dc-meta">&nbsp;</span>
                                 ) : (
                                     <>
-                                        <span className="dc-bar"><i style={{width: `${Math.min(day.load / dayMax, 1) * 100}%`}}/></span>
+                                        {/* Tramo liso = pedidos reales; tramo rayado = reservado a grandes clientes que aún no han entregado */}
+                                        <span className="dc-bar">
+                                            <i style={{width: `${Math.min(Math.max(day.load - (day.reserved || 0), 0) / dayMax, 1) * 100}%`}}/>
+                                            {day.reserved > 0 && (
+                                                <i className="is-reserved" style={{width: `${Math.min(day.reserved / dayMax, 1) * 100}%`}}/>
+                                            )}
+                                        </span>
                                         <span className="dc-meta">
                                             {orders.length > 0 ? `${orders.length} ped · ${fmtLoad(day.load)}` : (day.load > 0 ? `reserva · ${fmtLoad(day.load)}` : 'libre')}
                                         </span>
@@ -315,6 +321,9 @@ export default function DateCarousel({fechaLimite, setFechaLimite, token, esAdmi
                                 {selected.orders > 0 ? `${selected.orders} pedido${selected.orders !== 1 ? 's' : ''} · carga ${fmtLoad(selected.load)}` : (selected.load > 0 ? `sin pedidos · carga ${fmtLoad(selected.load)}` : 'sin pedidos')}
                                 {selected.reserved > 0 && (
                                     <> (incluye {fmtLoad(selected.reserved)} reservados para {(selected.reservedClients || []).join(', ') || 'grandes clientes'})</>
+                                )}
+                                {(selected.releasedClients || []).length > 0 && (
+                                    <> · reserva liberada: {selected.releasedClients.join(', ')} (pasó su recogida sin pedido para este día)</>
                                 )}
                                 {Number(selected.loadMax) > 0 && Number(selected.loadMax) !== loadMax && (
                                     <> · tope de este día {fmtLoad(selected.loadMax)}{selected.label ? ` (${selected.label})` : ''}</>
