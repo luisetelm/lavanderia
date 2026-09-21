@@ -7,6 +7,7 @@ import MailComposer from 'nodemailer/lib/mail-composer/index.js';
 import {SESClient, SendRawEmailCommand} from '@aws-sdk/client-ses';
 import nodemailer from 'nodemailer';
 import { emailTemplate } from '../utils/emailTemplate.js';
+import { envioDesactivado } from '../utils/envioEmail.js';
 
 // Si no se define AWS_REGION en entorno, asumimos una región por defecto razonable.
 const DEFAULT_AWS_REGION = process.env.AWS_REGION || 'eu-west-1';
@@ -181,7 +182,7 @@ async function convertirSimplificadaANormal(prisma, invoiceId, orderIds) {
     }
 
     // 6) Enviar email con el PDF
-    if (cliente.email) {
+    if (cliente.email && !envioDesactivado(`factura ${result.number}`)) {
         const {FROM_EMAIL, FROM_NAME, SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS} = process.env;
         const pdfContent = fs.existsSync(pdfPath) ? fs.readFileSync(pdfPath) : null;
 
@@ -525,7 +526,9 @@ export async function crearFactura(prisma, {orderIds, type, invoiceData}) {
         // 7) Email (si hay email y SMTP correctamente configurado)
         // Envío "best-effort": intentamos SES por API por defecto; si falla, se registra el error y
         // se intenta un fallback SMTP (si está configurado). Nunca lanzamos excepción por fallo de email.
-        if (cliente.email) {
+        // El envio va dentro de emitir la factura, asi que cualquier prueba que
+        // llame aqui manda correo de verdad si no se desactiva (utils/envioEmail.js).
+        if (cliente.email && !envioDesactivado(`factura ${result.number}`)) {
             const {FROM_EMAIL, FROM_NAME, SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS} = process.env;
             const pdfContent = fs.existsSync(pdfPath) ? fs.readFileSync(pdfPath) : null;
 

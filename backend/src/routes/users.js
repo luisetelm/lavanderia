@@ -3,6 +3,7 @@ import {hash} from 'bcrypt';
 
 import nodemailer from 'nodemailer';
 import { emailTemplate } from '../utils/emailTemplate.js';
+import { envioDesactivado } from '../utils/envioEmail.js';
 
 const emailTransporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST, port: process.env.SMTP_PORT, secure: false, requireTLS: true, auth: {
@@ -45,6 +46,8 @@ const sendWelcomeEmail = async (email, firstName, lastName, password) => {
             `,
         }),
     };
+
+    if (envioDesactivado(`alta de ${email}`)) return;
 
     try {
         await emailTransporter.sendMail(mailOptions);
@@ -90,6 +93,8 @@ const sendPasswordResetEmail = async (email, firstName, lastName, password) => {
             `,
         }),
     };
+
+    if (envioDesactivado(`restablecimiento de ${email}`)) return;
 
     try {
         await emailTransporter.sendMail(mailOptions);

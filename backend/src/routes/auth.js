@@ -2,6 +2,7 @@ import { hash, compare } from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import nodemailer from 'nodemailer';
 import { emailTemplate, emailButton } from '../utils/emailTemplate.js';
+import { envioDesactivado } from '../utils/envioEmail.js';
 
 const emailTransporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST,
@@ -131,6 +132,10 @@ export default async function (fastify, opts) {
 
             const baseUrl = process.env.APP_URL || 'https://app.tinteyburbuja.com';
             const resetLink = `${baseUrl}/reset-password?token=${resetToken}`;
+
+            if (envioDesactivado('restablecer contraseña')) {
+                return reply.send({ ok: true, message: genericMsg });
+            }
 
             await emailTransporter.sendMail({
                 from: { name: process.env.FROM_NAME, address: process.env.FROM_EMAIL },
