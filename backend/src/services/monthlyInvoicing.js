@@ -51,6 +51,10 @@ export async function generateMonthlyInvoices(prisma) {
                     invoiceTickets: { none: {} },
                     // Excluir cancelados
                     status: { not: 'cancelled' },
+                    // Excluir los que tienen una proforma en vigor (sql/030): su
+                    // importe está pendiente de que lo acepte un tercero y la
+                    // factura la emite el cierre de la proforma, no este proceso.
+                    proformaOrders: { none: { proforma: { status: { in: ['issued', 'accepted'] } } } },
                 },
                 select: { id: true, orderNum: true, total: true }
             });

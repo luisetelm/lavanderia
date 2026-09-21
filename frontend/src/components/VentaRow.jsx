@@ -1,8 +1,12 @@
 // javascript
 // Archivo: `frontend/src/components/VentaRow.jsx`
 import React, { useState, useEffect } from 'react';
-import { avisar } from '../utils/dialogo.js';
-import { createInvoice, downloadInvoicePDF, fetchOrder, collectInvoice, getPaymentLink, chargeInvoiceSepa } from '../api.js';
+import { avisar, confirmar } from '../utils/dialogo.js';
+import {
+    createInvoice, downloadInvoicePDF, fetchOrder, collectInvoice, getPaymentLink, chargeInvoiceSepa,
+    downloadProformaPDF, deleteProforma, updateProforma, invoiceProforma, reviseProforma,
+} from '../api.js';
+import ProformaModal from './ProformaModal.jsx';
 import { formatEUR } from '../utils/format.js';
 import { FACTURA_SEPA_EN_CURSO, FACTURA_SEPA_FALLIDA } from '../utils/sepa.js';
 
@@ -21,6 +25,7 @@ export default function VentaRow({
     const [orderLoading, setOrderLoading] = useState(false);
     const [showCollectModal, setShowCollectModal] = useState(false);
     const [collectMethod, setCollectMethod] = useState('transfer');
+    const [showProformaModal, setShowProformaModal] = useState(false);
 
     useEffect(() => {
         let mounted = true;
@@ -88,6 +93,14 @@ export default function VentaRow({
         ?? _inv?.invoiceId
         ?? _inv?.id
         ?? '';
+
+    // Proformas del pedido (sql/030). Una proforma no es una factura: mientras esté
+    // en vigor el pedido sigue pendiente de facturar, y si no la aceptan se borra y
+    // no queda rastro. Ver docs/factura-proforma.md.
+    const proformas = (orderDetail?.proformaOrders ?? [])
+        .map((po) => po.proforma)
+        .filter(Boolean);
+    const proformaVigente = proformas.find((p) => p.status === 'issued' || p.status === 'accepted') || null;
 
     // Detectar si la factura está cobrada
     const invoiceObj = _inv;
@@ -256,10 +269,188 @@ export default function VentaRow({
         }
     };
 
+    // ─── Proforma ────────────────────────────────────────────────────────────
+    // El presupuesto que el cliente presenta ante un tercero. No mueve dinero ni
+    // marca el pedido como facturado: si lo aceptan se factura con "Facturar", y si
+    // no, se borra y no queda rastro.
+    const handleProformaCreada = async (p) => {
+        setShowProformaModal(false);
+        avisar(`Proforma ${p.number} emitida`, 'success');
+        try {
+            await downloadProformaPDF(token, p.id, p.number);
+        } catch { /* el aviso lo da downloadProformaPDF */ }
+        await refetchOrderDetail();
+    };
+
+    const handleDescargarProforma = async () => {
+        if (!proformaVigente) return;
+        await downloadProformaPDF(token, proformaVigente.id, proformaVigente.number);
+    };
+
+    const handleAceptarProforma = async () => {
+        if (!proformaVigente) return;
+        setRowLoading(true);
+        try {
+            await updateProforma(token, proformaVigente.id, { status: 'accepted' });
+            avisar('Proforma aceptada: ya se puede trabajar el pedido', 'success');
+            await refetchOrderDetail();
+        } catch (err) {
+            avisar('No se pudo marcar como aceptada: ' + (err.error || err.message || err), 'danger');
+        } finally {
+            setRowLoading(false);
+        }
+    };
+
+    // Rechazada = se borra. Es el camino de "no queda rastro de facturas". El pedido
+    // hay que cancelarlo aparte, y en este orden: cancelarlo primero pondría su
+    // total a 0.
+    const handleRechazarProforma = async () => {
+        if (!proformaVigente) return;
+        const ok = await confirmar(
+            `Se borrará la proforma ${proformaVigente.number} y no quedará rastro de ella. ` +
+            'Después tendrás que cancelar el pedido si ya no se va a hacer. ¿Continuar?',
+            { titulo: 'Rechazada por el destinatario', textoConfirmar: 'Borrar proforma', peligroso: true },
+        );
+        if (!ok) return;
+
+        setRowLoading(true);
+        try {
+            await deleteProforma(token, proformaVigente.id);
+            avisar('Proforma borrada. El pedido no tiene ninguna factura: cancélalo si no se va a hacer.', 'warning', 6000);
+            await onRefresh(venta.id);
+            await refetchOrderDetail();
+        } catch (err) {
+            avisar('No se pudo borrar la proforma: ' + (err.error || err.message || err), 'danger');
+        } finally {
+            setRowLoading(false);
+        }
+    };
+
+    // Revisión: apareció un vicio oculto o cambió la previsión de trabajo. Se
+    // vuelve a presupuestar el pedido tal como está ahora (añade primero lo que
+    // falte con "Ajustar pedido") y la anterior queda sustituida.
+    const handleRevisarProforma = async () => {
+        if (!proformaVigente) return;
+        const ok = await confirmar(
+            `Se emitirá una revisión de ${proformaVigente.number} con el contenido actual del pedido. ` +
+            'La anterior queda sustituida, pero se conserva: es la que el cliente tiene en la mano. ' +
+            '¿Has añadido ya el trabajo extra al pedido?',
+            { titulo: 'Revisar la proforma', textoConfirmar: 'Emitir revisión' },
+        );
+        if (!ok) return;
+
+        setRowLoading(true);
+        try {
+            const p = await reviseProforma(token, proformaVigente.id);
+            avisar(`Revisión ${p.number} emitida`, 'success');
+            try {
+                await downloadProformaPDF(token, p.id, p.number);
+            } catch { /* el aviso lo da downloadProformaPDF */ }
+            await refetchOrderDetail();
+        } catch (err) {
+            avisar('No se pudo revisar la proforma: ' + (err.error || err.message || err), 'danger');
+        } finally {
+            setRowLoading(false);
+        }
+    };
+
+    // Aceptada y trabajo hecho: la factura de verdad, ligada a la proforma.
+    const handleFacturarProforma = async () => {
+        if (!proformaVigente) return;
+        setRowLoading(true);
+        try {
+            const resp = await invoiceProforma(token, proformaVigente.id);
+            const factura = resp?.invoice;
+            if (factura?.emailError) {
+                avisar('Factura creada, pero no se pudo enviar el email: ' + factura.emailError, 'warning');
+            } else {
+                avisar(`Factura ${factura?.number || ''} emitida desde la proforma`, 'success');
+            }
+            await onRefresh(venta.id);
+            await refetchOrderDetail();
+        } catch (err) {
+            avisar('No se pudo facturar la proforma: ' + (err.error || err.message || err), 'danger');
+        } finally {
+            setRowLoading(false);
+        }
+    };
+
     const renderInvoiceButtons = () => {
+        // Con una proforma en vigor no se ofrece facturar por la vía normal: la
+        // factura se emite desde la proforma, para que quede ligada a ella.
+        if (invoiceTickets.length === 0 && proformaVigente) {
+            const aceptada = proformaVigente.status === 'accepted';
+            return (
+                <div>
+                    <div style={{fontSize: '0.75rem', marginBottom: 4}}>
+                        <span className="uk-badge" style={{background: aceptada ? '#16a34a' : '#f59e0b'}}>
+                            {aceptada ? 'Proforma aceptada' : 'Proforma emitida'}
+                        </span>
+                        <div style={{marginTop: 2}}>
+                            <strong>{proformaVigente.number}</strong>
+                            {proformaVigente.validUntil && !aceptada && (
+                                <> · vale hasta {new Date(proformaVigente.validUntil).toLocaleDateString('es-ES')}</>
+                            )}
+                        </div>
+                    </div>
+                    <div className="uk-button-group" style={{flexWrap: 'wrap'}}>
+                        <button
+                            className="uk-button uk-button-default uk-button-small"
+                            onClick={handleDescargarProforma}
+                            disabled={rowLoading || globalLoading}
+                            title="Descargar el PDF de la proforma"
+                            type="button"
+                        >
+                            Descargar
+                        </button>
+                        {!aceptada && (
+                            <button
+                                className="uk-button uk-button-primary uk-button-small"
+                                onClick={handleAceptarProforma}
+                                disabled={rowLoading || globalLoading}
+                                title="El destinatario la ha aceptado: ya se puede trabajar"
+                                type="button"
+                            >
+                                Aceptada
+                            </button>
+                        )}
+                        {aceptada && (
+                            <button
+                                className="uk-button uk-button-primary uk-button-small"
+                                onClick={handleFacturarProforma}
+                                disabled={rowLoading || globalLoading || isZeroAmount}
+                                title="Trabajo hecho: emitir la factura normal"
+                                type="button"
+                            >
+                                {rowLoading ? 'Procesando...' : 'Facturar'}
+                            </button>
+                        )}
+                        <button
+                            className="uk-button uk-button-default uk-button-small"
+                            onClick={handleRevisarProforma}
+                            disabled={rowLoading || globalLoading}
+                            title="Vicio oculto o más trabajo del previsto: emitir una revisión"
+                            type="button"
+                        >
+                            Revisar
+                        </button>
+                        <button
+                            className="uk-button uk-button-danger uk-button-small"
+                            onClick={handleRechazarProforma}
+                            disabled={rowLoading || globalLoading}
+                            title="No la aceptan: borrar la proforma sin dejar rastro"
+                            type="button"
+                        >
+                            Rechazada
+                        </button>
+                    </div>
+                </div>
+            );
+        }
+
         if (invoiceTickets.length === 0) {
             return (
-                <div className="uk-button-group">
+                <div className="uk-button-group" style={{flexWrap: 'wrap'}}>
                     <button
                         className="uk-button uk-button-default uk-button-small"
                         onClick={handleCreateSimplifiedInvoice}
@@ -277,6 +468,15 @@ export default function VentaRow({
                         type="button"
                     >
                         {rowLoading ? 'Procesando...' : 'Normal'}
+                    </button>
+                    <button
+                        className="uk-button uk-button-default uk-button-small"
+                        onClick={() => setShowProformaModal(true)}
+                        disabled={rowLoading || globalLoading || isZeroAmount || !orderDetail}
+                        title="Presupuesto para presentar ante un tercero (una aseguradora). No es una factura."
+                        type="button"
+                    >
+                        Proforma
                     </button>
                 </div>
             );
@@ -369,6 +569,14 @@ export default function VentaRow({
                         <span className={`uk-badge ${yaFacturado ? 'uk-badge-success' : 'uk-badge-warning'}`}>
                             {yaFacturado ? 'Facturado' : 'Pendiente'}
                         </span>
+                        {!yaFacturado && proformaVigente && (
+                            <div style={{marginTop: 4}}>
+                                <span className="uk-badge" style={{fontSize: '0.7em', background: '#6366f1'}}
+                                      title="Tiene un presupuesto emitido. No es una factura.">
+                                    Presupuestado
+                                </span>
+                            </div>
+                        )}
                         {yaFacturado && (
                             <div style={{ marginTop: 4 }}>
                                 <span
@@ -406,6 +614,22 @@ export default function VentaRow({
                     </button>
                 </td>
             </tr>
+
+            {/* Dentro de <tr>/<td> como el modal de cobro: la fila vive en un <tbody>
+                y un <div> suelto ahi seria marcado invalido. El modal se posiciona
+                fijo, asi que la celda no afecta a como se ve. */}
+            {showProformaModal && orderDetail && (
+                <tr>
+                    <td colSpan="8" style={{padding: 0, border: 0}}>
+                        <ProformaModal
+                            token={token}
+                            order={orderDetail}
+                            onDone={handleProformaCreada}
+                            onClose={() => setShowProformaModal(false)}
+                        />
+                    </td>
+                </tr>
+            )}
 
             {/* Modal de cobro de factura */}
             {showCollectModal && (

@@ -1227,12 +1227,27 @@ export default async function (fastify, opts) {
                             }
                         }
                     },
-                    client: {select: {id: true, firstName: true, lastName: true, email: true, phone: true, notifyChannel: true}},
+                    client: {select: {id: true, firstName: true, lastName: true, email: true, phone: true, notifyChannel: true, denominacionsocial: true, nif: true}},
                     notification: {select: {id: true, type: true, sentAt: true, status: true, content: true}},
                     invoiceTickets: {
                         include: {
                             invoices: true
                         },
+                    },
+                    // Presupuestos emitidos sobre el pedido (sql/030). No afectan a
+                    // la facturación: la fila de Ventas los necesita para saber si ya
+                    // hay uno en vigor y poder descargarlo o borrarlo.
+                    proformaOrders: {
+                        include: {
+                            proforma: {
+                                select: {
+                                    id: true, number: true, status: true, issuedAt: true,
+                                    validUntil: true, totalGross: true, recipientName: true,
+                                    recipientRef: true, invoiceId: true,
+                                },
+                            },
+                        },
+                        orderBy: {proformaId: 'desc'},
                     },
                     payments: {
                         select: {id: true, amount: true, method: true, status: true, createdAt: true},

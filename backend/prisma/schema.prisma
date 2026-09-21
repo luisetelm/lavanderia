@@ -77,6 +77,9 @@ model Order {
   // Un pedido puede acumular varias facturas: la original, las rectificativas
   // por lo que se quita y las nuevas por lo que se añade. Ver sql/009.
   invoiceTickets        invoiceTickets[]
+  // Presupuestos emitidos sobre el pedido. No tienen efecto en la facturación:
+  // un pedido con proforma sigue pendiente de facturar (sql/030).
+  proformaOrders        ProformaOrder[]
   printJobs             print_job[]
 
   @@index([createdAt], map: "idx_Order_createdAt") // sql/023
@@ -279,6 +282,8 @@ model User {
   priceChanges        ProductPriceHistory[] @relation("price_changes")
   stripeCustomerId    String?       @unique @db.VarChar(255) // sql/026
   sepaMandates        SepaMandate[] @relation("client_sepa_mandates")
+  proformas           Proforma[]    @relation("client_proformas")       // sql/030
+  proformasCreated    Proforma[]    @relation("creator_proformas")
 }
 
 // Órdenes de domiciliación SEPA firmadas en Stripe (sql/026, services/sepa.js).
@@ -465,6 +470,7 @@ model invoices {
   User               User?            @relation(fields: [clientId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_invoices_client")
   invoices           invoices?        @relation("invoicesToinvoices", fields: [rectifiesInvoiceId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   other_invoices     invoices[]       @relation("invoicesToinvoices")
+  proformas          Proforma[]       // la proforma que precedió a esta factura, si hubo (sql/030)
 }
 
 model AppSettings {
@@ -577,4 +583,73 @@ enum CashMovementType {
   refund_cash_out
   opening
   correction
+}
+
+// ─── Facturas proforma (sql/030) ─────────────────────────────────────────────
+// El presupuesto detallado que el cliente presenta ante un tercero (una
+// aseguradora, en el caso que las motiva). No es una factura: no devenga IVA, no
+// entra en el libro registro ni en el export a la gestoría, y se puede borrar si
+// no la aceptan. Por eso no vive en `invoices`, que no se borra nunca. Tampoco
+// marca `OrderLine.invoicedInId`: lo facturable sigue pendiente.
+// Ver docs/factura-proforma.md.
+model Proforma {
+  id            Int             @id @default(autoincrement())
+  number        String          @unique @db.VarChar(20)  // PRO/2026/0001
+  proformaYear  Int
+  issuedAt      DateTime        @default(now()) @db.Timestamptz(6)
+  validUntil    DateTime?       @db.Date
+  clientId      Int?
+  recipientName String?         @db.VarChar(160)  // la aseguradora, si la hay
+  recipientRef  String?         @db.VarChar(80)   // nº de siniestro o expediente
+  currency      String          @default("EUR") @db.Char(3)
+  totalNet      Decimal         @default(0) @db.Decimal(12, 2)
+  totalTax      Decimal         @default(0) @db.Decimal(12, 2)
+  totalGross    Decimal         @default(0) @db.Decimal(12, 2)
+  status        String          @default("issued") @db.VarChar(20) // issued|accepted|rejected|superseded|invoiced
+  notes         String?
+  supersedesId  Int?
+  invoiceId     BigInt?
+  createdBy     Int?
+  createdAt     DateTime        @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime        @default(now()) @db.Timestamptz(6)
+  lines         ProformaLine[]
+  orders        ProformaOrder[]
+  client        User?           @relation("client_proformas", fields: [clientId], references: [id])
+  creator       User?           @relation("creator_proformas", fields: [createdBy], references: [id])
+  invoice       invoices?       @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  supersedes    Proforma?       @relation("proforma_revisions", fields: [supersedesId], references: [id], onDelete: SetNull)
+  supersededBy  Proforma[]      @relation("proforma_revisions")
+
+  @@index([clientId])
+  @@index([status])
+  @@map("proforma")
+}
+
+model ProformaLine {
+  id          Int      @id @default(autoincrement())
+  proformaId  Int
+  position    Int
+  description String   @db.VarChar(255)
+  quantity    Decimal  @default(1) @db.Decimal(12, 3)
+  unitPrice   Decimal  @db.Decimal(12, 4)
+  discountPct Decimal  @default(0) @db.Decimal(5, 2)
+  taxRatePct  Decimal  @db.Decimal(5, 2)
+  netAmount   Decimal  @db.Decimal(12, 2)
+  taxAmount   Decimal  @db.Decimal(12, 2)
+  grossAmount Decimal  @db.Decimal(12, 2)
+  proforma    Proforma @relation(fields: [proformaId], references: [id], onDelete: Cascade)
+
+  @@index([proformaId])
+  @@map("proforma_line")
+}
+
+model ProformaOrder {
+  proformaId Int
+  orderId    Int
+  proforma   Proforma @relation(fields: [proformaId], references: [id], onDelete: Cascade)
+  order      Order    @relation(fields: [orderId], references: [id])
+
+  @@id([proformaId, orderId])
+  @@index([orderId])
+  @@map("proforma_order")
 }

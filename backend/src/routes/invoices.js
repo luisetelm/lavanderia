@@ -18,8 +18,10 @@ function httpError(code, message) {
     return err;
 }
 
-// Agrupa líneas de varios pedidos por productId (o descripción) y calcula totales formateados
-function aggregateOrderLines(orders) {
+// Agrupa líneas de varios pedidos por productId (o descripción) y calcula totales formateados.
+// Exportada: las proformas (routes/proformas.js) agrupan igual, para que el
+// detalle del presupuesto y el de la factura que lo sigue coincidan línea a línea.
+export function aggregateOrderLines(orders) {
     const map = new Map();
     for (const o of orders) {
         const lines = o.lines || [];

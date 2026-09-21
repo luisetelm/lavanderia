@@ -966,3 +966,86 @@ export async function downloadInvoicePDF(token, invoiceId) {
         throw error;
     }
 }
+
+// ─── Facturas proforma ───────────────────────────────────────────────────────
+// El presupuesto que el cliente presenta ante un tercero (una aseguradora). No es
+// una factura: se puede borrar sin dejar rastro si no la aceptan.
+// Ver docs/factura-proforma.md.
+
+export function fetchProformas(token, {orderId, clientId, status} = {}) {
+    const params = new URLSearchParams();
+    if (orderId) params.set('orderId', orderId);
+    if (clientId) params.set('clientId', clientId);
+    if (status) params.set('status', status);
+    const qs = params.toString();
+    return request(`/proformas${qs ? `?${qs}` : ''}`, token);
+}
+
+export function createProforma(token, {orderIds, recipientName, recipientRef, validUntil, notes}) {
+    return request('/proformas', token, {
+        method: 'POST',
+        body: JSON.stringify({orderIds, recipientName, recipientRef, validUntil, notes}),
+    });
+}
+
+// Revisión por vicio oculto o cambio en la previsión de trabajo: vuelve a
+// presupuestar el pedido tal como está ahora y deja la anterior como sustituida.
+export function reviseProforma(token, id, {notes, validUntil} = {}) {
+    return request(`/proformas/${id}/revise`, token, {
+        method: 'POST',
+        body: JSON.stringify({notes, validUntil}),
+    });
+}
+
+// status: 'accepted' | 'rejected' | 'issued'
+export function updateProforma(token, id, cambios) {
+    return request(`/proformas/${id}`, token, {
+        method: 'PATCH',
+        body: JSON.stringify(cambios),
+    });
+}
+
+// Aceptada y trabajo hecho: emite la factura normal de los mismos pedidos.
+export function invoiceProforma(token, id) {
+    return request(`/proformas/${id}/invoice`, token, {method: 'POST'});
+}
+
+// Rechazada: se borra y no queda rastro de factura ninguna.
+export function deleteProforma(token, id) {
+    return request(`/proformas/${id}`, token, {method: 'DELETE'});
+}
+
+export async function downloadProformaPDF(token, id, number = '') {
+    const filename = `proforma_${String(number).replace(/\//g, '-') || id}.pdf`;
+    try {
+        const res = await fetch(`${API_BASE}/proformas/${id}/pdf`, {
+            method: 'GET',
+            headers: {Authorization: `Bearer ${token}`},
+        });
+        if (!res.ok) {
+            if (res.status === 401) window.dispatchEvent(new CustomEvent('unauthorized'));
+            throw new Error(`Error descargando la proforma: ${res.status}`);
+        }
+        const blob = await res.blob();
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(downloadUrl);
+        UIkit.notification({
+            message: 'Proforma descargada correctamente',
+            status: 'success', pos: 'top-right', timeout: 3000,
+        });
+        return true;
+    } catch (error) {
+        console.error('Error descargando la proforma:', error);
+        UIkit.notification({
+            message: 'Error al descargar la proforma',
+            status: 'danger', pos: 'top-right', timeout: 3000,
+        });
+        throw error;
+    }
+}

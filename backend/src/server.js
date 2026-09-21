@@ -11,6 +11,7 @@ import cashRoutes from './routes/cash.js';
 import notificationsRoutes from './routes/notifications.js';
 import userRoutes from './routes/users.js';
 import invoicesRoutes from './routes/invoices.js';
+import proformasRoutes from './routes/proformas.js';
 import stripeRoutes, { stripeWebhookRoutes } from './routes/stripe.js';
 import portalRoutes from './routes/portal.js';
 import whatsappRoutes, { whatsappWebhookRoutes } from './routes/whatsapp.js';
@@ -102,6 +103,7 @@ app.register(productsImportRoutes, {prefix: '/api/products'}); // quedaría POST
 app.register(cashRoutes, {prefix: '/api/cash'}); // quedaría POST /api/products/import
 app.register(notificationsRoutes, {prefix: '/api/notifications'});
 app.register(invoicesRoutes, {prefix: '/api/invoices'});
+app.register(proformasRoutes, {prefix: '/api/proformas'});
 app.register(stripeRoutes, {prefix: '/api/stripe'});
 app.register(stripeWebhookRoutes, {prefix: '/api/stripe'});
 app.register(portalRoutes, {prefix: '/api/portal'});
