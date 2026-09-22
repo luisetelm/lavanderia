@@ -354,7 +354,6 @@ export default function POS({token, user}) {
                             fechaLimite={draft.fechaLimite}
                             setFechaLimite={(d) => draft.setFechaLimite(d)}
                             token={token}
-                            esAdmin={user?.role === 'admin'}
                         />
                         <div className="pos-field">
                             <label htmlFor="pos-observaciones">Observaciones del pedido</label>

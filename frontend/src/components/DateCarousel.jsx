@@ -39,7 +39,7 @@ const WEEKS = 2;
 
 const loadLevel = (load, max) => (load >= max ? 'high' : load >= max / 2 ? 'mid' : 'low');
 
-export default function DateCarousel({fechaLimite, setFechaLimite, token, esAdmin = false}) {
+export default function DateCarousel({fechaLimite, setFechaLimite, token}) {
     const todayStr = ymd(new Date());
     // Suplemento de urgencia (entrega anterior a la sugerida): la previsión la
     // lleva el pedido en curso; aquí sólo se avisa y se le pasa lo que dice el servidor.
@@ -365,8 +365,8 @@ export default function DateCarousel({fechaLimite, setFechaLimite, token, esAdmi
                             <><strong>Entrega adelantada</strong>: antes de la fecha sugerida. El suplemento de urgencia está desactivado.</>
                         )}
                     </span>
-                    {esAdmin && suplementoUrgencia.pctPerDay > 0 && !suplementoUrgencia.granCliente && (
-                        <label className="dc-urgent-waive" title="Sólo administración">
+                    {suplementoUrgencia.pctPerDay > 0 && !suplementoUrgencia.granCliente && (
+                        <label className="dc-urgent-waive" title="No cobrar el suplemento en este pedido">
                             <input type="checkbox" className="uk-checkbox" checked={!!sinSuplemento}
                                    onChange={e => setSinSuplemento(e.target.checked)}/>
                             Sin suplemento

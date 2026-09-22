@@ -14,7 +14,7 @@ const defaultState = {
     quickClient: { firstName: '', lastName: '', phone: '', email: '' },
     fechaLimite: null,
     observaciones: '',
-    sinSuplemento: false,  // administración exime el suplemento de urgencia de este pedido
+    sinSuplemento: false,  // quien pica el pedido exime el suplemento de urgencia
 };
 
 function loadFromStorage() {

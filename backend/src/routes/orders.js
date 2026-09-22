@@ -162,14 +162,14 @@ export default async function (fastify, opts) {
 
         // Entrega adelantada: si la fecha elegida es anterior a la sugerida por
         // el calendario, se añade el suplemento de urgencia como una línea más
-        // (% sobre las líneas que computan en la carga). Administración puede
-        // eximirlo desde el TPV (sinSuplemento). Los grandes clientes (hoteles,
+        // (% sobre las líneas que computan en la carga). Quien pica el pedido
+        // puede eximirlo desde el TPV (sinSuplemento). Los grandes clientes (hoteles,
         // restaurantes) tienen días fijos de recogida y entrega y precios
         // pactados: no eligen fecha por disponibilidad, así que nunca lo pagan.
         let suplementoUrgencia = null;
         const fechaElegida = fechaLimiteRaw ? String(fechaLimiteRaw).slice(0, 10) : null;
         const eximido = client?.isbigclient === true
-            || (req.body.sinSuplemento === true && req.user?.role === 'admin');
+            || req.body.sinSuplemento === true;
         if (fechaElegida && !eximido) {
             const [{ sugerida, calendar }, tramos, producto] = await Promise.all([
                 calcularFechaSugerida(prisma),
