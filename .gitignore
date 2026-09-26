@@ -12,3 +12,6 @@ dist/
 /backend/certs/private-key.pem
 
 
+
+# PDFs de facturas generados por el backend
+/backend/invoices_pdfs/

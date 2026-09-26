@@ -26,4 +26,4 @@ CREATE UNIQUE INDEX IF NOT EXISTS "ProductCategory_name_key" ON "ProductCategory
 COMMIT;
 
 -- Comprobación:
--- SELECT id, name, archived_at FROM "Product" WHERE archived_at IS NOT NULL;
+SELECT id, name, archived_at FROM "Product" WHERE archived_at IS NOT NULL;
