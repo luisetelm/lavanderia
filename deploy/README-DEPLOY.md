@@ -172,7 +172,10 @@ STRIPE_WEBHOOK_SECRET=whsec_...
 #WHATSAPP_VERIFY_TOKEN=
 #WHATSAPP_BUSINESS_ACCOUNT_ID=
 
-# Google Reviews (cuando lo configures)
+# Google Reviews: proyecto Cloud "tinte-y-burbuja" (cuenta hola@labuhardilla.online),
+# cliente OAuth "App Lavandería (reseñas)". Client ID y secret: en el .env local del
+# desarrollador; copiarlos aquí. La cuenta y el local se eligen desde la página de
+# reseñas de la app (se guardan en AppSettings); las dos últimas son opcionales.
 #GOOGLE_CLIENT_ID=
 #GOOGLE_CLIENT_SECRET=
 #GOOGLE_REDIRECT_URI=https://app.tinteyburbuja.com/api/google/callback

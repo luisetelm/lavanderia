@@ -1,15 +1,18 @@
-import { getAuthUrl, exchangeCode, fetchReviews, replyToReview } from '../services/google.js';
+import { getAuthUrl, exchangeCode, fetchReviews, replyToReview, listarLocales, leerLocal, guardarLocal } from '../services/google.js';
 
 export default async function (fastify) {
     const prisma = fastify.prisma;
 
-    // Iniciar OAuth2 flow (solo admin)
+    // URL para iniciar el OAuth2 (solo admin). Se devuelve en JSON y el
+    // navegador la abre: un enlace normal no lleva el token y daba 401.
     fastify.get('/auth', async (req, reply) => {
         if (req.user?.role !== 'admin') {
             return reply.code(403).send({ error: 'Solo admin' });
         }
-        const url = getAuthUrl();
-        return reply.redirect(url);
+        if (!process.env.GOOGLE_CLIENT_ID || process.env.GOOGLE_CLIENT_ID === '...') {
+            return reply.code(500).send({ error: 'Faltan las credenciales de Google (GOOGLE_CLIENT_ID) en el servidor' });
+        }
+        return reply.send({ url: getAuthUrl() });
     });
 
     // OAuth2 callback
@@ -54,10 +57,36 @@ export default async function (fastify) {
         }
     });
 
-    // Estado de conexión
+    // Estado de conexión y local elegido
     fastify.get('/status', async (req, reply) => {
-        const token = await prisma.appSettings.findUnique({ where: { key: 'google_access_token' } });
-        return reply.send({ connected: !!token?.value });
+        const token = await prisma.appSettings.findUnique({ where: { key: 'google_refresh_token' } });
+        const local = await leerLocal(prisma);
+        return reply.send({ connected: !!token?.value, ...local });
+    });
+
+    // Cuentas y locales del usuario conectado, para elegir cuál gestionar (solo admin)
+    fastify.get('/locations', async (req, reply) => {
+        if (req.user?.role !== 'admin') {
+            return reply.code(403).send({ error: 'Solo admin' });
+        }
+        try {
+            return reply.send(await listarLocales(prisma));
+        } catch (e) {
+            console.error('[Google] Error listando locales:', e);
+            return reply.code(500).send({ error: e.message });
+        }
+    });
+
+    // Guardar el local elegido (solo admin)
+    fastify.post('/location', async (req, reply) => {
+        if (req.user?.role !== 'admin') {
+            return reply.code(403).send({ error: 'Solo admin' });
+        }
+        const { accountId, locationId } = req.body || {};
+        if (!accountId || !locationId) {
+            return reply.code(400).send({ error: 'accountId y locationId son obligatorios' });
+        }
+        return reply.send(await guardarLocal(prisma, { accountId, locationId }));
     });
 
     // Listar reseñas

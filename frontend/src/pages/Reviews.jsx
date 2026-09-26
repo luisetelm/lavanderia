@@ -1,9 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { avisar } from '../utils/dialogo.js';
-import { fetchGoogleStatus, fetchGoogleReviews, replyGoogleReview } from '../api.js';
+import { fetchGoogleStatus, fetchGoogleReviews, replyGoogleReview, fetchGoogleAuthUrl, fetchGoogleLocations, saveGoogleLocation } from '../api.js';
 import PageToolbar from '../components/PageToolbar.jsx';
-
-const API_BASE = import.meta.env.VITE_API_BASE || '/api';
 
 const stars = (rating) => {
     const map = { FIVE: 5, FOUR: 4, THREE: 3, TWO: 2, ONE: 1 };
@@ -13,6 +11,9 @@ const stars = (rating) => {
 
 export default function Reviews({ token }) {
     const [connected, setConnected] = useState(false);
+    const [hasLocation, setHasLocation] = useState(false);
+    const [locations, setLocations] = useState(null); // cuentas con sus locales, para elegir
+    const [error, setError] = useState('');
     const [reviews, setReviews] = useState([]);
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState('all'); // all, unreplied, 1-5
@@ -20,23 +21,49 @@ export default function Reviews({ token }) {
     const [replyText, setReplyText] = useState('');
     const [sending, setSending] = useState(false);
 
-    useEffect(() => {
-        const load = async () => {
-            try {
-                const status = await fetchGoogleStatus(token);
-                setConnected(status.connected);
-                if (status.connected) {
-                    const data = await fetchGoogleReviews(token);
-                    setReviews(data);
-                }
-            } catch (err) {
-                console.error('Error cargando reseñas:', err);
-            } finally {
-                setLoading(false);
+    const load = async () => {
+        setError('');
+        setLoading(true);
+        try {
+            const status = await fetchGoogleStatus(token);
+            setConnected(status.connected);
+            const conLocal = !!(status.accountId && status.locationId);
+            setHasLocation(conLocal);
+            if (status.connected && !conLocal) {
+                // Conectado pero sin local elegido: se listan los de la cuenta para escoger
+                setLocations(await fetchGoogleLocations(token));
+            } else if (status.connected) {
+                setReviews(await fetchGoogleReviews(token));
             }
-        };
-        load();
-    }, [token]);
+        } catch (err) {
+            console.error('Error cargando reseñas:', err);
+            setError(err.error || 'No se han podido cargar las reseñas');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => { load(); }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Pide al backend la URL de autorización y manda ahí al navegador
+    const conectarGoogle = async () => {
+        try {
+            const { url } = await fetchGoogleAuthUrl(token);
+            window.location.href = url;
+        } catch (err) {
+            avisar(err.error || 'No se ha podido iniciar la conexión con Google', 'danger');
+        }
+    };
+
+    const elegirLocal = async (accountId, locationId) => {
+        try {
+            await saveGoogleLocation(token, accountId, locationId);
+            setLocations(null);
+            await load();
+        } catch (err) {
+            avisar(err.error || 'No se ha podido guardar el local', 'danger');
+        }
+    };
 
     const handleReply = async (reviewId) => {
         if (!replyText.trim()) return;
@@ -82,18 +109,48 @@ export default function Reviews({ token }) {
                 ] : []}
             />
 
+            {error && (
+                <div className="uk-alert-danger" uk-alert="true" style={{ marginBottom: 16 }}>
+                    <p>{error}</p>
+                </div>
+            )}
+
             {loading ? (
                 <div style={{ textAlign: 'center', padding: 40 }}>Cargando...</div>
             ) : !connected ? (
                 <div className="uk-card uk-card-default uk-card-body" style={{ textAlign: 'center' }}>
                     <h3>Google no conectado</h3>
-                    <p>Conecta tu cuenta de Google Business Profile para gestionar las reseñas.</p>
-                    <a
-                        href={`${API_BASE}/google/auth`}
-                        className="uk-button uk-button-primary"
-                    >
+                    <p>Conecta la cuenta de Google que gestiona el Perfil de Empresa (hola@labuhardilla.online) para leer y responder las reseñas.</p>
+                    <button type="button" className="uk-button uk-button-primary" onClick={conectarGoogle}>
                         Conectar Google
-                    </a>
+                    </button>
+                </div>
+            ) : !hasLocation ? (
+                <div className="uk-card uk-card-default uk-card-body">
+                    <h3>Elige el local</h3>
+                    <p>Google está conectado. Elige el Perfil de Empresa cuyas reseñas quieres gestionar aquí.</p>
+                    {!locations || locations.length === 0 ? (
+                        <p className="uk-text-muted">La cuenta conectada no tiene ningún Perfil de Empresa accesible.</p>
+                    ) : locations.map(acc => (
+                        <div key={acc.accountId} style={{ marginBottom: 16 }}>
+                            <strong>{acc.accountName}</strong>
+                            <ul className="uk-list uk-list-divider">
+                                {acc.locations.length === 0 && <li className="uk-text-muted">Sin locales</li>}
+                                {acc.locations.map(loc => (
+                                    <li key={loc.locationId} style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                                        <span style={{ flex: 1, minWidth: 200 }}>
+                                            {loc.title}
+                                            {loc.address && <span className="uk-text-muted uk-text-small"> · {loc.address}</span>}
+                                        </span>
+                                        <button type="button" className="uk-button uk-button-primary uk-button-small"
+                                                onClick={() => elegirLocal(acc.accountId, loc.locationId)}>
+                                            Usar este local
+                                        </button>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    ))}
                 </div>
             ) : (
                 <div className="uk-card uk-card-default uk-card-body">

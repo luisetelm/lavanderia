@@ -694,6 +694,21 @@ export function fetchGoogleStatus(token) {
     return request('/google/status', token);
 }
 
+// URL de autorización de Google; el navegador la abre para conectar la cuenta
+export function fetchGoogleAuthUrl(token) {
+    return request('/google/auth', token);
+}
+
+export function fetchGoogleLocations(token) {
+    return request('/google/locations', token);
+}
+
+export function saveGoogleLocation(token, accountId, locationId) {
+    return request('/google/location', token, {
+        method: 'POST', body: JSON.stringify({ accountId, locationId }),
+    });
+}
+
 // --- Dashboard ---
 export function fetchDashboard(token) {
     return request('/dashboard', token);
