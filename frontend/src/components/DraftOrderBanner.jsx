@@ -6,8 +6,8 @@ import { createOrder, updateUser, fetchOrder } from '../api.js';
 import { printWashLabels } from '../utils/printUtils.js';
 import { getPrintSettings } from '../utils/printSettings.js';
 import DraftLines from './DraftLines.jsx';
-
-const isValidSpanishPhone = (phone) => /^[6789]\d{8}$/.test(phone);
+import UIkit from 'uikit';
+import { normalizarTelefono, esTelefonoValido, TELEFONO_AYUDA } from '../utils/telefono.js';
 
 // Barra flotante del pedido en curso. En cualquier ruta muestra el resumen y
 // permite validar o descartar; fuera del POS además se puede desplegar para
@@ -21,7 +21,8 @@ export default function DraftOrderBanner({ token, worker }) {
     const compact = location.pathname === '/pos';
 
     const [expanded, setExpanded] = useState(true);
-    const [error, setError] = useState('');
+    // { mensaje, accion?: { texto, campo?: id de elemento del TPV, ruta?: a dónde ir } }
+    const [error, setErrorState] = useState(null);
     const [submitting, setSubmitting] = useState(false);
     const [showNotifyPrompt, setShowNotifyPrompt] = useState(false);
     const [pendingPayload, setPendingPayload] = useState(null);
@@ -53,18 +54,70 @@ export default function DraftOrderBanner({ token, worker }) {
     const hasDiscount = discount > 0;
     const showPanel = expanded && !compact;
 
+    // Un fallo al validar se ve en la barra y como aviso arriba, con el motivo
+    // concreto y un botón que lleva al campo que hay que corregir. Antes era una
+    // línea fina abajo que pasaba desapercibida y no decía qué tocar.
+    const setError = (mensaje, accion = null) => {
+        setErrorState(mensaje ? { mensaje, accion } : null);
+        if (mensaje) {
+            UIkit.notification({ message: `<span uk-icon='icon: warning'></span> ${mensaje}`, status: 'danger', pos: 'top-center', timeout: 6000 });
+        }
+    };
+
+    // Lleva al campo a corregir: si hace falta, primero al TPV, y luego lo enfoca
+    const irAlCampo = (accion) => {
+        if (accion.ruta) { navigate(accion.ruta); return; }
+        const enfocar = () => {
+            const el = document.getElementById(accion.campo);
+            if (!el) return;
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            if (typeof el.focus === 'function' && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) el.focus();
+        };
+        if (location.pathname !== '/pos') {
+            navigate('/pos');
+            setTimeout(enfocar, 350);
+        } else {
+            enfocar();
+        }
+    };
+
     /* ── Validar pedido ── */
     const handleValidate = async () => {
         setError('');
 
-        if (!cart.length) { setError('El carrito está vacío'); return; }
-        if (!selectedUser && (!quickClient.firstName || !quickClient.lastName)) {
-            setError('Selecciona un cliente o introduce nombre y apellidos');
+        if (!cart.length) {
+            setError('El pedido no tiene prendas. Añade al menos un producto.', { texto: 'Ir a productos', campo: 'pos-prendas' });
             return;
         }
-        const phone = selectedUser ? selectedUser.phone : quickClient.phone;
-        if (!phone || !isValidSpanishPhone(phone)) {
-            setError('Teléfono válido obligatorio');
+        if (!selectedUser && !quickClient.firstName && !quickClient.lastName && !quickClient.phone) {
+            setError('Falta el cliente. Búscalo por nombre o teléfono, o dalo de alta como cliente nuevo.', { texto: 'Ir al cliente', campo: 'pos-cliente-buscar' });
+            return;
+        }
+        if (!selectedUser && !quickClient.firstName) {
+            setError('Falta el nombre del cliente nuevo.', { texto: 'Ir al nombre', campo: 'pos-cliente-nombre' });
+            return;
+        }
+        if (!selectedUser && !quickClient.lastName) {
+            setError('Faltan los apellidos del cliente nuevo.', { texto: 'Ir a los apellidos', campo: 'pos-cliente-apellidos' });
+            return;
+        }
+        // Teléfono: español de 9 cifras o extranjero con +código (ver utils/telefono.js)
+        if (selectedUser) {
+            if (!selectedUser.phone || !esTelefonoValido(selectedUser.phone)) {
+                const nombre = `${selectedUser.firstName || ''} ${selectedUser.lastName || ''}`.trim();
+                setError(
+                    selectedUser.phone
+                        ? `El teléfono de ${nombre} (${selectedUser.phone}) no es válido. Corrígelo en su ficha y vuelve a validar. ${TELEFONO_AYUDA}`
+                        : `${nombre} no tiene teléfono en su ficha. Añádeselo y vuelve a validar.`,
+                    { texto: 'Abrir ficha', ruta: `/usuarios/${selectedUser.id}` },
+                );
+                return;
+            }
+        } else if (!quickClient.phone) {
+            setError('Falta el teléfono del cliente nuevo. Es obligatorio para avisarle cuando esté listo.', { texto: 'Ir al teléfono', campo: 'pos-cliente-telefono' });
+            return;
+        } else if (!esTelefonoValido(quickClient.phone)) {
+            setError(`El teléfono «${quickClient.phone}» no es válido. ${TELEFONO_AYUDA}`, { texto: 'Ir al teléfono', campo: 'pos-cliente-telefono' });
             return;
         }
 
@@ -91,7 +144,7 @@ export default function DraftOrderBanner({ token, worker }) {
         } else {
             payload.clientFirstName = quickClient.firstName;
             payload.clientLastName = quickClient.lastName;
-            payload.clientPhone = quickClient.phone;
+            payload.clientPhone = normalizarTelefono(quickClient.phone);
             if (quickClient.email) payload.clientEmail = quickClient.email;
         }
 
@@ -143,7 +196,13 @@ export default function DraftOrderBanner({ token, worker }) {
                 state: { filterOrderId: o.id, orderNumber: o.orderNum || o.id },
             });
         } catch (err) {
-            setError(err.error || 'Error al crear pedido');
+            if (err?.error) {
+                setError(`No se ha podido crear el pedido: ${err.error}`);
+            } else if (err?.status) {
+                setError(`No se ha podido crear el pedido (error ${err.status} del servidor). Vuelve a intentarlo.`);
+            } else {
+                setError('No se ha podido crear el pedido: sin respuesta del servidor. Comprueba la conexión e inténtalo de nuevo.');
+            }
         } finally {
             setSubmitting(false);
         }
@@ -291,18 +350,30 @@ export default function DraftOrderBanner({ token, worker }) {
                     </div>
                 </div>
 
-                {/* ── Error de validación (siempre visible) ── */}
+                {/* ── Error de validación (siempre visible, con el motivo y a dónde ir) ── */}
                 {error && (
-                    <div style={{
-                        background: 'rgba(220,38,38,0.15)', color: '#fca5a5',
-                        padding: '6px 16px', fontSize: '0.8rem',
-                        borderTop: '1px solid rgba(220,38,38,0.2)',
-                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    <div role="alert" style={{
+                        background: '#dc2626', color: '#fff',
+                        padding: '10px 16px', fontSize: '0.92rem', fontWeight: 500,
+                        borderTop: '2px solid #fca5a5',
+                        display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
                     }}>
-                        <span>{error}</span>
+                        <span uk-icon="icon: warning; ratio: 1.1" style={{ flexShrink: 0 }}></span>
+                        <span style={{ flex: 1, minWidth: 200 }}>{error.mensaje}</span>
+                        {error.accion && (
+                            <button
+                                type="button"
+                                onClick={() => irAlCampo(error.accion)}
+                                style={{ ...btnSmall('#fff', '#b91c1c'), fontWeight: 700, padding: '4px 12px', fontSize: '0.85rem' }}
+                            >
+                                {error.accion.texto}
+                            </button>
+                        )}
                         <button
+                            type="button"
                             onClick={() => setError('')}
-                            style={{ background: 'none', border: 'none', color: '#fca5a5', cursor: 'pointer', padding: '0 4px', fontSize: '1rem' }}
+                            aria-label="Cerrar aviso"
+                            style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: '0 4px', fontSize: '1.2rem', lineHeight: 1 }}
                         >×</button>
                     </div>
                 )}

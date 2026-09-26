@@ -19,9 +19,13 @@ export function formatWhatsAppPhone(phone) {
         throw new Error('Teléfono de WhatsApp vacío');
     }
 
-    const normalizedSpanish = normalizePhone(raw);
-    if (/^[6789]\d{8}$/.test(normalizedSpanish)) {
-        return `34${normalizedSpanish}`;
+    // Formato guardado: 9 dígitos españoles o +código en los extranjeros
+    const normalized = normalizePhone(raw);
+    if (/^[6789]\d{8}$/.test(normalized)) {
+        return `34${normalized}`;
+    }
+    if (normalized.startsWith('+')) {
+        return normalized.slice(1);
     }
 
     const digits = raw.replace(/\D/g, '');

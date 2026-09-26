@@ -1,3 +1,4 @@
+import { desdeNumeroWhatsApp } from '../../utils/telefono.js';
 // Utilidades compartidas por las piezas del chat (lista, hilo, compositor).
 // Vivían dentro de la antigua página de mensajes; al pasar el chat a un widget
 // que se monta sobre toda la aplicación, se separan para que cada pieza sea
@@ -70,10 +71,12 @@ export function convInitials(conv) {
     return `${(conv.firstName || '?')[0]}${(conv.lastName || '?')[0]}`;
 }
 
-/** Últimos 9 dígitos: lo que se guarda como teléfono de cliente en España */
+/**
+ * Número de la conversación (como lo da WhatsApp: 34612345678) -> como se
+ * guarda en la ficha del cliente: 9 dígitos si es español, +código si es extranjero.
+ */
 export function localPhone(phone) {
-    const digits = String(phone || '').replace(/\D/g, '');
-    return digits.length > 9 ? digits.slice(-9) : digits;
+    return desdeNumeroWhatsApp(phone);
 }
 
 /* ── Fechas ── */

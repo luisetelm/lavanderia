@@ -17,21 +17,36 @@ const defaultState = {
     sinSuplemento: false,  // quien pica el pedido exime el suplemento de urgencia
 };
 
+// El pedido en curso se guarda en localStorage para que sobreviva a un cierre
+// del navegador o de la pestaña (en sessionStorage se perdía con la pestaña, y
+// eso obligaba a picarlo otra vez con el cliente esperando). Es el TPV de la
+// tienda: un solo pedido en curso por equipo.
+const storage = {
+    get() { try { return localStorage.getItem(STORAGE_KEY); } catch { return null; } },
+    set(v) { try { localStorage.setItem(STORAGE_KEY, v); } catch { /* sin almacenamiento: se sigue en memoria */ } },
+    remove() { try { localStorage.removeItem(STORAGE_KEY); } catch { /* nada */ } },
+};
+
 function loadFromStorage() {
     try {
-        const raw = sessionStorage.getItem(STORAGE_KEY);
+        let raw = storage.get();
+        if (!raw) {
+            // Borrador de antes del cambio, guardado por pestaña: se recupera una vez
+            raw = sessionStorage.getItem(STORAGE_KEY);
+            if (raw) sessionStorage.removeItem(STORAGE_KEY);
+        }
         if (!raw) return null;
         const parsed = JSON.parse(raw);
 
         // Si la versión no coincide, descartar datos legacy
         if (parsed._v !== STORAGE_VERSION) {
-            sessionStorage.removeItem(STORAGE_KEY);
+            storage.remove();
             return null;
         }
 
         // Si no tiene cart como array, descartar
         if (!Array.isArray(parsed.cart)) {
-            sessionStorage.removeItem(STORAGE_KEY);
+            storage.remove();
             return null;
         }
 
@@ -50,7 +65,7 @@ function loadFromStorage() {
         result.quickClient = qc;
         return result;
     } catch {
-        sessionStorage.removeItem(STORAGE_KEY);
+        storage.remove();
         return null;
     }
 }
@@ -63,7 +78,7 @@ export function DraftOrderProvider({ children, token }) {
     // urgency: { pctPerDay, maxPct }; daysAheadByDate: días laborables que adelanta cada fecha cargada
     const [calendarInfo, setCalendarInfo] = useState({ suggestedDate: null, urgency: { pctPerDay: 0, maxPct: 0 }, daysAheadByDate: {} });
 
-    // Persistir en sessionStorage (excluyendo fotos dataUrl — demasiado grandes)
+    // Persistir (excluyendo fotos dataUrl — demasiado grandes)
     useEffect(() => {
         const hasData = (state.cart || []).length > 0 || state.selectedUser || state.quickClient?.firstName;
         if (hasData) {
@@ -72,9 +87,9 @@ export function DraftOrderProvider({ children, token }) {
                 cart: state.cart.map(c => ({ ...c, photos: [], availableOptionalSteps: undefined })),
                 _v: STORAGE_VERSION,
             };
-            sessionStorage.setItem(STORAGE_KEY, JSON.stringify(stripped));
+            storage.set(JSON.stringify(stripped));
         } else {
-            sessionStorage.removeItem(STORAGE_KEY);
+            storage.remove();
         }
     }, [state]);
 
@@ -185,7 +200,7 @@ export function DraftOrderProvider({ children, token }) {
 
     const clearDraft = useCallback(() => {
         setState({ ...defaultState, quickClient: { ...defaultState.quickClient } });
-        sessionStorage.removeItem(STORAGE_KEY);
+        storage.remove();
     }, []);
 
     /* ── Notas y fotos por línea ── */

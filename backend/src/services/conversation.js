@@ -1,16 +1,21 @@
-import { normalizePhone } from '../utils/validatePhone.js';
+import { normalizePhone, isValidSpanishPhone } from '../utils/validatePhone.js';
 
-function buildPhoneCandidates(phone) {
+/**
+ * Todas las formas en que puede estar escrito un mismo número (tal cual, sólo
+ * dígitos, normalizado, con y sin el 34 o el +), para buscar en tablas donde
+ * se guardó de distintas maneras. Sirve para User.phone y Conversation.phone.
+ */
+export function buildPhoneCandidates(phone) {
     const raw = `${phone || ''}`.trim();
     const digits = raw.replace(/\D/g, '');
     const normalized = normalizePhone(raw);
-
-    return [...new Set([
-        raw,
-        digits,
-        normalized,
-        normalized ? `34${normalized}` : null,
-    ].filter(Boolean))];
+    const candidates = [raw, digits, normalized];
+    if (isValidSpanishPhone(normalized)) {
+        candidates.push(`34${normalized}`, `+34${normalized}`);
+    } else if (normalized.startsWith('+')) {
+        candidates.push(normalized.slice(1));
+    }
+    return [...new Set(candidates.filter(Boolean))];
 }
 
 /**

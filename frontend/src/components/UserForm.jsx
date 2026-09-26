@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createUser, updateUser, fetchClientLoadProfile } from '../api.js';
+import { normalizarTelefono, esTelefonoValido, TELEFONO_AYUDA } from '../utils/telefono.js';
 
 // Días fijos de recogida y entrega de los grandes clientes (0=Dom..6=Sáb)
 const DIAS = [[1, 'L'], [2, 'M'], [3, 'X'], [4, 'J'], [5, 'V'], [6, 'S'], [0, 'D']];
@@ -180,18 +181,18 @@ export default function UserForm({ initial = {}, onSave, token, onCancel, logged
             <label className="uk-form-label">
               Teléfono{isCustomer ? ' *' : ''}
             </label>
-            <input className="uk-input" value={form.phone}
-              placeholder="612345678"
+            <input className={`uk-input ${form.phone && !esTelefonoValido(form.phone) ? 'uk-form-danger' : ''}`} value={form.phone}
+              placeholder="612345678 o +33612345678"
               onChange={e => set('phone', e.target.value)}
               onBlur={e => {
-                // Normalizar al salir del campo: quitar prefijo +34 / 34 / 0034
-                const raw = e.target.value.replace(/[\s\-().+]/g, '').replace(/\D/g, '');
-                let normalized = raw;
-                if (raw.startsWith('0034') && raw.length === 13) normalized = raw.slice(4);
-                else if (raw.startsWith('34') && raw.length === 11) normalized = raw.slice(2);
+                // Al salir del campo se deja como se guarda: sin espacios ni +34; con + si es extranjero
+                const normalized = normalizarTelefono(e.target.value);
                 if (normalized !== form.phone) set('phone', normalized);
               }}
               required={isCustomer} />
+            {form.phone && !esTelefonoValido(form.phone) && (
+              <div className="uk-text-danger uk-text-small" style={{ marginTop: 4 }}>{TELEFONO_AYUDA}</div>
+            )}
           </div>
         </div>
       </div>

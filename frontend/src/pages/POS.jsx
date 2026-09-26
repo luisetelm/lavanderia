@@ -327,7 +327,7 @@ export default function POS({token, user}) {
                 {/* Columna del pedido: cliente y entrega */}
                 <div className="pos-col pos-col-order">
                     {/* ── Cliente ── */}
-                    <section className="uk-card uk-card-default pos-card pos-sec-cliente">
+                    <section id="pos-cliente" className="uk-card uk-card-default pos-card pos-sec-cliente">
                         <h4 className="pos-card-title">
                             <span uk-icon="icon: user; ratio: 0.9"></span>
                             Cliente

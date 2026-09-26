@@ -3,22 +3,17 @@ import LabsMobileClient from 'labsmobile-sms/src/LabsMobileClient.js';
 import LabsMobileModelTextMessage from 'labsmobile-sms/src/LabsMobileModelTextMessage.js';
 import ParametersException from 'labsmobile-sms/src/Exception/ParametersException.js';
 import RestException from 'labsmobile-sms/src/Exception/RestException.js';
+import { normalizePhone, isValidSpanishPhone } from '../utils/validatePhone.js';
 
 dotenv.config();
 
 
 
+// Formato guardado (9 dígitos españoles o +código extranjero) -> E.164 para el envío
 const formatToE164 = (phoneNumber) => {
-    const cleaned = phoneNumber.replace(/\D/g, '');
-
-    if (cleaned.startsWith('34') && cleaned.length === 11) {
-        return '+' + cleaned;
-    }
-
-    if (/^[6789]\d{8}$/.test(cleaned)) {
-        return '+34' + cleaned;
-    }
-
+    const normalized = normalizePhone(phoneNumber);
+    if (isValidSpanishPhone(normalized)) return '+34' + normalized;
+    if (normalized.startsWith('+')) return normalized;
     return phoneNumber;
 };
 

@@ -1,12 +1,12 @@
 import React, {useEffect, useState} from 'react';
 import {Link} from 'react-router-dom';
 import {fetchUsers} from '../api';
+import {normalizarTelefono, esTelefonoValido, TELEFONO_AYUDA} from '../utils/telefono.js';
 import './CustomerSelector.css';
 
 const ROLE_LABEL = { admin: 'Admin', cashier: 'Cajero', worker: 'Trabajador', customer: 'Cliente' };
 const ROLE_CLASS = { admin: 'uk-label-danger', cashier: 'uk-label-warning', worker: 'uk-label-success', customer: 'uk-label-default' };
 const NOTIFY_LABEL = { whatsapp: 'Avisos por WhatsApp', sms: 'Avisos por SMS', none: 'No quiere avisos' };
-const isValidSpanishPhone = (phone) => /^[6789]\d{8}$/.test(phone);
 const initials = (u) => `${(u.firstName || '').charAt(0)}${(u.lastName || '').charAt(0)}`.toUpperCase() || '?';
 
 export default function CustomerSelector({
@@ -83,7 +83,7 @@ export default function CustomerSelector({
     }
 
     /* ── Sin cliente: buscar o crear rápido ── */
-    const phoneInvalid = quickClientPhone && !isValidSpanishPhone(quickClientPhone);
+    const phoneInvalid = quickClientPhone && !esTelefonoValido(quickClientPhone);
 
     return (
         <div className="cs">
@@ -106,6 +106,7 @@ export default function CustomerSelector({
                     <div className="uk-search uk-search-default uk-width-1-1">
                         <span uk-search-icon="true"></span>
                         <input
+                            id="pos-cliente-buscar"
                             className="uk-search-input"
                             placeholder="Nombre, apellidos o teléfono…"
                             value={searchUser}
@@ -142,15 +143,20 @@ export default function CustomerSelector({
             ) : (
                 <div className="cs-new">
                     <div className="cs-new-grid">
-                        <input className="uk-input" placeholder="Nombre" value={quickFirstName}
+                        <input id="pos-cliente-nombre" className="uk-input" placeholder="Nombre" value={quickFirstName}
                                onChange={(e) => setQuickFirstName(e.target.value)}/>
-                        <input className="uk-input" placeholder="Apellidos" value={quickLastName}
+                        <input id="pos-cliente-apellidos" className="uk-input" placeholder="Apellidos" value={quickLastName}
                                onChange={(e) => setQuickLastName(e.target.value)}/>
                         <div>
-                            <input className={`uk-input ${phoneInvalid ? 'uk-form-danger' : ''}`}
+                            <input id="pos-cliente-telefono" className={`uk-input ${phoneInvalid ? 'uk-form-danger' : ''}`}
                                    placeholder="Teléfono (obligatorio)" inputMode="tel" value={quickClientPhone}
-                                   onChange={(e) => setQuickClientPhone(e.target.value)}/>
-                            {phoneInvalid && <div className="cs-hint cs-hint-error">Teléfono móvil o fijo español de 9 cifras</div>}
+                                   onChange={(e) => setQuickClientPhone(e.target.value)}
+                                   onBlur={(e) => {
+                                       // Al salir del campo se deja como se guarda: sin espacios ni +34; con + si es extranjero
+                                       const limpio = normalizarTelefono(e.target.value);
+                                       if (limpio !== e.target.value) setQuickClientPhone(limpio);
+                                   }}/>
+                            {phoneInvalid && <div className="cs-hint cs-hint-error">{TELEFONO_AYUDA}</div>}
                         </div>
                         <input className="uk-input" placeholder="Email (opcional)" type="email" value={quickClientEmail}
                                onChange={(e) => setQuickClientEmail(e.target.value)}/>

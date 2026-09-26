@@ -10,7 +10,8 @@ import {
     sendMediaMessage,
     downloadMedia
 } from '../services/whatsapp.js';
-import { findOrCreateConversation, touchConversation } from '../services/conversation.js';
+import { findOrCreateConversation, touchConversation, buildPhoneCandidates } from '../services/conversation.js';
+import { fromWhatsAppNumber } from '../utils/validatePhone.js';
 import { fallbackToSmsAfterWhatsAppFailure } from '../services/notify.js';
 
 /**
@@ -214,9 +215,12 @@ export async function whatsappWebhookRoutes(fastify) {
 
             // Procesar mensajes entrantes
             for (const msg of messages) {
-                // Buscar cliente por teléfono
+                // Buscar cliente por teléfono. WhatsApp manda el número con el
+                // código de país (34612345678); en la ficha está como 612345678
+                // o, si es extranjero, como +33612345678.
+                const from = fromWhatsAppNumber(msg.from) || msg.from;
                 const client = await prisma.user.findFirst({
-                    where: { phone: { contains: msg.from.slice(-9) } },
+                    where: { phone: { in: buildPhoneCandidates(from) } },
                     select: { id: true }
                 });
 
@@ -254,7 +258,7 @@ export async function whatsappWebhookRoutes(fastify) {
                 // Buscar/crear conversación
                 const conversation = await findOrCreateConversation(prisma, {
                     clientId: client?.id || null,
-                    phone: msg.from,
+                    phone: from,
                 });
 
                 await prisma.message.create({

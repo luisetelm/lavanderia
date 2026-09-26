@@ -1,5 +1,5 @@
 import { sendSMScustomer } from '../services/twilio.js';
-import { sendTextMessage, uploadMediaToWhatsApp, sendMediaMessage } from '../services/whatsapp.js';
+import { sendTextMessage, uploadMediaToWhatsApp, sendMediaMessage, formatWhatsAppPhone } from '../services/whatsapp.js';
 import { findOrCreateConversation, touchConversation, getWhatsAppWindow } from '../services/conversation.js';
 import fs from 'fs';
 import path from 'path';
@@ -337,7 +337,7 @@ export default async function (fastify) {
 
             let externalId = null;
             if (channel !== 'sms') {
-                const waPhone = phone.startsWith('34') ? phone : `34${phone}`;
+                const waPhone = formatWhatsAppPhone(phone);
                 const waMediaId = await uploadMediaToWhatsApp(filePath, mimeType);
                 const waRes = await sendMediaMessage(waPhone, mediaType, waMediaId, caption || undefined, mediaType === 'document' ? originalName : undefined);
                 externalId = waRes?.messages?.[0]?.id || null;

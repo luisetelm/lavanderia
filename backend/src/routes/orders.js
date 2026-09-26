@@ -1,6 +1,6 @@
 // backend/src/routes/orders.js
 //import nextOrderNum from '../utils/generateOrderNum.js';
-import {isValidSpanishPhone} from '../utils/validatePhone.js';
+import {normalizePhone, isValidPhone, TELEFONO_AYUDA} from '../utils/validatePhone.js';
 import {crearFactura, crearRectificativa, convertBigIntToString} from "./invoices.js";
 import { sendCollectedNotification, sendReadyNotification } from '../services/notify.js';
 import { facturaDe } from '../utils/facturaDe.js';
@@ -51,35 +51,49 @@ export default async function (fastify, opts) {
             if (!clientFirstName || !clientLastName) {
                 return reply.status(400).send({error: 'clientFirstName y clientLastName son obligatorios'});
             }
-            if (!clientPhone || !isValidSpanishPhone(clientPhone)) {
-                return reply.status(400).send({error: 'Teléfono válido obligatorio (ej: 600123456)'});
+            // Se guarda normalizado: 9 dígitos si es español, +código si es extranjero
+            const telefono = normalizePhone(clientPhone);
+            if (!telefono || !isValidPhone(telefono)) {
+                return reply.status(400).send({error: `Teléfono no válido. ${TELEFONO_AYUDA}`});
             }
 
-            if (clientEmail) {
-                client = await prisma.user.upsert({
-                    where: {email: clientEmail}, update: {
-                        firstName: clientFirstName, lastName: clientLastName, phone: clientPhone, role: 'customer',
-                    }, create: {
-                        firstName: clientFirstName,
-                        lastName: clientLastName,
-                        email: clientEmail,
-                        phone: clientPhone,
-                        role: 'customer',
-                        password: null,
-                    },
-                });
-            } else {
-                client = await prisma.user.findFirst({where: {phone: clientPhone}});
-                if (!client) {
-                    client = await prisma.user.create({
-                        data: {
-                            firstName: clientFirstName,
-                            lastName: clientLastName,
-                            phone: clientPhone,
-                            role: 'customer',
-                            password: null,
-                        },
-                    });
+            // El teléfono es único: si ya hay un cliente con ese número, el pedido
+            // es suyo (aunque se haya escrito como nuevo), y así no choca el alta.
+            client = await prisma.user.findUnique({where: {phone: telefono}});
+            if (client && clientEmail && !client.email) {
+                client = await prisma.user.update({where: {id: client.id}, data: {email: clientEmail}});
+            }
+            if (!client) {
+                try {
+                    if (clientEmail) {
+                        client = await prisma.user.upsert({
+                            where: {email: clientEmail}, update: {
+                                firstName: clientFirstName, lastName: clientLastName, phone: telefono, role: 'customer',
+                            }, create: {
+                                firstName: clientFirstName,
+                                lastName: clientLastName,
+                                email: clientEmail,
+                                phone: telefono,
+                                role: 'customer',
+                                password: null,
+                            },
+                        });
+                    } else {
+                        client = await prisma.user.create({
+                            data: {
+                                firstName: clientFirstName,
+                                lastName: clientLastName,
+                                phone: telefono,
+                                role: 'customer',
+                                password: null,
+                            },
+                        });
+                    }
+                } catch (e) {
+                    if (e?.code === 'P2002') {
+                        return reply.status(400).send({error: 'Ya existe un cliente con ese teléfono o ese email. Búscalo con «Buscar cliente» en vez de darlo de alta.'});
+                    }
+                    throw e;
                 }
             }
         }

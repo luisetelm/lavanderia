@@ -104,7 +104,7 @@ const sendPasswordResetEmail = async (email, firstName, lastName, password) => {
     }
 };
 
-import { isValidSpanishPhone, normalizePhone } from '../utils/validatePhone.js';
+import { isValidPhone, normalizePhone, TELEFONO_AYUDA } from '../utils/validatePhone.js';
 
 export default async function (fastify, opts) {
     const prisma = fastify.prisma;
@@ -452,8 +452,8 @@ export default async function (fastify, opts) {
         if (effectiveRole === 'customer' && !normalizedPhone) {
             return reply.status(400).send({error: 'El teléfono es obligatorio para clientes'});
         }
-        if (normalizedPhone && !isValidSpanishPhone(normalizedPhone)) {
-            return reply.status(400).send({error: 'Teléfono inválido. Formato español, p.ej. 600123456 ó +34600123456'});
+        if (normalizedPhone && !isValidPhone(normalizedPhone)) {
+            return reply.status(400).send({error: `Teléfono no válido. ${TELEFONO_AYUDA}`});
         }
 
         if (email) {
@@ -575,8 +575,8 @@ export default async function (fastify, opts) {
         if (effectiveRole === 'customer' && !normalizedPhone) {
             return reply.status(400).send({error: 'El teléfono es obligatorio para clientes'});
         }
-        if (normalizedPhone && !isValidSpanishPhone(normalizedPhone)) {
-            return reply.status(400).send({error: 'Teléfono inválido. Formato español, p.ej. 600123456 ó +34600123456'});
+        if (normalizedPhone && !isValidPhone(normalizedPhone)) {
+            return reply.status(400).send({error: `Teléfono no válido. ${TELEFONO_AYUDA}`});
         }
 
         // Validar datos fiscales si se activa auto-facturación
