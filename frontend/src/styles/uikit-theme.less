@@ -2,21 +2,25 @@
 @import "uikit/src/less/uikit.less";
 @import "uikit/src/less/uikit.theme.less";
 
-/* Brand colors */
-@color-primary: #048ABF;
-@color-secondary: #5AB5BF;
-@color-accent: #06B6D4;
-@color-sidebar: #0f172a;
-@color-sidebar-hover: #1e293b;
-@color-sidebar-active: #048ABF;
-@color-surface: #ffffff;
-@color-bg: #f1f5f9;
-@color-border: #e2e8f0;
-@color-text: #1e293b;
-@color-text-muted: #64748b;
-@color-success: #10b981;
-@color-warning: #f59e0b;
-@color-danger: #ef4444;
+/* Brand colors
+   Valores espejo de src/styles/tokens.css (--tyb-*). Less necesita el hex en
+   tiempo de compilación para sus funciones de color, así que se repiten aquí;
+   si cambia un token, cambia también su variable Less. */
+@color-primary: #0a779b;        // --tyb-brand-700 · azul petróleo del logo
+@color-primary-hover: #0b5f7c;  // --tyb-brand-800
+@color-secondary: #00a8cf;      // --tyb-brand-500 · cian del logo
+@color-accent: #00a8cf;         // --tyb-accent
+@color-sidebar: #073243;        // --tyb-brand-950
+@color-sidebar-hover: #0b4a60;  // --tyb-brand-900
+@color-sidebar-active: #0a779b; // --tyb-primary
+@color-surface: #ffffff;        // --tyb-surface
+@color-bg: #f6f9fa;             // --tyb-bg
+@color-border: #dde4e8;         // --tyb-border
+@color-text: #15202a;           // --tyb-text
+@color-text-muted: #65788a;     // --tyb-text-muted
+@color-success: #15805a;        // --tyb-success
+@color-warning: #9a6508;        // --tyb-warning
+@color-danger: #c53a28;         // --tyb-danger
 
 /* UIkit overrides */
 @global-color: @color-text;
@@ -25,8 +29,8 @@
 @global-secondary-background: @color-bg;
 @global-primary-color: #ffffff;
 @global-link-color: @color-primary;
-@global-link-hover-color: #0369a1;
-@global-font-family: "Inter", "Noto Sans", system-ui, -apple-system, sans-serif;
+@global-link-hover-color: @color-primary-hover;
+@global-font-family: "Inter", "Noto Sans", system-ui, -apple-system, sans-serif; // = --tyb-font-sans
 @base-body-font-family: @global-font-family;
 @global-border-radius: 8px;
 @global-control-height: 38px;

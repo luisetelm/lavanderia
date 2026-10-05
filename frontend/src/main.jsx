@@ -5,6 +5,7 @@ import App from './App';
 
 import UIkit from 'uikit';
 import Icons from 'uikit/dist/js/uikit-icons';
+import './styles/tokens.css'; // tokens compartidos con la web pública (copia idéntica en Lavanderaweb/src/styles/tokens.css)
 import './styles/uikit-theme.less'; // importa TU build con variables
 
 UIkit.use(Icons);

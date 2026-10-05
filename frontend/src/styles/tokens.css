@@ -1,0 +1,157 @@
+/* ============================================================
+   Tinte y Burbuja · Tokens de diseño
+   ------------------------------------------------------------
+   Fichero COMPARTIDO entre la web pública (Lavanderaweb) y la
+   app de gestión (lavanderia/frontend). Mantener las dos copias
+   idénticas: cualquier cambio se hace aquí y se copia al otro repo.
+
+   Fuente de los colores de marca: favicon.svg (azul petróleo
+   #0a779b del anillo y cian #00a8cf de las burbujas).
+
+   Convenciones
+   · Prefijo --tyb- para no chocar con shadcn (--primary) ni UIkit.
+   · Escalas 50..950: cuanto mayor el número, más oscuro.
+   · Los tokens "semánticos" (--tyb-text, --tyb-surface…) son los
+     que debe usar el código; las escalas son materia prima.
+   ============================================================ */
+
+:root {
+  /* ---------- Marca ---------- */
+  --tyb-brand-50:  #e9f7fb;
+  --tyb-brand-100: #cfeef6;
+  --tyb-brand-200: #a3dfee;
+  --tyb-brand-300: #6fcce4;
+  --tyb-brand-400: #35b8d9;
+  --tyb-brand-500: #00a8cf;   /* cian del logo · acento, decoración, fondos oscuros */
+  --tyb-brand-600: #0590b7;
+  --tyb-brand-700: #0a779b;   /* azul petróleo del logo · primario, enlaces, botones (5.1:1 sobre blanco) */
+  --tyb-brand-800: #0b5f7c;   /* hover del primario (7.1:1) */
+  --tyb-brand-900: #0b4a60;
+  --tyb-brand-950: #073243;   /* fondos oscuros: sidebar, footer, hero */
+
+  /* ---------- Neutros (gris frío, ligeramente teñido hacia la marca) ---------- */
+  --tyb-neutral-0:   #ffffff;
+  --tyb-neutral-50:  #f6f9fa;
+  --tyb-neutral-100: #eef2f4;
+  --tyb-neutral-200: #dde4e8;
+  --tyb-neutral-300: #c3ced5;
+  --tyb-neutral-400: #93a3ad;
+  --tyb-neutral-500: #65788a;   /* texto secundario mínimo legible (4.6:1) */
+  --tyb-neutral-600: #4b5d6d;
+  --tyb-neutral-700: #364654;
+  --tyb-neutral-800: #233039;
+  --tyb-neutral-900: #15202a;   /* texto principal */
+
+  /* ---------- Estado ---------- */
+  --tyb-success:        #15805a;
+  --tyb-success-soft:   #e3f5ec;
+  --tyb-warning:        #9a6508;
+  --tyb-warning-soft:   #fdf1d8;
+  --tyb-danger:         #c53a28;
+  --tyb-danger-soft:    #fbe7e3;
+  --tyb-info:           var(--tyb-brand-700);
+  --tyb-info-soft:      var(--tyb-brand-50);
+  --tyb-whatsapp:       #1daa5a;   /* único color ajeno a la marca: el botón de WhatsApp */
+
+  /* ---------- Semánticos (usar estos en el código) ---------- */
+  --tyb-primary:            var(--tyb-brand-700);
+  --tyb-primary-hover:      var(--tyb-brand-800);
+  --tyb-primary-foreground: var(--tyb-neutral-0);
+  --tyb-accent:             var(--tyb-brand-500);
+  --tyb-accent-soft:        var(--tyb-brand-50);
+
+  --tyb-bg:            var(--tyb-neutral-50);    /* fondo de página */
+  --tyb-surface:       var(--tyb-neutral-0);     /* tarjetas, paneles, inputs */
+  --tyb-surface-muted: var(--tyb-neutral-100);   /* cabeceras de tabla, zonas secundarias */
+  --tyb-surface-dark:  var(--tyb-brand-950);     /* sidebar, footer, hero */
+
+  --tyb-text:          var(--tyb-neutral-900);
+  --tyb-text-muted:    var(--tyb-neutral-500);
+  --tyb-text-on-dark:  var(--tyb-neutral-0);
+  --tyb-text-on-dark-muted: var(--tyb-brand-200);
+  --tyb-link:          var(--tyb-brand-700);
+  --tyb-link-hover:    var(--tyb-brand-800);
+
+  --tyb-border:        var(--tyb-neutral-200);
+  --tyb-border-strong: var(--tyb-neutral-300);
+  --tyb-ring:          var(--tyb-brand-500);     /* anillo de foco */
+
+  /* ---------- Tipografía ---------- */
+  /* Display: aproximación a la letra del logo (Tablet Gothic Compressed). Solo h1/h2 y cifras grandes. */
+  --tyb-font-display: 'Bebas Neue', 'Arial Narrow', Impact, sans-serif;
+  /* Texto: una sola familia para todo lo demás, en web y en app. */
+  --tyb-font-sans: 'Inter', 'Noto Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --tyb-font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  --tyb-text-xs:   0.75rem;    /* 12 */
+  --tyb-text-sm:   0.875rem;   /* 14 */
+  --tyb-text-base: 1rem;       /* 16 */
+  --tyb-text-lg:   1.125rem;   /* 18 */
+  --tyb-text-xl:   1.25rem;    /* 20 */
+  --tyb-text-2xl:  1.5rem;     /* 24 */
+  --tyb-text-3xl:  2rem;       /* 32 */
+  --tyb-text-4xl:  2.5rem;     /* 40 */
+  --tyb-text-5xl:  3.25rem;    /* 52 */
+  --tyb-text-6xl:  4.25rem;    /* 68 · solo hero */
+
+  --tyb-leading-tight:  1.1;
+  --tyb-leading-snug:   1.3;
+  --tyb-leading-normal: 1.5;
+  --tyb-leading-relaxed: 1.65;
+
+  --tyb-tracking-display: 0.02em;   /* Bebas respira mejor algo abierta */
+  --tyb-tracking-tight:  -0.01em;
+
+  --tyb-weight-normal:   400;
+  --tyb-weight-medium:   500;
+  --tyb-weight-semibold: 600;
+  --tyb-weight-bold:     700;
+
+  /* ---------- Espaciado (rejilla de 4px) ---------- */
+  --tyb-space-1:  0.25rem;
+  --tyb-space-2:  0.5rem;
+  --tyb-space-3:  0.75rem;
+  --tyb-space-4:  1rem;
+  --tyb-space-5:  1.25rem;
+  --tyb-space-6:  1.5rem;
+  --tyb-space-8:  2rem;
+  --tyb-space-10: 2.5rem;
+  --tyb-space-12: 3rem;
+  --tyb-space-16: 4rem;
+  --tyb-space-20: 5rem;
+  --tyb-space-24: 6rem;
+
+  /* ---------- Forma ---------- */
+  --tyb-radius-sm:   4px;     /* chips, badges */
+  --tyb-radius-md:   8px;     /* botones, inputs */
+  --tyb-radius-lg:   12px;    /* tarjetas, modales */
+  --tyb-radius-xl:   16px;    /* bloques grandes de la web */
+  --tyb-radius-full: 9999px;
+
+  --tyb-border-width: 1px;
+
+  /* Dos sombras bastan: reposo y elevado. Nada de shadow-2xl. */
+  --tyb-shadow-sm: 0 1px 2px rgba(21, 32, 42, 0.06), 0 1px 3px rgba(21, 32, 42, 0.04);
+  --tyb-shadow-md: 0 4px 12px rgba(21, 32, 42, 0.08), 0 2px 4px rgba(21, 32, 42, 0.04);
+  --tyb-shadow-lg: 0 12px 32px rgba(21, 32, 42, 0.12);
+
+  --tyb-focus-ring: 0 0 0 3px color-mix(in srgb, var(--tyb-ring) 40%, transparent);
+
+  /* ---------- Movimiento ---------- */
+  --tyb-duration-fast:   120ms;
+  --tyb-duration-normal: 200ms;
+  --tyb-ease: cubic-bezier(0.2, 0, 0, 1);
+
+  /* ---------- Layout ---------- */
+  --tyb-container:       72rem;   /* 1152px · ancho de contenido de la web */
+  --tyb-container-narrow: 44rem;  /* texto largo */
+  --tyb-control-height:  2.5rem;  /* 40px · botones e inputs */
+  --tyb-sidebar-width:   240px;   /* app */
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --tyb-duration-fast: 0ms;
+    --tyb-duration-normal: 0ms;
+  }
+}

@@ -55,7 +55,7 @@ No test framework is configured.
 - **Currency:** `Intl.NumberFormat('es-ES')` with `€` suffix, 2 decimal places.
 - **Auth:** Token and user object stored in `localStorage` (`token`, `user` keys).
 - **File naming:** PascalCase for pages/components (`.jsx`), camelCase for utils/hooks (`.js`).
-- **Styling:** Mix of UIKit CSS classes, MUI components, and some Tailwind utilities. Theme customized in `src/styles/uikit-theme.less` (primary: `#048ABF`, font: Noto Sans).
+- **Styling:** Mix of UIKit CSS classes, MUI components, and some Tailwind utilities. Design tokens in `src/styles/tokens.css` (`--tyb-*`, shared verbatim with the public site repo `Lavanderaweb`; see `docs/sistema-de-diseno.md`). Theme in `src/styles/uikit-theme.less` mirrors them (primary: `#0a779b`, font: Inter; Bebas Neue only for display headings). New styles use `var(--tyb-*)`, never hardcoded hex.
 - **Modals/offcanvas:** UIKit modal and offcanvas patterns (triggered via `UIkit.modal()`, `UIkit.offcanvas()`).
 - **API calls:** Always use functions from `src/api.js`; don't create standalone fetch calls.
 - **SEPA direct debit:** A client signs a Stripe SEPA mandate once (link from the "Domiciliación" tab of the client page, `components/ClientSepaTab.jsx`, or from the portal); then invoices are debited automatically when the monthly invoice is generated, or manually ("Cobrar por SEPA", or "Adeudo SEPA" when collecting in Ventas). While `invoices.paymentStatus` is `sepa_processing` the invoice must not be collected any other way; `sepa_failed` means rejected or returned and still unpaid. Labels in `utils/sepa.js`, logic in `backend/src/services/sepa.js`. See `docs/domiciliacion-sepa.md`.
