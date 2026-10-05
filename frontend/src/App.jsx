@@ -5,6 +5,7 @@ import Dashboard from './pages/Dashboard';
 import POS from './pages/POS';
 import Tasks from './pages/Tasks';
 import OrderDetail from './pages/OrderDetail.jsx';
+import Deliveries from './pages/Deliveries.jsx';
 import Inventory from './pages/Inventory';
 import ProductDetail from './pages/ProductDetail.jsx';
 import Users from './pages/Users';
@@ -212,6 +213,7 @@ export default function App() {
                         <li><NavLink to="/pos"><span uk-icon="icon: cart; ratio: 0.9"></span> POS</NavLink></li>
                         <li><NavLink to="/productos"><span uk-icon="icon: grid; ratio: 0.9"></span> Productos</NavLink></li>
                         <li><NavLink to="/tareas"><span uk-icon="icon: list; ratio: 0.9"></span> Tareas</NavLink></li>
+                        <li><NavLink to="/entregas"><span uk-icon="icon: calendar; ratio: 0.9"></span> Entregas</NavLink></li>
                         {/* 'end' para que /tracking/supervision no marque también este enlace */}
                         <li><NavLink to="/tracking" end><span uk-icon="icon: bolt; ratio: 0.9"></span> Taller</NavLink></li>
                         <li><NavLink to="/usuarios"><span uk-icon="icon: users; ratio: 0.9"></span> Usuarios</NavLink></li>
@@ -289,6 +291,7 @@ export default function App() {
                     <Route path="/productos/:id" element={<ProductDetail token={token} user={user}/>}/>
                     <Route path="/tareas" element={<Tasks token={token} user={user}/>}/>
                     <Route path="/pedidos/:id" element={<OrderDetail token={token}/>}/>
+                    <Route path="/entregas" element={<Deliveries token={token}/>}/>
                     <Route path="/buscar-pedido" element={<OrderLookup token={token}/>}/>
                     <Route path="/tracking" element={<TrackingWorkshop token={token} user={user}/>}/>
                     <Route path="/tracking/supervision" element={soloAdmin(<TrackingBoard token={token} user={user}/>)}/>

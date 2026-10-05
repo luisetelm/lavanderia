@@ -104,7 +104,11 @@ export default async function dashboardRoutes(fastify) {
                 ready: readyOrders.length,
             };
             // Contar reales desde la base de datos
-            const [pendingCount, readyCount, collectedTodayCount] = await Promise.all([
+            // Entregas: fechaLimite se guarda a medianoche UTC del día (ver utils/cargaTrabajo.js)
+            const hoyYmd = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+            const hoyUtc = new Date(`${hoyYmd}T00:00:00.000Z`);
+            const porEntregar = { status: { in: ['pending', 'in_progress', 'ready'] } };
+            const [pendingCount, readyCount, collectedTodayCount, entregasHoy, entregasAtrasadas] = await Promise.all([
                 prisma.order.count({ where: { status: 'pending' } }),
                 prisma.order.count({ where: { status: 'ready' } }),
                 prisma.order.count({
@@ -113,10 +117,14 @@ export default async function dashboardRoutes(fastify) {
                         updatedAt: { gte: todayStart, lte: todayEnd },
                     },
                 }),
+                prisma.order.count({ where: { ...porEntregar, fechaLimite: { gte: hoyUtc, lte: new Date(`${hoyYmd}T23:59:59.999Z`) } } }),
+                prisma.order.count({ where: { ...porEntregar, fechaLimite: { lt: hoyUtc } } }),
             ]);
             ordersByStatus.pending = pendingCount;
             ordersByStatus.ready = readyCount;
             ordersByStatus.collectedToday = collectedTodayCount;
+            // Pedidos que hay que entregar hoy y los que ya deberían haberse entregado
+            const deliveries = { today: entregasHoy, overdue: entregasAtrasadas };
 
             // Estado de caja
             const outTypes = ['withdrawal', 'refund_cash_out'];
@@ -141,6 +149,7 @@ export default async function dashboardRoutes(fastify) {
             return reply.send({
                 todayStats,
                 ordersByStatus,
+                deliveries,
                 pendingOrders: pendingOrders.map(o => {
                     const allSteps = o.lines.flatMap(l => l.steps || []);
                     const hasTracking = allSteps.length > 0;

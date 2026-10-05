@@ -618,12 +618,24 @@ export default async function (fastify, opts) {
 
     fastify.get('/', async (req, reply) => {
         const prisma = fastify.prisma;
-        const {q, status, workerId, sortBy = 'createdAt', sortOrder = 'desc', startDate, endDate, page, size} = req.query || {};
+        const {q, status, workerId, sortBy = 'createdAt', sortOrder = 'desc', startDate, endDate, deliveryFrom, deliveryTo, page, size} = req.query || {};
 
         const where = {};
 
+        // Uno o varios estados separados por coma (?status=pending,in_progress,ready)
         if (status && status !== 'all') {
-            where.status = status;
+            const estados = String(status).split(',').map(s => s.trim()).filter(Boolean);
+            where.status = estados.length > 1 ? {in: estados} : estados[0];
+        }
+
+        // Rango de FECHA DE ENTREGA ('YYYY-MM-DD'), para la vista de Entregas.
+        // fechaLimite se guarda a medianoche UTC (ver utils/cargaTrabajo.js).
+        const esDia = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s);
+        if (esDia(deliveryFrom) || esDia(deliveryTo)) {
+            where.fechaLimite = {
+                ...(esDia(deliveryFrom) ? {gte: new Date(`${deliveryFrom}T00:00:00.000Z`)} : {}),
+                ...(esDia(deliveryTo) ? {lte: new Date(`${deliveryTo}T23:59:59.999Z`)} : {}),
+            };
         }
 
         if (workerId) {

@@ -166,7 +166,7 @@ export function fetchDates(token, {start, weeks = 2} = {}) {
     return request(`/orders/delivery-dates?${params}`, token);
 }
 
-export function fetchOrders(token, {q, status, workerId, sortBy, sortOrder, startDate, endDate, page, size} = {}) {
+export function fetchOrders(token, {q, status, workerId, sortBy, sortOrder, startDate, endDate, deliveryFrom, deliveryTo, page, size} = {}) {
     const params = new URLSearchParams();
     if (q) params.set('q', q);
     if (status && status !== 'all') params.set('status', status);
@@ -174,6 +174,9 @@ export function fetchOrders(token, {q, status, workerId, sortBy, sortOrder, star
     if (sortOrder) params.set('sortOrder', sortOrder);
     if (startDate) params.set('startDate', startDate);
     if (endDate) params.set('endDate', endDate);
+    // Rango de fecha de ENTREGA ('YYYY-MM-DD'); startDate/endDate filtran por creación
+    if (deliveryFrom) params.set('deliveryFrom', deliveryFrom);
+    if (deliveryTo) params.set('deliveryTo', deliveryTo);
     if (workerId) params.set('workerId',parseInt(workerId,10));
     if (page !== undefined && page !== null) params.set('page', page);
     if (size !== undefined && size !== null) params.set('size', size);

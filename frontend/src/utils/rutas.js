@@ -19,3 +19,8 @@ export function rutaCliente(client) {
     const id = typeof client === 'object' ? client?.id : client;
     return id ? `/usuarios/${id}` : '/usuarios';
 }
+
+/** Vista de Entregas de un día ('YYYY-MM-DD'); sin día, la de hoy. */
+export function rutaEntregas(dia) {
+    return dia ? `/entregas?dia=${dia}` : '/entregas';
+}

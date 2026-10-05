@@ -184,7 +184,10 @@ veinte `PaymentSection`.
 
 ### Fase 3 — Vista "Entregas" para la lavandería
 
-Esfuerzo: 2 días. Backend: un parámetro nuevo.
+Esfuerzo: 2 días. Backend: un parámetro nuevo. **Hecha**: `pages/Deliveries.jsx` en
+`/entregas?dia=`, `GET /orders` admite `deliveryFrom`/`deliveryTo` y varios
+estados separados por coma, `GET /dashboard` devuelve `deliveries` (hoy y
+atrasados). Se refresca sola cada minuto para la tablet.
 
 1. **Backend.** `GET /orders` admite `deliveryFrom` / `deliveryTo` (filtro sobre
    `fechaLimite`, formato `YYYY-MM-DD`, mismo tratamiento de día completo que
@@ -246,7 +249,7 @@ Esfuerzo: medio día, repartido.
 
 | Cambio | Ruta | Fase | Riesgo |
 |---|---|---|---|
-| Parámetros `deliveryFrom`, `deliveryTo` (filtro por `fechaLimite`) | `GET /orders` | 3 | Bajo, aditivo |
+| Parámetros `deliveryFrom`, `deliveryTo` (filtro por `fechaLimite`) y `status` con varios valores | `GET /orders` | 3 | Bajo, aditivo |
 | Contador de entregas de hoy y atrasados | `GET /dashboard` | 3 | Bajo, aditivo |
 
 Todo lo demás es frontend. No hay cambios de esquema.

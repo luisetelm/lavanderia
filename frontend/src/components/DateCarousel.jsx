@@ -5,7 +5,7 @@ import UIkit from 'uikit';
 import {lineasActivas} from '../utils/lineas.js';
 import {fetchDates} from '../api';
 import {useDraftOrder} from '../hooks/useDraftOrder.js';
-import {rutaPedido, rutaCliente} from '../utils/rutas.js';
+import {rutaPedido, rutaCliente, rutaEntregas} from '../utils/rutas.js';
 import './DateCarousel.css';
 
 /* ── Utilidades de fecha (todo en 'YYYY-MM-DD', hora local) ── */
@@ -401,8 +401,9 @@ export default function DateCarousel({fechaLimite, setFechaLimite, token}) {
                                                     );
                                                 })}
                                             </div>
-                                            <div className="dc-pop-foot">
-                                                {orders.length} pedido{orders.length !== 1 ? 's' : ''} · Carga {fmtLoad(day.load)}
+                                            <div className="dc-pop-foot uk-flex uk-flex-between uk-flex-middle">
+                                                <span>{orders.length} pedido{orders.length !== 1 ? 's' : ''} · Carga {fmtLoad(day.load)}</span>
+                                                <Link to={rutaEntregas(day.date)} title="Vista de Entregas de ese día">Ver el día completo</Link>
                                             </div>
                                         </div>
                                     </DayPopover>

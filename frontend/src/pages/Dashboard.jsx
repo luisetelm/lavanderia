@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { fetchDashboard, updateOrder, fetchTrackingBoard, fetchSepaDebits } from '../api.js';
 import { formatEUR } from '../utils/format.js';
-import { rutaPedido } from '../utils/rutas.js';
+import { rutaEntregas, rutaPedido } from '../utils/rutas.js';
 import { useNavigate } from 'react-router-dom';
 import StatusChangeModal from '../components/StatusChangeModal.jsx';
 
@@ -121,7 +121,7 @@ export default function Dashboard({ token, user }) {
 
     if (!data) return null;
 
-    const { todayStats, ordersByStatus, pendingOrders, readyOrders, cashStatus, recentActivity } = data;
+    const { todayStats, ordersByStatus, pendingOrders, readyOrders, cashStatus, recentActivity, deliveries } = data;
 
     return (
         <div>
@@ -158,6 +158,13 @@ export default function Dashboard({ token, user }) {
 
             {/* KPIs del día */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 20 }}>
+                {deliveries && (
+                    <div onClick={() => navigate(rutaEntregas())} style={{ cursor: 'pointer' }} title="Ver las entregas de hoy">
+                        <KpiCard label="Entregas hoy" value={deliveries.today} icon="calendar"
+                                 color={deliveries.overdue > 0 ? '#dc2626' : '#f59e0b'}
+                                 sub={deliveries.overdue > 0 ? `${deliveries.overdue} atrasado${deliveries.overdue !== 1 ? 's' : ''}` : 'sin atrasados'} />
+                    </div>
+                )}
                 <KpiCard label="Pedidos hoy" value={todayStats.ordersCount} icon="cart" />
                 <KpiCard label="Ingresos hoy" value={formatEUR(todayStats.totalRevenue)} icon="credit-card" accent />
                 <KpiCard label="Cobrado" value={formatEUR(todayStats.paidRevenue)} icon="check" color="#22c55e" />
