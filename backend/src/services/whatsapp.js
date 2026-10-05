@@ -13,6 +13,30 @@ import { normalizePhone } from '../utils/validatePhone.js';
 
 const API_VERSION = 'v21.0';
 
+/**
+ * Plantilla que se manda sola cuando alguien pide un precio desde la web
+ * (POST /api/public/price-request). Se crea con /api/whatsapp/templates/setup-defaults
+ * y Meta tiene que aprobarla antes de que funcione. Ver docs/precios-web.md.
+ * Variables: {{1}} nombre del producto tal y como sale en la web, {{2}} precio.
+ */
+export const PLANTILLA_PRECIO_WEB = {
+    name: 'precio_web',
+    category: 'UTILITY',
+    language: 'es',
+    components: [
+        {
+            type: 'BODY',
+            text: 'Hola, somos Tinte y Burbuja. Nos has pedido desde tinteyburbuja.com el precio de {{1}}: {{2}}, IVA incluido.\n\nSi quieres contarnos algo más de la prenda o saber el plazo, responde a este mensaje y te atendemos. Estamos en C/ Cronista Cazabán, 7, Úbeda.',
+            example: { body_text: [['Traje de caballero', '18,50 € por prenda']] },
+        },
+    ],
+};
+
+/** Parámetros de la plantilla precio_web, en el formato de la API de Meta. */
+export function componentesPrecioWeb(nombreProducto, textoPrecio) {
+    return [{ type: 'body', parameters: [{ type: 'text', text: nombreProducto }, { type: 'text', text: textoPrecio }] }];
+}
+
 export function formatWhatsAppPhone(phone) {
     const raw = `${phone || ''}`.trim();
     if (!raw) {

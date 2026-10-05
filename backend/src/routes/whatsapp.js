@@ -8,8 +8,7 @@ import {
     deleteTemplate,
     uploadMediaToWhatsApp,
     sendMediaMessage,
-    downloadMedia
-} from '../services/whatsapp.js';
+    downloadMedia, PLANTILLA_PRECIO_WEB } from '../services/whatsapp.js';
 import { findOrCreateConversation, touchConversation, buildPhoneCandidates } from '../services/conversation.js';
 import { fromWhatsAppNumber } from '../utils/validatePhone.js';
 import { fallbackToSmsAfterWhatsAppFailure } from '../services/notify.js';
@@ -147,6 +146,7 @@ export default async function (fastify) {
         if (req.user?.role !== 'admin') return reply.code(403).send({ error: 'Solo admin' });
 
         const defaults = [
+            PLANTILLA_PRECIO_WEB,
             {
                 name: 'pedido_listo',
                 category: 'UTILITY',

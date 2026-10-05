@@ -6,6 +6,7 @@
 
 import { findOrCreateConversation, touchConversation, buildPhoneCandidates } from '../services/conversation.js';
 import { normalizePhone, isValidPhone, TELEFONO_AYUDA } from '../utils/validatePhone.js';
+import { sendTemplateMessage, PLANTILLA_PRECIO_WEB, componentesPrecioWeb } from '../services/whatsapp.js';
 
 const SECCIONES = ['lavado', 'tintoreria', 'hosteleria'];
 
@@ -24,6 +25,10 @@ function superaLimite(ip) {
 }
 
 const limpiar = (v, max) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
+
+const euros = new Intl.NumberFormat('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const unidad = (p) => (/\bkg\b/i.test(p.name) ? 'kg' : 'prenda');
+const textoPrecio = (p) => `${euros.format(p.basePrice)} € por ${unidad(p)}`;
 const CACHE_SEGUNDOS = 15 * 60; // 15 minutos: un cambio de precio tarda eso en verse en la web
 
 // "EDREDON 1.35/1.50CM" -> "Edredon 1.35/1.50cm". Es el nombre de reserva
@@ -63,10 +68,19 @@ export default async function publicRoutes(fastify) {
         return { currency: 'EUR', vatIncluded: true, updatedAt: actualizado, sections: secciones };
     });
 
-    // Alguien quiere saber un precio y deja su teléfono. Entra en el chat de la
-    // app como una conversación con un mensaje del canal 'web', para que quien
-    // atienda le escriba por WhatsApp y empiece la conversación desde ahí.
-    // Si el teléfono es de un cliente conocido, la conversación queda vinculada.
+    // Alguien quiere saber un precio y deja su teléfono.
+    //
+    // Con productId (un producto publicado con precio): se le manda al momento la
+    // plantilla precio_web por WhatsApp con el nombre y el precio. Sólo se puede
+    // escribir por plantilla a quien no ha escrito antes; si contesta, se abre
+    // la ventana de 24 horas y el equipo sigue la conversación desde el chat.
+    //
+    // Sin productId (otra prenda, o un producto de hostelería, sin precio
+    // público): entra en el chat como mensaje del canal 'web' y el equipo
+    // contesta por WhatsApp, con plantilla, como a cualquier número nuevo.
+    //
+    // En los dos casos queda en el chat de la app, vinculado al cliente si el
+    // teléfono es de uno conocido.
     fastify.post('/price-request', async (req, reply) => {
         const body = req.body || {};
         // Campo trampa para bots: un humano no lo ve ni lo rellena.
@@ -77,26 +91,54 @@ export default async function publicRoutes(fastify) {
         if (!isValidPhone(phone)) return reply.code(400).send({ error: TELEFONO_AYUDA });
         const name = limpiar(body.name, 80);
         const item = limpiar(body.item, 300);
-        if (!item) return reply.code(400).send({ error: 'Dinos de qué prenda o servicio quieres saber el precio.' });
+        const productId = Number.parseInt(body.productId, 10);
+
+        let producto = null;
+        if (Number.isInteger(productId)) {
+            producto = await prisma.product.findFirst({
+                where: { id: productId, webSection: { in: ['lavado', 'tintoreria'] }, archivedAt: null },
+                select: { id: true, name: true, webName: true, basePrice: true },
+            });
+            if (!producto) return reply.code(400).send({ error: 'Ese producto no está en la tarifa de la web.' });
+        } else if (!item) {
+            return reply.code(400).send({ error: 'Dinos de qué prenda o servicio quieres saber el precio.' });
+        }
 
         const client = await prisma.user.findFirst({
             where: { phone: { in: buildPhoneCandidates(phone) } },
             select: { id: true },
         });
         const conversation = await findOrCreateConversation(prisma, { clientId: client?.id || null, phone });
+        const base = { clientId: client?.id || null, phone, conversationId: conversation.id };
+
+        const descripcion = producto ? (producto.webName || nombreFrase(producto.name)) : item;
         await prisma.message.create({
-            data: {
-                channel: 'web',
-                direction: 'inbound',
-                clientId: client?.id || null,
-                phone,
-                content: `Pide precio desde la web: ${item}${name ? ` · Nombre: ${name}` : ''}`,
-                status: 'received',
-                conversationId: conversation.id,
-            },
+            data: { ...base, channel: 'web', direction: 'inbound', status: 'received',
+                content: `Pide precio desde la web: ${descripcion}${name ? ` · Nombre: ${name}` : ''}` },
         });
+
+        let sent = false;
+        if (producto) {
+            const precio = textoPrecio(producto);
+            try {
+                const wa = await sendTemplateMessage(phone, PLANTILLA_PRECIO_WEB.name, PLANTILLA_PRECIO_WEB.language, componentesPrecioWeb(descripcion, precio));
+                await prisma.message.create({
+                    data: { ...base, channel: 'whatsapp', direction: 'outbound', status: 'sent',
+                        externalId: wa?.messages?.[0]?.id || null,
+                        templateName: PLANTILLA_PRECIO_WEB.name,
+                        content: `[Template: ${PLANTILLA_PRECIO_WEB.name}] ${descripcion}: ${precio}` },
+                });
+                sent = true;
+            } catch (e) {
+                // Plantilla sin aprobar, WhatsApp sin configurar o número sin WhatsApp:
+                // queda la petición en el chat y el equipo contesta a mano.
+                req.log.warn({ err: e.message, phone }, 'No se pudo enviar la plantilla precio_web; queda para contestar a mano');
+            }
+        }
+
+        // Sin leer siempre: aunque la plantilla haya salido, el equipo debe ver el interés.
         await touchConversation(prisma, conversation.id, { incrementUnread: true });
-        req.log.info({ conversationId: conversation.id, cliente: client?.id || null }, 'Petición de precio desde la web');
-        return reply.code(201).send({ ok: true });
+        req.log.info({ conversationId: conversation.id, cliente: client?.id || null, productId: producto?.id || null, sent }, 'Petición de precio desde la web');
+        return reply.code(201).send({ ok: true, sent });
     });
 }

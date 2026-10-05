@@ -48,12 +48,19 @@ La web (`Lavanderaweb/src/components/Services.tsx`) pide esta URL al cargar y, s
 
 ## Pedir precio desde la web
 
-Debajo de la tarifa hay un formulario corto: teléfono y qué prenda o servicio. Al enviarlo, `POST /api/public/price-request` (`{ phone, item, name? }`):
+Debajo de la tarifa hay un formulario corto: teléfono con WhatsApp y prenda. Hay dos caminos, los dos por `POST /api/public/price-request`:
 
-1. Normaliza y valida el teléfono con la misma regla que el resto de la app (`backend/src/utils/validatePhone.js`).
-2. Si el número es de un cliente, vincula la conversación a su ficha; si no, crea una conversación con ese número, como cuando escribe alguien desconocido por WhatsApp.
-3. Guarda un mensaje entrante del canal `web` («Pide precio desde la web: …») y sube el contador de no leídos.
+**Producto de la tarifa** (`{ phone, productId }`). La app le manda al momento la plantilla de WhatsApp `precio_web` con el nombre del producto y su precio al público. Es la única forma de escribir a quien nunca nos ha escrito: WhatsApp sólo permite iniciar conversación con una plantilla aprobada. Si el cliente responde, se abre la ventana de 24 horas y el equipo sigue en texto libre desde el chat. Sólo vale para productos de Lavado y Tintorería con precio; Hostelería no tiene precio público.
 
-En la app aparece en el chat flotante como cualquier mensaje nuevo, con la etiqueta WEB. Quien atienda le contesta por WhatsApp desde la misma conversación. Como el cliente aún no ha escrito por WhatsApp, la ventana de 24 horas está cerrada: el primer mensaje tiene que ser una plantilla, igual que con cualquier número nuevo.
+**Otra prenda** (`{ phone, item }`). No hay precio que mandar: entra en el chat como mensaje del canal `web` («Pide precio desde la web: …») y el equipo contesta por WhatsApp, con plantilla, como a cualquier número nuevo.
+
+En los dos casos:
+
+1. El teléfono se normaliza y valida con la regla de toda la app (`backend/src/utils/validatePhone.js`).
+2. Si el número es de un cliente, la conversación queda en su ficha; si no, se crea con ese número.
+3. Queda un mensaje entrante `web` con lo pedido, y la plantilla enviada como mensaje saliente, y la conversación sube a no leída para que el equipo vea el interés aunque el precio ya haya salido.
+4. Si la plantilla no se puede mandar (no está aprobada, WhatsApp sin configurar, el número no tiene WhatsApp), la petición queda igualmente en el chat y la web le dice al cliente que le escribiremos nosotros. La respuesta lleva `sent: true|false`.
+
+La plantilla está definida en `backend/src/services/whatsapp.js` (`PLANTILLA_PRECIO_WEB`) y se da de alta en Meta con `POST /api/whatsapp/templates/setup-defaults` (admin), junto a las de pedido listo y recogido. Hasta que Meta la apruebe, el formulario funciona por el segundo camino.
 
 Protección: campo trampa para bots y un máximo de 3 peticiones por IP cada 10 minutos.
