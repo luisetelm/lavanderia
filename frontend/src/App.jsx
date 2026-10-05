@@ -216,8 +216,7 @@ export default function App() {
                         <li><NavLink to="/entregas"><span uk-icon="icon: calendar; ratio: 0.9"></span> Entregas</NavLink></li>
                         {/* 'end' para que /tracking/supervision no marque también este enlace */}
                         <li><NavLink to="/tracking" end><span uk-icon="icon: bolt; ratio: 0.9"></span> Taller</NavLink></li>
-                        <li><NavLink to="/usuarios?rol=customer" className={({isActive}) => isActive && location.search.includes('rol=customer') ? 'active' : ''}><span uk-icon="icon: happy; ratio: 0.9"></span> Clientes</NavLink></li>
-                        <li><NavLink to="/usuarios" className={({isActive}) => isActive && !location.search.includes('rol=customer') ? 'active' : ''}><span uk-icon="icon: users; ratio: 0.9"></span> Usuarios</NavLink></li>
+                        <li><NavLink to="/clientes"><span uk-icon="icon: users; ratio: 0.9"></span> Clientes</NavLink></li>
                         {/* Impresión es configuración DEL DISPOSITIVO (qué imprime este
                             equipo, y si manda a la cola). La tablet del taller la usan
                             trabajadores, así que no puede ser sólo de administración. */}
@@ -239,6 +238,7 @@ export default function App() {
                                 {adminMenuOpen && (
                                     <ul className="sidebar-admin-submenu">
                                         <li><NavLink to="/ventas"><span uk-icon="icon: credit-card; ratio: 0.8"></span> Ventas</NavLink></li>
+                                        <li><NavLink to="/personal"><span uk-icon="icon: user; ratio: 0.8"></span> Personal</NavLink></li>
                                         <li><NavLink to="/tracking/supervision"><span uk-icon="icon: bolt; ratio: 0.8"></span> Tracking (supervisión)</NavLink></li>
                                         <li><NavLink to="/estadisticas"><span uk-icon="icon: bolt; ratio: 0.8"></span> Estadísticas</NavLink></li>
                                         <li><NavLink to="/rendimiento"><span uk-icon="icon: users; ratio: 0.8"></span> Rendimiento</NavLink></li>
@@ -298,7 +298,10 @@ export default function App() {
                     <Route path="/buscar-pedido" element={<OrderLookup token={token}/>}/>
                     <Route path="/tracking" element={<TrackingWorkshop token={token} user={user}/>}/>
                     <Route path="/tracking/supervision" element={soloAdmin(<TrackingBoard token={token} user={user}/>)}/>
-                    <Route path="/usuarios" element={<Users token={token} user={user}/>}/>
+                    <Route path="/clientes" element={<Users token={token} user={user} modo="clientes"/>}/>
+                    <Route path="/personal" element={soloAdmin(<Users token={token} user={user} modo="personal"/>)}/>
+                    {/* Ruta antigua "Usuarios": la ficha sigue en /usuarios/:id */}
+                    <Route path="/usuarios" element={<Navigate to={`/clientes${location.search}`} replace/>}/>
                     <Route path="/usuarios/:id" element={<UserEdit token={token} user={user}/>}/>
                     <Route path="/ventas" element={<Ventas token={token}/>}/>
                     <Route path="/estadisticas" element={<Stats token={token}/>}/>

@@ -122,7 +122,7 @@ export default function UserEdit({ token, user: loggedUser }) {
         title={user ? `${user.firstName} ${user.lastName}` : 'Editar usuario'}
         actions={
           <div style={{display: 'flex', gap: 8, flexWrap: 'wrap'}}>
-            <button className="uk-button uk-button-small uk-button-default" onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/usuarios'))}>
+            <button className="uk-button uk-button-small uk-button-default" onClick={() => (window.history.length > 1 ? navigate(-1) : navigate(esCliente ? '/clientes' : '/personal'))}>
               <span uk-icon="icon: arrow-left; ratio: 0.8" style={{marginRight: 4}}></span> Volver
             </button>
             {esCliente && user.phone && (
@@ -163,7 +163,7 @@ export default function UserEdit({ token, user: loggedUser }) {
                 UIkit.notification({ message: 'Usuario guardado', status: 'success' });
                 load();
               }}
-              onCancel={() => navigate('/usuarios')}
+              onCancel={() => navigate(esCliente ? '/clientes' : '/personal')}
             />
           </div>
 

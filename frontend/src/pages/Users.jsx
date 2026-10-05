@@ -7,12 +7,17 @@ import UserForm from '../components/UserForm.jsx';
 import PageToolbar from '../components/PageToolbar.jsx';
 
 
-function Users({token, user: loggedUser}) {
+// Una misma lista con dos entradas: /clientes (modo 'clientes', sólo rol
+// customer) y /personal (modo 'personal', cajeros, trabajadores y admin).
+// Antes había una sola pantalla "Usuarios" que los mezclaba y, como casi todos
+// son clientes, parecía la misma lista que Clientes.
+function Users({token, user: loggedUser, modo = 'clientes'}) {
+    const esPersonal = modo === 'personal';
     const [users, setUsers] = useState([]);
     const [showNew, setShowNew] = useState(false);
     const [error, setError] = useState('');
-    // Búsqueda, rol, propiedad y página en la URL (?q=&rol=&propiedad=&pagina=):
-    // el menú "Clientes" es /usuarios?rol=customer y el botón atrás respeta los filtros.
+    // Búsqueda, rol (sólo en Personal), propiedad (sólo en Clientes) y página en
+    // la URL (?q=&rol=&propiedad=&pagina=): el botón atrás respeta los filtros.
     const [searchParams, setSearchParams] = useSearchParams();
     const searchTerm = searchParams.get('q') || '';
     const currentPage = Math.max(1, parseInt(searchParams.get('pagina'), 10) || 1);
@@ -48,12 +53,13 @@ function Users({token, user: loggedUser}) {
         ['sin_notificaciones', 'Sin notificaciones'],
         ['inactivos', 'Inactivos'],
     ];
-    const ROLES = [['customer', 'Clientes'], ['cashier', 'Cajeros'], ['admin', 'Administración']];
-    const filtros = [
+    const ROLES = [['cashier', 'Cajeros'], ['worker', 'Trabajadores'], ['admin', 'Administración']];
+    const filtros = esPersonal ? [
         {label: 'Rol', active: rol !== '', options: [
             {label: 'Todos', active: rol === '', onClick: () => setRol('')},
             ...ROLES.map(([v, l]) => ({label: l, active: rol === v, onClick: () => setRol(v)})),
         ]},
+    ] : [
         {label: 'Propiedad', active: propiedad !== '', options: [
             {label: 'Todas', active: propiedad === '', onClick: () => setPropiedad('')},
             ...PROPIEDADES.map(([v, l]) => ({label: l, active: propiedad === v, onClick: () => setPropiedad(v)})),
@@ -64,7 +70,7 @@ function Users({token, user: loggedUser}) {
         setLoading(true);
         try {
             const {data, meta} = await fetchUsers(token, {
-                q: searchTerm, role: rol || undefined, propiedad: propiedad || undefined,
+                q: searchTerm, role: esPersonal ? (rol || 'staff') : 'customer', propiedad: esPersonal ? undefined : (propiedad || undefined),
                 page: currentPage - 1, size: usersPerPage
             });
             setUsers(data);
@@ -78,7 +84,7 @@ function Users({token, user: loggedUser}) {
 
     useEffect(() => {
         load();
-    }, [token, searchTerm, currentPage, rol, propiedad]);
+    }, [token, searchTerm, currentPage, rol, propiedad, modo]);
 
     const saveDiscount = async (user, value) => {
         const d = Number(value);
@@ -98,7 +104,7 @@ function Users({token, user: loggedUser}) {
     return (
         <div>
             <PageToolbar
-                title={rol === 'customer' ? 'Clientes' : 'Usuarios'}
+                title={esPersonal ? 'Personal' : 'Clientes'}
                 filters={filtros}
                 actions={
                     <button
@@ -106,7 +112,7 @@ function Users({token, user: loggedUser}) {
                         uk-toggle="target: #offcanvas-user-form"
                         onClick={() => setShowNew(true)}
                     >
-                        <span uk-icon="plus"></span> Nuevo usuario
+                        <span uk-icon="plus"></span> {esPersonal ? 'Nuevo empleado' : 'Nuevo cliente'}
                     </button>
                 }
             />
@@ -197,7 +203,7 @@ function Users({token, user: loggedUser}) {
                                         ))}
                                         {users.length === 0 && (
                                             <tr><td colSpan="7" className="uk-text-center uk-text-muted">
-                                                {searchTerm ? 'Sin resultados.' : 'No hay usuarios.'}
+                                                {searchTerm ? 'Sin resultados.' : (esPersonal ? 'No hay personal.' : 'No hay clientes.')}
                                             </td></tr>
                                         )}
                                         </tbody>
@@ -239,7 +245,7 @@ function Users({token, user: loggedUser}) {
                                     ))}
                                     {users.length === 0 && (
                                         <div style={{textAlign: 'center', padding: 20, color: '#94a3b8'}}>
-                                            {searchTerm ? 'Sin resultados.' : 'No hay usuarios.'}
+                                            {searchTerm ? 'Sin resultados.' : (esPersonal ? 'No hay personal.' : 'No hay clientes.')}
                                         </div>
                                     )}
                                 </div>
@@ -256,6 +262,7 @@ function Users({token, user: loggedUser}) {
                                             <UserForm
                                                 token={token}
                                                 loggedUser={loggedUser}
+                                                initial={{role: esPersonal ? 'cashier' : 'customer'}}
                                                 onSave={() => {
                                                     load();
                                                     UIkit.offcanvas('#offcanvas-user-form').hide();

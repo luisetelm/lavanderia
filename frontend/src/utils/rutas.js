@@ -14,10 +14,10 @@ export function rutaPedido(order) {
     return '/pedidos';
 }
 
-/** Ruta de la ficha de un cliente (o de cualquier usuario). */
+/** Ruta de la ficha de un cliente (o de cualquier usuario: la ficha vive en /usuarios/:id). */
 export function rutaCliente(client) {
     const id = typeof client === 'object' ? client?.id : client;
-    return id ? `/usuarios/${id}` : '/usuarios';
+    return id ? `/usuarios/${id}` : '/clientes';
 }
 
 /** Vista de Entregas de un día ('YYYY-MM-DD'); sin día, la de hoy. */

@@ -120,7 +120,10 @@ export default async function (fastify, opts) {
         const where = {};
 
         // Añadir filtro de rol si se proporciona
-        if (role) {
+        // ?role=customer (Clientes), ?role=staff (todo el personal) o un rol concreto
+        if (role === 'staff') {
+            where.role = { in: ['admin', 'cashier', 'worker'] };
+        } else if (role) {
             where.role = role;
         }
 
