@@ -51,6 +51,18 @@ const leerIds = (v) => [...new Set((Array.isArray(v) ? v : []).map(Number).filte
 const REDONDEOS = [0.001, 0.01, 0.05, 0.1, 0.5, 1];
 const CAMPOS_PRECIO = { basePrice: 'Precio', bigClientPrice: 'Tarifa gran cliente' };
 
+// Web pública: sección en la que se publica el producto (ver docs/precios-web.md).
+const SECCIONES_WEB = ['lavado', 'tintoreria', 'hosteleria'];
+function leerSeccionWeb(v) {
+    if (v == null || v === '') return null;
+    if (!SECCIONES_WEB.includes(v)) throw errorHttp(400, `Sección de la web no válida: ${v}.`);
+    return v;
+}
+const leerNombreWeb = (v) => {
+    const t = String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, 80);
+    return t || null;
+};
+
 function precioNuevo(actual, modo, valor, redondeo) {
     const bruto = modo === 'pct' ? actual * (1 + valor / 100) : actual + valor;
     return Math.round(Math.round(bruto / redondeo) * redondeo * 1000) / 1000;
@@ -594,8 +606,10 @@ export default async function (fastify, opts) {
 
     fastify.post('/', async (req, reply) => {
         if (!esAdmin(req)) return reply.status(403).send({ error: SOLO_ADMIN });
-        let { name, sku, basePrice, categoryId, description, type, weight, bigClientPrice, serviceOptions, itineraryId, labelCount, countsForLoad, workloadWeight, printWashLabel } = req.body;
+        let { name, sku, basePrice, categoryId, description, type, weight, bigClientPrice, serviceOptions, itineraryId, labelCount, countsForLoad, workloadWeight, printWashLabel, webSection, webName, webOrder } = req.body;
         if (!name || basePrice == null) return reply.status(400).send({ error: 'Name and basePrice required' });
+        let seccionWeb;
+        try { seccionWeb = leerSeccionWeb(webSection); } catch (e) { return reply.status(400).send({ error: e.message }); }
 
         if (!sku || sku.trim() === '') {
             sku = await generateUniqueSku(prisma);
@@ -620,6 +634,9 @@ export default async function (fastify, opts) {
                 printWashLabel: printWashLabel != null ? !!printWashLabel : true,
                 countsForLoad: countsForLoad != null ? !!countsForLoad : true,
                 workloadWeight: workloadWeight != null ? Math.max(0, parseFloat(workloadWeight) || 0) : 1,
+                webSection: seccionWeb,
+                webName: leerNombreWeb(webName),
+                webOrder: parseInt(webOrder, 10) || 0,
                 serviceOptions: serviceOptions || {
                     dryWash: false,
                     wetWash: false,
@@ -642,9 +659,14 @@ export default async function (fastify, opts) {
     fastify.put('/:id', async (req, reply) => {
         if (!esAdmin(req)) return reply.status(403).send({ error: SOLO_ADMIN });
         const { id } = req.params;
-        const { name, sku, basePrice, categoryId, description, type, weight, bigClientPrice, serviceOptions, itineraryId, labelCount, countsForLoad, workloadWeight, printWashLabel } = req.body;
+        const { name, sku, basePrice, categoryId, description, type, weight, bigClientPrice, serviceOptions, itineraryId, labelCount, countsForLoad, workloadWeight, printWashLabel, webSection, webName, webOrder } = req.body;
         try {
             const data = {};
+            if (webSection !== undefined) {
+                try { data.webSection = leerSeccionWeb(webSection); } catch (e) { return reply.status(400).send({ error: e.message }); }
+            }
+            if (webName !== undefined) data.webName = leerNombreWeb(webName);
+            if (webOrder !== undefined) data.webOrder = parseInt(webOrder, 10) || 0;
             if (name !== undefined) data.name = name;
             if (sku !== undefined) data.sku = sku;
             if (basePrice !== undefined) data.basePrice = parseFloat(basePrice);

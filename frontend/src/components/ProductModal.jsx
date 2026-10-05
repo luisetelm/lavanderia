@@ -19,6 +19,9 @@ export default function ProductModal({ onSave, initial, token, onClose, isOpen, 
         labelCount: 1,
         printWashLabel: true,
         countsForLoad: true,
+        webSection: '',
+        webName: '',
+        webOrder: 0,
         workloadWeight: 1,
     });
     const [error, setError] = useState('');
@@ -39,6 +42,9 @@ export default function ProductModal({ onSave, initial, token, onClose, isOpen, 
             labelCount: src.labelCount ?? 1,
             printWashLabel: src.printWashLabel ?? true,
             countsForLoad: src.countsForLoad ?? true,
+            webSection: src.webSection ?? '',
+            webName: src.webName ?? '',
+            webOrder: src.webOrder ?? 0,
             workloadWeight: src.workloadWeight ?? 1,
             categoryId: src.categoryId ?? null,
         });
@@ -81,6 +87,9 @@ export default function ProductModal({ onSave, initial, token, onClose, isOpen, 
                 countsForLoad: !!form.countsForLoad,
                 workloadWeight: Math.max(0, parseFloat(form.workloadWeight) || 0),
                 categoryId: form.categoryId ? Number(form.categoryId) : null,
+                webSection: form.webSection || null,
+                webName: form.webName.trim() || null,
+                webOrder: parseInt(form.webOrder, 10) || 0,
             };
 
             const guardado = initial && initial.id
@@ -345,6 +354,59 @@ export default function ProductModal({ onSave, initial, token, onClose, isOpen, 
                         </div>
                     </div>
                     
+                    <fieldset className="uk-fieldset" style={{ border: '1px solid var(--tyb-border)', borderRadius: 'var(--tyb-radius-md)', padding: '12px 16px 16px', marginTop: 20 }}>
+                        <legend style={{ fontSize: '0.85rem', fontWeight: 600, padding: '0 6px' }}>Web pública</legend>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--tyb-text-muted)', marginBottom: 10 }}>
+                            Si eliges una sección, el producto sale en la tarifa de tinteyburbuja.com con su precio al público.
+                            La tarifa de gran cliente y los precios pactados no se publican nunca; en hostelería se muestra sin precio.
+                        </div>
+                        <div className="uk-grid-small" uk-grid="true">
+                            <div className="uk-width-1-3@s">
+                                <label className="uk-form-label">Sección</label>
+                                <div className="uk-form-controls">
+                                    <select
+                                        className="uk-select"
+                                        value={form.webSection}
+                                        onChange={e => setForm(f => ({...f, webSection: e.target.value}))}
+                                    >
+                                        <option value="">No se publica</option>
+                                        <option value="lavado">Lavado y planchado</option>
+                                        <option value="tintoreria">Tintorería</option>
+                                        <option value="hosteleria">Hostelería</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div className="uk-width-1-2@s">
+                                <label className="uk-form-label">Nombre en la web</label>
+                                <div className="uk-form-controls">
+                                    <input
+                                        className="uk-input"
+                                        type="text"
+                                        maxLength={80}
+                                        placeholder={form.name ? form.name.charAt(0) + form.name.slice(1).toLowerCase() : 'Como en el catálogo'}
+                                        value={form.webName}
+                                        onChange={e => setForm(f => ({...f, webName: e.target.value}))}
+                                        disabled={!form.webSection}
+                                    />
+                                </div>
+                            </div>
+                            <div className="uk-width-1-6@s">
+                                <label className="uk-form-label">Orden</label>
+                                <div className="uk-form-controls">
+                                    <input
+                                        className="uk-input"
+                                        type="number"
+                                        min="0"
+                                        step="1"
+                                        value={form.webOrder}
+                                        onChange={e => setForm(f => ({...f, webOrder: e.target.value}))}
+                                        disabled={!form.webSection}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    </fieldset>
+
                     <div className="uk-margin uk-flex uk-flex-right">
                         <button type="button" className="uk-button uk-button-default uk-margin-small-right" onClick={onClose}>
                             Cancelar

@@ -23,6 +23,7 @@ import qzRoutes from './routes/qz.js';
 import printJobsRoutes from './routes/printJobs.js';
 import campaignsRoutes from './routes/campaigns.js';
 import clientPricesRoutes from './routes/clientPrices.js';
+import publicRoutes from './routes/public.js';
 import fastifyStatic from '@fastify/static';import multipart from '@fastify/multipart';
 import path from 'path';
 import cron from 'node-cron';
@@ -54,7 +55,7 @@ app.addHook('onRequest', async (request, reply) => {
 
 // JWT middleware
 app.addHook('preHandler', async (request, reply) => {
-    const publicPrefixes = ['/api/auth/login', '/api/auth/register', '/api/auth/forgot-password', '/api/auth/reset-password', '/invoices_pdfs/', '/uploads/', '/api/stripe/webhook', '/api/portal/', '/api/whatsapp/webhook', '/api/google/callback', '/api/qz/'];
+    const publicPrefixes = ['/api/auth/login', '/api/auth/register', '/api/auth/forgot-password', '/api/auth/reset-password', '/invoices_pdfs/', '/uploads/', '/api/stripe/webhook', '/api/portal/', '/api/public/', '/api/whatsapp/webhook', '/api/google/callback', '/api/qz/'];
     if (publicPrefixes.some(p => request.url.startsWith(p))) return;
     const auth = request.headers.authorization;
     if (!auth || !auth.startsWith('Bearer ')) {
@@ -115,6 +116,7 @@ app.register(itineraryRoutes, {prefix: '/api/itineraries'});
 app.register(qzRoutes, {prefix: '/api/qz'});
 app.register(printJobsRoutes, {prefix: '/api/print-jobs'});
 app.register(campaignsRoutes, {prefix: '/api/campaigns'});
+app.register(publicRoutes, {prefix: '/api/public'}); // sin token: precios para la web pública
 
 // Servir la carpeta de PDFs de facturas de forma pública
 app.register(fastifyStatic, {

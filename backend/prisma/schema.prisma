@@ -35,6 +35,9 @@ model Product {
   countsForLoad  Boolean          @default(true) @map("counts_for_load") // si computa en la carga de trabajo del día
   workloadWeight Float            @default(1) @map("workload_weight")    // carga en camisas equivalentes (camisa=1, traje=2,5, servilleta=0,05); tope diario en AppSettings.daily_load_max (sql/025)
   archivedAt     DateTime?        @map("archived_at") @db.Timestamptz(6) // archivado: fuera del TPV, conserva ficha y pedidos (sql/024)
+  webSection     String?          @map("web_section")                   // sección de la web pública en la que se publica (lavado | tintoreria | hosteleria); NULL = no se publica (sql/031)
+  webName        String?          @map("web_name")                      // nombre que ve el público; NULL = el del catálogo pasado a frase (sql/031)
+  webOrder       Int              @default(0) @map("web_order")         // posición dentro de su sección en la web (sql/031)
   orderLines     OrderLine[]
   agreedPrices   ClientProductPrice[]
   priceHistory   ProductPriceHistory[]

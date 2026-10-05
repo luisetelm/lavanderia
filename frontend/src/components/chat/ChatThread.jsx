@@ -558,7 +558,7 @@ function MessageList({ messages, onImageClick }) {
                             <div className="msg-bubble-text">{m.content}</div>
                         )}
                         <div className="msg-bubble-meta">
-                            <span className="msg-bubble-channel">{m.channel === 'whatsapp' ? 'WA' : 'SMS'}</span>
+                            <span className="msg-bubble-channel">{m.channel === 'whatsapp' ? 'WA' : m.channel === 'web' ? 'WEB' : 'SMS'}</span>
                             <span>{formatMsgMeta(m.createdAt)}</span>
                             {m.direction === 'outbound' && (
                                 <span className="msg-bubble-status">
