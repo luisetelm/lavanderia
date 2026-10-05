@@ -1,6 +1,6 @@
 import React, {useState, useEffect, useCallback} from 'react';
 import {Link} from 'react-router-dom';
-import {rutaCliente} from '../utils/rutas.js';
+import {rutaCliente, rutaPedido} from '../utils/rutas.js';
 import { confirmar, avisar } from '../utils/dialogo.js';
 import {
     createInvoice,
@@ -523,12 +523,12 @@ export default function PaymentSection({token, orderId, onPaid, initialOrder = n
             ) : (
                 <span>{clienteDisplay()}</span>
             )}
-            <span style={{
+            <Link to={rutaPedido(order)} title="Ver este pedido solo en pantalla" style={{
                 fontFamily: 'monospace', fontSize: '0.65em', color: '#64748b',
                 background: '#f1f5f9', padding: '2px 8px', borderRadius: 6,
             }}>
                 {order.orderNum}
-            </span>
+            </Link>
             {isOverdue && (
                 <span style={{
                     fontSize: '0.55em', fontWeight: 700, color: '#991b1b',

@@ -1,6 +1,6 @@
 import React, {useEffect, useState, useRef} from 'react';
 import {fetchOrders, fetchUsers} from '../api.js';
-import OrderCard from '../components/OrderCard.jsx';
+import PaymentSection from '../components/PaymentSection.jsx';
 import {useLocation, useSearchParams} from 'react-router-dom';
 import PageToolbar from '../components/PageToolbar.jsx';
 import Pagination from '../components/Pagination.jsx';
@@ -63,7 +63,7 @@ export default function Tasks({token, user}) {
         setQuery(n ? String(n) : '');
     }, [pedidoUrl, orderNumber]);
 
-    // Trabajadores, para poner nombre a la persona encargada de cada pedido
+    // Cargar trabajadores UNA sola vez para pasarlos a todas las PaymentSection
     useEffect(() => {
         let cancelled = false;
         (async () => {
@@ -159,14 +159,18 @@ export default function Tasks({token, user}) {
             {filterStatus !== 'all' ? (filterStatus === 'pending' ? ' pendientes' : filterStatus === 'ready' ? ' listas' : ' recogidas') : ''}.
         </div>)}
 
-        <div className="section-content" style={{display: 'flex', flexDirection: 'column', gap: 10}}>
-            {tasks.map((t) => {
-                const w = t.workerId ? workers.find(u => u.id === t.workerId) : null;
-                return (
-                    <OrderCard key={t.id} order={t}
-                               workerName={w ? `${w.firstName} ${w.lastName || ''}`.trim() : null}/>
-                );
-            })}
+        <div className="section-content">
+            {tasks.map((t) => (
+                <div key={t.id} className="uk-margin">
+                    <PaymentSection
+                        token={token}
+                        orderId={t.id}
+                        initialOrder={t}
+                        workers={workers}
+                        onPaid={() => load(query, filterStatus, filterWorker, sortBy, sortOrder, page)}
+                    />
+                </div>
+            ))}
         </div>
 
         {!loading && meta && meta.totalPages > 1 && (

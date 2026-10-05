@@ -31,7 +31,7 @@ No test framework is configured.
 
 **Pages (`src/pages/`):**
 - `POS.jsx` — Main POS: cart, customer selection, delivery dates, payments, cash register (movements, closures). Largest file (~850 lines).
-- `Tasks.jsx` — Order list with status/search/date filters, debounced search (300ms). Each row is a compact `components/OrderCard.jsx`; the full order lives in `OrderDetail.jsx`.
+- `Tasks.jsx` — Order list with status/search/date filters, debounced search (300ms). Each row is the full `PaymentSection` card; its order number links to `OrderDetail.jsx` to see that order alone.
 - `OrderDetail.jsx` — Order page (`/pedidos/:id`): header with back button, client link, phone, "Nuevo pedido" for that client and portal link, over `PaymentSection` (payments, status, lines, tracking, history, invoices).
 - `Deliveries.jsx` — Entregas (`/entregas?dia=YYYY-MM-DD`): what has to be delivered one day, overdue orders on top, grouped by status, with big "Listo" / "Entregar" buttons for the workshop tablet. Uses `GET /orders?deliveryFrom&deliveryTo` (delivery date, not creation) and `status` with comma-separated values; auto-refreshes every minute.
 - `Ventas.jsx` — Sales dashboard with date range filters, invoice filtering, Excel export. Admin only.

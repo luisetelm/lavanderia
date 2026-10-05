@@ -159,8 +159,9 @@ vuelve a perderse al recargar.
 
 Esfuerzo: 2 días. Backend: ninguno (`GET /orders/:id`, `/history`,
 `/portal-link` y tracking ya existen). **Hecha**: `pages/OrderDetail.jsx` en
-`/pedidos/:id`, `rutaPedido` apunta ahí, y `Tareas` lista con
-`components/OrderCard.jsx`. El historial, el tracking y las facturas siguen
+`/pedidos/:id`, `rutaPedido` apunta ahí. `Tareas` mantiene las
+tarjetas completas (se probó una lista compacta y obligaba a más clics); el
+número de cada tarjeta abre el pedido solo en pantalla. El historial, el tracking y las facturas siguen
 dentro de `PaymentSection`, sin pestañas: ya estaban resueltos ahí y no hacía
 falta repartirlos.
 
