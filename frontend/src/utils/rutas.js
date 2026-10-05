@@ -4,14 +4,14 @@
 // de detalle de pedido bastará con tocar rutaPedido).
 
 /**
- * Ruta para abrir un pedido. Hoy es la lista de Tareas filtrada por su número,
- * llevado en la URL para que sobreviva a una recarga o a abrirlo en otra pestaña.
+ * Ruta de la página de un pedido (/pedidos/:id). Si sólo se conoce el número
+ * (sin id), se cae en la lista de Tareas filtrada por ese número.
  * @param {{id?: number|string, orderNum?: string}} order
  */
 export function rutaPedido(order) {
-    const num = order?.orderNum || order?.id;
-    if (!num) return '/tareas';
-    return `/tareas?pedido=${encodeURIComponent(String(num))}`;
+    if (order?.id) return `/pedidos/${order.id}`;
+    if (order?.orderNum) return `/tareas?pedido=${encodeURIComponent(String(order.orderNum))}`;
+    return '/tareas';
 }
 
 /** Ruta de la ficha de un cliente (o de cualquier usuario). */

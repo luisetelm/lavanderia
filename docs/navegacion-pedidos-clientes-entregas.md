@@ -158,7 +158,11 @@ vuelve a perderse al recargar.
 ### Fase 2 — Página de detalle de pedido
 
 Esfuerzo: 2 días. Backend: ninguno (`GET /orders/:id`, `/history`,
-`/portal-link` y tracking ya existen).
+`/portal-link` y tracking ya existen). **Hecha**: `pages/OrderDetail.jsx` en
+`/pedidos/:id`, `rutaPedido` apunta ahí, y `Tareas` lista con
+`components/OrderCard.jsx`. El historial, el tracking y las facturas siguen
+dentro de `PaymentSection`, sin pestañas: ya estaban resueltos ahí y no hacía
+falta repartirlos.
 
 Nueva ruta `/pedidos/:id` (`pages/OrderDetail.jsx`) que reúne lo que hoy está
 repartido:

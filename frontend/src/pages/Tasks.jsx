@@ -1,6 +1,6 @@
 import React, {useEffect, useState, useRef} from 'react';
-import {fetchOrders, fetchUsers, payWithCard, payWithCash} from '../api.js';
-import PaymentSection from '../components/PaymentSection.jsx';
+import {fetchOrders, fetchUsers} from '../api.js';
+import OrderCard from '../components/OrderCard.jsx';
 import {useLocation, useSearchParams} from 'react-router-dom';
 import PageToolbar from '../components/PageToolbar.jsx';
 import Pagination from '../components/Pagination.jsx';
@@ -20,10 +20,6 @@ export default function Tasks({token, user}) {
     const [meta, setMeta] = useState(null);
     const debounceRef = useRef(null);
     const PAGE_SIZE = 20;
-
-    const [showCashModalForTask, setShowCashModalForTask] = useState(null);
-    const [receivedAmount, setReceivedAmount] = useState('');
-    const [isPaying, setIsPaying] = useState(false);
 
     // Pedido a abrir: va en la URL (?pedido=TPV/2026/0163) para que sobreviva a
     // una recarga o a abrir el enlace en otra pestaña. El state de la ruta se
@@ -67,7 +63,7 @@ export default function Tasks({token, user}) {
         setQuery(n ? String(n) : '');
     }, [pedidoUrl, orderNumber]);
 
-    // Cargar trabajadores UNA sola vez para pasarlos a todas las PaymentSection
+    // Trabajadores, para poner nombre a la persona encargada de cada pedido
     useEffect(() => {
         let cancelled = false;
         (async () => {
@@ -163,46 +159,13 @@ export default function Tasks({token, user}) {
             {filterStatus !== 'all' ? (filterStatus === 'pending' ? ' pendientes' : filterStatus === 'ready' ? ' listas' : ' recogidas') : ''}.
         </div>)}
 
-        <div className="section-content">
+        <div className="section-content" style={{display: 'flex', flexDirection: 'column', gap: 10}}>
             {tasks.map((t) => {
-                const clientName = t.order ? t.order.client ? `${t.order.client.firstName} ${t.order.client.lastName}`.trim() : 'Cliente rápido' : '-';
-
-                return (<div key={t.id}>
-                    {t.id ? (<div className="uk-margin">
-                        <PaymentSection
-                            token={token}
-                            orderId={t.id}
-                            initialOrder={t}
-                            workers={workers}
-                            onPaid={() => load(query, filterStatus, filterWorker, sortBy, sortOrder, page)}
-                        />
-                    </div>) : (<div className="uk-alert uk-alert-warning uk-margin">
-                        Pedido no disponible
-                    </div>)}
-
-                    {t.notifications?.length > 0 && (<div className="uk-margin-top">
-                        <h4 className="uk-heading-bullet uk-margin-small-bottom">
-                            Notificaciones
-                        </h4>
-                        <div className="uk-margin-small-top">
-                            {t.notifications.map((n) => (
-                                <div key={n.id} className="uk-grid-small uk-margin-small" uk-grid="true">
-                                    <div className="uk-width-auto">
-                                                    <span className="uk-label">
-                                                        {n.type}
-                                                    </span>
-                                        <span> — {n.status}</span>
-                                    </div>
-                                    {n.createdAt && (<div className="uk-width-auto uk-text-muted">
-                                        {new Date(n.createdAt).toLocaleString()}
-                                    </div>)}
-                                    <div className="uk-width-expand">
-                                        {n.content}
-                                    </div>
-                                </div>))}
-                        </div>
-                    </div>)}
-                </div>);
+                const w = t.workerId ? workers.find(u => u.id === t.workerId) : null;
+                return (
+                    <OrderCard key={t.id} order={t}
+                               workerName={w ? `${w.firstName} ${w.lastName || ''}`.trim() : null}/>
+                );
             })}
         </div>
 

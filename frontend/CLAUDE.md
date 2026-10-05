@@ -25,11 +25,14 @@ No test framework is configured.
 
 **State management:** Plain React hooks (useState/useCallback). No Redux/Context. State flows from `App.jsx` down as props (token, user, setToken, setUser).
 
-**Routing (App.jsx):** `/pos`, `/productos`, `/productos/:id`, `/tareas`, `/usuarios`, `/usuarios/:id`, `/ventas` (admin-only), `/login`. Root redirects to `/pos`.
+**Routing (App.jsx):** `/pos`, `/productos`, `/productos/:id`, `/tareas`, `/pedidos/:id`, `/usuarios`, `/usuarios/:id`, `/ventas` (admin-only), `/login`. Root redirects to `/pos`.
+
+**Navegación a pedidos y clientes:** siempre con `rutaPedido(order)` y `rutaCliente(client)` de `src/utils/rutas.js`, nunca con rutas escritas a mano. Un pedido se abre en `/pedidos/:id` (`pages/OrderDetail.jsx`); `/tareas?pedido=NUM` sigue valiendo como filtro para enlaces antiguos.
 
 **Pages (`src/pages/`):**
 - `POS.jsx` — Main POS: cart, customer selection, delivery dates, payments, cash register (movements, closures). Largest file (~850 lines).
-- `Tasks.jsx` — Order list with status/search/date filters, debounced search (300ms).
+- `Tasks.jsx` — Order list with status/search/date filters, debounced search (300ms). Each row is a compact `components/OrderCard.jsx`; the full order lives in `OrderDetail.jsx`.
+- `OrderDetail.jsx` — Order page (`/pedidos/:id`): header with back button, client link, phone, "Nuevo pedido" for that client and portal link, over `PaymentSection` (payments, status, lines, tracking, history, invoices).
 - `Ventas.jsx` — Sales dashboard with date range filters, invoice filtering, Excel export. Admin only.
 - `Inventory.jsx` — Product catalog: filters and sort persisted in localStorage, activity columns (`GET /api/products/summary`), inline editing, Excel export, and admin-only duplicate, archive, bulk price change (`BulkPriceModal`, preview computed by the backend) and categories (`ProductCategoriesModal`). `GET /api/products` returns only active products unless `?archived=all`, so the POS never shows archived ones.
 - `ProductDetail.jsx` — Product page (`/productos/:id`): data, order KPIs vs previous period, charts (`components/ProductCharts.jsx`, hand-made SVG) with price changes marked, orders, top clients, agreed prices, price history (`backend/src/utils/historialPrecios.js`) and admin-only lead times. Times are measured from order creation to each step's completion, never per-step duration (steps are usually completed without being started). See `docs/productos.md`.

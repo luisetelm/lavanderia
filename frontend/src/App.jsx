@@ -4,6 +4,7 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import POS from './pages/POS';
 import Tasks from './pages/Tasks';
+import OrderDetail from './pages/OrderDetail.jsx';
 import Inventory from './pages/Inventory';
 import ProductDetail from './pages/ProductDetail.jsx';
 import Users from './pages/Users';
@@ -287,6 +288,7 @@ export default function App() {
                     <Route path="/productos" element={<Inventory token={token} user={user}/>}/>
                     <Route path="/productos/:id" element={<ProductDetail token={token} user={user}/>}/>
                     <Route path="/tareas" element={<Tasks token={token} user={user}/>}/>
+                    <Route path="/pedidos/:id" element={<OrderDetail token={token}/>}/>
                     <Route path="/buscar-pedido" element={<OrderLookup token={token}/>}/>
                     <Route path="/tracking" element={<TrackingWorkshop token={token} user={user}/>}/>
                     <Route path="/tracking/supervision" element={soloAdmin(<TrackingBoard token={token} user={user}/>)}/>

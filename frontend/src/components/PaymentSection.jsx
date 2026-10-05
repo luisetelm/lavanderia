@@ -1,4 +1,6 @@
 import React, {useState, useEffect, useCallback} from 'react';
+import {Link} from 'react-router-dom';
+import {rutaCliente} from '../utils/rutas.js';
 import { confirmar, avisar } from '../utils/dialogo.js';
 import {
     createInvoice,
@@ -516,7 +518,11 @@ export default function PaymentSection({token, orderId, onPaid, initialOrder = n
             {statusMeta.label}
         </div>
         <h3 className={'uk-card-title'} style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-            <span>{clienteDisplay()}</span>
+            {order.client?.id ? (
+                <Link to={rutaCliente(order.client)} style={{color: 'inherit'}} title="Ver la ficha del cliente">{clienteDisplay()}</Link>
+            ) : (
+                <span>{clienteDisplay()}</span>
+            )}
             <span style={{
                 fontFamily: 'monospace', fontSize: '0.65em', color: '#64748b',
                 background: '#f1f5f9', padding: '2px 8px', borderRadius: 6,
