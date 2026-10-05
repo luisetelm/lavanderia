@@ -51,7 +51,7 @@ const ESTADOS = {
  * que no lo recorte la columna del TPV (overflow), pero sigue dentro del árbol
  * de React: antes era un uk-dropdown con "container: true", que UIkit movía
  * fuera del árbol y los enlaces de dentro hacían una recarga completa en vez
- * de navegar (se perdía el pedido al llegar a Tareas).
+ * de navegar (se perdía el pedido al llegar a la lista).
  */
 function DayPopover({anchorEl, open, onClose, onMouseEnter, onMouseLeave, children}) {
     const ref = useRef(null);

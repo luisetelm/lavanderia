@@ -219,7 +219,7 @@ function OrderCard({ order: o, compact = false, onOpen, onCompose }) {
 
     return (
         <div className={`chat-order ${compact ? 'compact' : ''}`}>
-            <div className="chat-order-top" onClick={onOpen} role="button" title="Ver en Tareas">
+            <div className="chat-order-top" onClick={onOpen} role="button" title="Abrir el pedido">
                 <span className="chat-order-num">#{o.orderNum || o.id}</span>
                 <span className={`uk-label ${st.cls}`} style={{ fontSize: '0.6rem' }}>{st.text}</span>
                 {!o.paid && o.status !== 'cancelled' && <span className="uk-label uk-label-danger" style={{ fontSize: '0.6rem' }}>Sin pagar</span>}

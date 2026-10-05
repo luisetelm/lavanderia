@@ -44,9 +44,10 @@ Consecuencias:
   siquiera existe ya en disco.
 - Desde entonces los cambios se aplican con scripts SQL numerados en
   `backend/sql/` (001 a 009). **Esa es la convención a seguir.**
-- Secuela: `model Task` desapareció del `schema.prisma` pero la tabla existe, así
-  que `prisma.task` es `undefined` y `GET /api/tasks` devuelve 500. No se ha
-  notado porque el frontend no llama a esa ruta. Conviene arreglarlo aparte.
+- Secuela: `model Task` desapareció del `schema.prisma` pero la tabla existe
+  (41 filas, sin uso). La ruta `GET /api/tasks`, que devolvía 500 por eso y que
+  el frontend nunca llamaba, se retiró en octubre de 2026. La tabla sigue ahí
+  hasta que alguien decida borrarla por SQL.
 
 ---
 

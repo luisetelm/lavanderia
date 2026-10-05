@@ -1,7 +1,7 @@
 import React, {useEffect, useState, useRef} from 'react';
 import {fetchOrders, fetchUsers} from '../api.js';
 import PaymentSection from '../components/PaymentSection.jsx';
-import {useLocation, useSearchParams} from 'react-router-dom';
+import {useSearchParams} from 'react-router-dom';
 import PageToolbar from '../components/PageToolbar.jsx';
 import Pagination from '../components/Pagination.jsx';
 
@@ -11,13 +11,13 @@ export default function Tasks({token, user}) {
     const [workers, setWorkers] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    // Lista de pedidos (/pedidos; la ruta antigua /tareas redirige aquí).
     // Todos los filtros viven en la URL: se pueden compartir, el botón atrás
     // los respeta y el Dashboard puede enlazar a "pendientes" o "listos".
     //   ?q=texto  ?estado=pending|ready|collected  ?trabajador=ID
     //   ?orden=createdAt|fechaLimite|updatedAt  ?dir=asc|desc  ?pagina=N
     //   ?pedido=NUM (enlaces antiguos: busca ese pedido)
     const [searchParams, setSearchParams] = useSearchParams();
-    const location = useLocation();
     const query = searchParams.get('q') ?? searchParams.get('pedido') ?? '';
     const filterStatus = searchParams.get('estado') || 'all';
     const filterWorker = searchParams.get('trabajador') ? Number(searchParams.get('trabajador')) : '';
@@ -46,13 +46,6 @@ export default function Tasks({token, user}) {
     const debounceRef = useRef(null);
     const PAGE_SIZE = 20;
 
-    // Enlaces antiguos que traían el pedido en el state de la ruta
-    const orderNumberState = location.state?.orderNumber;
-    useEffect(() => {
-        if (orderNumberState && !searchParams.get('q') && !searchParams.get('pedido')) setParams({q: String(orderNumberState)});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [orderNumberState]);
-
     const load = async (search = '', status = 'all', workerId, sort = 'createdAt', order = 'desc', pageArg = 0) => {
         setLoading(true);
         try {
@@ -73,7 +66,7 @@ export default function Tasks({token, user}) {
         } catch (e) {
             setTasks([]);
             setMeta(null);
-            setError(e.error || 'Error cargando tareas');
+            setError(e.error || 'Error cargando pedidos');
         } finally {
             setLoading(false);
         }
@@ -110,7 +103,7 @@ export default function Tasks({token, user}) {
 
     return (<div>
         <PageToolbar
-            title="Tareas"
+            title="Pedidos"
             filters={[
                 {
                     label: 'Estado',
@@ -126,8 +119,8 @@ export default function Tasks({token, user}) {
                     label: 'Trabajador',
                     active: filterWorker !== '',
                     options: [
-                        { label: 'Mis tareas', active: filterWorker === user.id, onClick: () => setFilterWorker(filterWorker === user.id ? '' : user.id) },
-                        { label: 'Todas las tareas', active: filterWorker === '', onClick: () => setFilterWorker('') },
+                        { label: 'Mis pedidos', active: filterWorker === user.id, onClick: () => setFilterWorker(filterWorker === user.id ? '' : user.id) },
+                        { label: 'Todos los pedidos', active: filterWorker === '', onClick: () => setFilterWorker('') },
                     ]
                 },
                 {
@@ -166,7 +159,7 @@ export default function Tasks({token, user}) {
         </div>)}
 
         {!loading && tasks.length === 0 && (<div className="uk-alert uk-alert-primary uk-text-center">
-            No hay tareas
+            No hay pedidos
             {filterStatus !== 'all' ? (filterStatus === 'pending' ? ' pendientes' : filterStatus === 'ready' ? ' listas' : ' recogidas') : ''}.
         </div>)}
 

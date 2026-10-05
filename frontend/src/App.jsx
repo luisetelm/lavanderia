@@ -212,7 +212,7 @@ export default function App() {
                         <li><NavLink to="/dashboard"><span uk-icon="icon: home; ratio: 0.9"></span> Dashboard</NavLink></li>
                         <li><NavLink to="/pos"><span uk-icon="icon: cart; ratio: 0.9"></span> POS</NavLink></li>
                         <li><NavLink to="/productos"><span uk-icon="icon: grid; ratio: 0.9"></span> Productos</NavLink></li>
-                        <li><NavLink to="/tareas"><span uk-icon="icon: list; ratio: 0.9"></span> Tareas</NavLink></li>
+                        <li><NavLink to="/pedidos" end><span uk-icon="icon: list; ratio: 0.9"></span> Pedidos</NavLink></li>
                         <li><NavLink to="/entregas"><span uk-icon="icon: calendar; ratio: 0.9"></span> Entregas</NavLink></li>
                         {/* 'end' para que /tracking/supervision no marque también este enlace */}
                         <li><NavLink to="/tracking" end><span uk-icon="icon: bolt; ratio: 0.9"></span> Taller</NavLink></li>
@@ -290,7 +290,9 @@ export default function App() {
                     <Route path="/pos" element={<POS token={token} user={user}/>}/>
                     <Route path="/productos" element={<Inventory token={token} user={user}/>}/>
                     <Route path="/productos/:id" element={<ProductDetail token={token} user={user}/>}/>
-                    <Route path="/tareas" element={<Tasks token={token} user={user}/>}/>
+                    <Route path="/pedidos" element={<Tasks token={token} user={user}/>}/>
+                    {/* Ruta antigua: QR impresos y marcadores siguen funcionando, con sus filtros */}
+                    <Route path="/tareas" element={<Navigate to={`/pedidos${location.search}`} replace/>}/>
                     <Route path="/pedidos/:id" element={<OrderDetail token={token}/>}/>
                     <Route path="/entregas" element={<Deliveries token={token}/>}/>
                     <Route path="/buscar-pedido" element={<OrderLookup token={token}/>}/>

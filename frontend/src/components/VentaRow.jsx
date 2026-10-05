@@ -609,7 +609,7 @@ export default function VentaRow({
                     <button
                         className="uk-button uk-button-primary uk-button-small"
                         onClick={() => onVerPedido(orderDetail || venta)}
-                        title="Ver tareas de este pedido"
+                        title="Abrir el pedido"
                         type="button"
                     >
                         Ver pedido

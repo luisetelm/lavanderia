@@ -5,13 +5,13 @@
 
 /**
  * Ruta de la página de un pedido (/pedidos/:id). Si sólo se conoce el número
- * (sin id), se cae en la lista de Tareas filtrada por ese número.
+ * (sin id), se cae en la lista de pedidos filtrada por ese número.
  * @param {{id?: number|string, orderNum?: string}} order
  */
 export function rutaPedido(order) {
     if (order?.id) return `/pedidos/${order.id}`;
-    if (order?.orderNum) return `/tareas?pedido=${encodeURIComponent(String(order.orderNum))}`;
-    return '/tareas';
+    if (order?.orderNum) return `/pedidos?pedido=${encodeURIComponent(String(order.orderNum))}`;
+    return '/pedidos';
 }
 
 /** Ruta de la ficha de un cliente (o de cualquier usuario). */

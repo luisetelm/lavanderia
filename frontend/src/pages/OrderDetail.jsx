@@ -8,7 +8,7 @@ import {rutaCliente} from '../utils/rutas.js';
 
 // Página de un pedido (/pedidos/:id). La tarjeta completa del pedido (cobro,
 // estado, líneas, tracking, historial, facturas) es PaymentSection, la misma
-// que se usaba en la lista de Tareas; aquí se le pone encima el contexto que
+// que se usa en la lista de Pedidos; aquí se le pone encima el contexto que
 // faltaba: de dónde se viene, quién es el cliente y qué más se puede hacer con él.
 export default function OrderDetail({token}) {
     const {id} = useParams();
@@ -36,11 +36,11 @@ export default function OrderDetail({token}) {
         return () => { document.title = 'Tinte y Burbuja'; };
     }, [order?.orderNum]);
 
-    // "Volver" respeta de dónde se vino (Tareas, Dashboard, Ventas, ficha...);
+    // "Volver" respeta de dónde se vino (Pedidos, Dashboard, Ventas, ficha...);
     // si se entró directamente por la URL, la lista de pedidos.
     const volver = () => {
         if (window.history.length > 1) navigate(-1);
-        else navigate('/tareas');
+        else navigate('/pedidos');
     };
 
     const client = order?.client || null;
@@ -85,7 +85,7 @@ export default function OrderDetail({token}) {
                         <span uk-icon="icon: arrow-left; ratio: 0.8"></span> Volver
                     </button>
                     <nav aria-label="Estás en" style={{fontSize: '0.85rem', color: '#64748b', minWidth: 0}}>
-                        <Link to="/tareas" style={{color: '#64748b'}}>Pedidos</Link>
+                        <Link to="/pedidos" style={{color: '#64748b'}}>Pedidos</Link>
                         <span style={{margin: '0 6px'}}>›</span>
                         <strong style={{color: '#1e293b', fontFamily: 'monospace'}}>{order?.orderNum || (loading ? '…' : `#${id}`)}</strong>
                     </nav>
@@ -132,7 +132,7 @@ export default function OrderDetail({token}) {
             {!loading && error && (
                 <div className="uk-alert-danger" uk-alert="true">
                     <p>{error}</p>
-                    <Link to="/tareas" className="uk-button uk-button-default uk-button-small">Ir a la lista de pedidos</Link>
+                    <Link to="/pedidos" className="uk-button uk-button-default uk-button-small">Ir a la lista de pedidos</Link>
                 </div>
             )}
 

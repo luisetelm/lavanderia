@@ -25,13 +25,13 @@ No test framework is configured.
 
 **State management:** Plain React hooks (useState/useCallback). No Redux/Context. State flows from `App.jsx` down as props (token, user, setToken, setUser).
 
-**Routing (App.jsx):** `/pos`, `/productos`, `/productos/:id`, `/tareas`, `/pedidos/:id`, `/entregas`, `/usuarios`, `/usuarios/:id`, `/ventas` (admin-only), `/login`. Root redirects to `/pos`.
+**Routing (App.jsx):** `/pos`, `/productos`, `/productos/:id`, `/pedidos` (order list; `/tareas` redirects here keeping the query string), `/pedidos/:id`, `/entregas`, `/usuarios`, `/usuarios/:id`, `/ventas` (admin-only), `/login`. Root redirects to `/pos`.
 
-**Navegación a pedidos y clientes:** siempre con `rutaPedido(order)` y `rutaCliente(client)` de `src/utils/rutas.js`, nunca con rutas escritas a mano. Un pedido se abre en `/pedidos/:id` (`pages/OrderDetail.jsx`); `/tareas?pedido=NUM` sigue valiendo como filtro para enlaces antiguos.
+**Navegación a pedidos y clientes:** siempre con `rutaPedido(order)` y `rutaCliente(client)` de `src/utils/rutas.js`, nunca con rutas escritas a mano. Un pedido se abre en `/pedidos/:id` (`pages/OrderDetail.jsx`); `/pedidos?pedido=NUM` (o la antigua `/tareas?pedido=NUM`) sigue valiendo como filtro para enlaces antiguos.
 
 **Pages (`src/pages/`):**
 - `POS.jsx` — Main POS: cart, customer selection, delivery dates, payments, cash register (movements, closures). Largest file (~850 lines).
-- `Tasks.jsx` — Order list with status/search/date filters, debounced search (300ms). Filters live in the URL (`?q=&estado=&trabajador=&orden=&dir=&pagina=`). Each row is the full `PaymentSection` card; its order number links to `OrderDetail.jsx` to see that order alone.
+- `Tasks.jsx` — Order list (`/pedidos`, shown as "Pedidos") with status/search/date filters, debounced search (300ms). Filters live in the URL (`?q=&estado=&trabajador=&orden=&dir=&pagina=`). Each row is the full `PaymentSection` card; its order number links to `OrderDetail.jsx` to see that order alone.
 - `OrderDetail.jsx` — Order page (`/pedidos/:id`): header with back button, client link, phone, "Nuevo pedido" for that client and portal link, over `PaymentSection` (payments, status, lines, tracking, history, invoices).
 - `Deliveries.jsx` — Entregas (`/entregas?dia=YYYY-MM-DD`): what has to be delivered one day, overdue orders on top, grouped by status, with big "Listo" / "Entregar" buttons for the workshop tablet. Uses `GET /orders?deliveryFrom&deliveryTo` (delivery date, not creation) and `status` with comma-separated values; auto-refreshes every minute.
 - `Ventas.jsx` — Sales dashboard with date range filters, invoice filtering, Excel export. Admin only.

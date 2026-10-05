@@ -173,8 +173,8 @@ export default function Dashboard({ token, user }) {
 
             {/* Estado de pedidos - pills */}
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 20 }}>
-                <StatusPill label="Pendientes" count={ordersByStatus.pending} color={STATUS_COLORS.pending} onClick={() => navigate('/tareas?estado=pending')} />
-                <StatusPill label="Listos" count={ordersByStatus.ready} color={STATUS_COLORS.ready} onClick={() => navigate('/tareas?estado=ready')} />
+                <StatusPill label="Pendientes" count={ordersByStatus.pending} color={STATUS_COLORS.pending} onClick={() => navigate('/pedidos?estado=pending')} />
+                <StatusPill label="Listos" count={ordersByStatus.ready} color={STATUS_COLORS.ready} onClick={() => navigate('/pedidos?estado=ready')} />
                 <StatusPill label="Recogidos hoy" count={ordersByStatus.collectedToday} color={STATUS_COLORS.collected} />
             </div>
 

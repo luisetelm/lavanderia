@@ -239,7 +239,9 @@ enlace en Dashboard, Ventas, Taller, supervisión y facturas pendientes del TPV.
 
 ### Fase 5 — Limpieza
 
-Esfuerzo: medio día, repartido.
+Esfuerzo: medio día, repartido. **Hecha**: la lista es `/pedidos` y `/tareas`
+redirige allí conservando los filtros; `backend/src/routes/tasks.js` se ha
+borrado; ya no queda navegación por `state`.
 
 - Renombrar en el menú "Tareas" por "Pedidos" (la ruta `/tareas` se mantiene
   con redirección para no romper QR impresos ni marcadores).

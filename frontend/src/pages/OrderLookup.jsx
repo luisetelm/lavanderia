@@ -70,8 +70,8 @@ export default function OrderLookup({ token }) {
         return (
             <div style={{ padding: 40, textAlign: 'center' }}>
                 <div style={{ color: '#d32f2f', fontWeight: 600, marginBottom: 12 }}>{error}</div>
-                <button className="uk-button uk-button-primary" onClick={() => navigate('/tareas')}>
-                    Ir a tareas
+                <button className="uk-button uk-button-primary" onClick={() => navigate('/pedidos')}>
+                    Ir a pedidos
                 </button>
             </div>
         );

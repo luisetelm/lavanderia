@@ -4,7 +4,6 @@ import jwt from 'jsonwebtoken';
 import {PrismaClient} from '@prisma/client';
 import productRoutes from './routes/products.js';
 import orderRoutes from './routes/orders.js';
-import taskRoutes from './routes/tasks.js';
 import authRoutes from './routes/auth.js';
 import productsImportRoutes from './routes/products_import.js';
 import cashRoutes from './routes/cash.js';
@@ -96,7 +95,6 @@ app.register(multipart, { limits: { fileSize: 100 * 1024 * 1024 } }); // 100 MB 
 app.register(authRoutes, {prefix: '/api/auth'});
 app.register(productRoutes, {prefix: '/api/products'});
 app.register(orderRoutes, {prefix: '/api/orders'});
-app.register(taskRoutes, {prefix: '/api/tasks'});
 app.register(userRoutes, {prefix: '/api/users'});
 app.register(clientPricesRoutes, {prefix: '/api/users'}); // precios pactados: /api/users/:id/prices
 app.register(productsImportRoutes, {prefix: '/api/products'}); // quedaría POST /api/products/import
