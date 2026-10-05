@@ -5,6 +5,7 @@ import UIkit from 'uikit';
 import PageToolbar from '../components/PageToolbar.jsx';
 import { confirmar } from '../utils/dialogo.js';
 import { COLOR_HEX } from '../utils/colores.js';
+import { rutaPedido } from '../utils/rutas.js';
 import { printFinishedLabelForOrder, printGarmentFinishedLabel } from '../utils/printUtils.js';
 
 /* Qué paso se deshace desde una tarjeta:
@@ -379,7 +380,7 @@ export default function TrackingBoard({ token }) {
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 6 }}>
                                                     <div
                                                         style={{ flex: 1, minWidth: 0, cursor: 'pointer' }}
-                                                        onClick={() => navigate('/tareas', { state: { filterOrderId: item.orderId, orderNumber: item.orderNum } })}
+                                                        onClick={() => navigate(rutaPedido({ id: item.orderId, orderNum: item.orderNum }))}
                                                     >
                                                         <div style={{ fontSize: '0.8rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5 }}>
                                                             {urgencyIcon && <span title={item.urgency === 'critical' ? 'Tiempo insuficiente' : 'Plazo ajustado'}>{urgencyIcon}</span>}

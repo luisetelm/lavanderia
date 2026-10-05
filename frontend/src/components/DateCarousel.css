@@ -93,6 +93,10 @@
 }
 
 .dc-cell { position: relative; min-width: 0; }
+/* El botón deshabilitado (día pasado) no recibe eventos de ratón en Chrome y
+   se tragaría el hover de la celda: se deja pasar al contenedor. */
+.dc-day:disabled { pointer-events: none; }
+.dc-cell.is-disabled { cursor: not-allowed; }
 
 .dc-day {
     position: relative;
@@ -339,6 +343,47 @@
 .dc-legend i.closed { background: repeating-linear-gradient(135deg, #f8fafc 0 2px, #cbd5e1 2px 4px); border: 1px solid #cbd5e1; }
 
 /* Desplegable con los pedidos del día */
+.dc-pop-btn {
+    position: absolute;
+    right: 3px;
+    bottom: 3px;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border: 0;
+    border-radius: 5px;
+    background: rgba(255, 255, 255, .85);
+    color: #64748b;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+.dc-pop-btn:hover, .dc-pop-btn[aria-expanded="true"] { background: var(--dc-primary); color: #fff; }
+/* Con ratón basta el hover: el botón sólo aparece al pasar por encima para no
+   taparle el texto al día. En táctil está siempre y con más tamaño. */
+@media (hover: hover) {
+    .dc-pop-btn { opacity: 0; transition: opacity .12s; }
+    .dc-cell:hover .dc-pop-btn, .dc-pop-btn[aria-expanded="true"], .dc-pop-btn:focus-visible { opacity: 1; }
+}
+@media (hover: none), (pointer: coarse) {
+    .dc-pop-btn { width: 24px; height: 24px; right: 2px; bottom: 2px; }
+    .dc-cell.has-pop .dc-meta { padding-right: 24px; }
+}
+.dc-popover {
+    position: fixed;
+    z-index: 1020;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    box-shadow: 0 10px 30px rgba(15, 23, 42, .14);
+    animation: dc-pop-in .12s ease-out;
+}
+@keyframes dc-pop-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.dc-pop-close { border: 0; background: none; padding: 2px; color: #94a3b8; cursor: pointer; line-height: 0; }
+.dc-pop-close:hover { color: #1e293b; }
+.dc-pop-client { color: inherit; text-decoration: underline dotted; }
+.dc-pop-client:hover { color: var(--dc-primary); }
 .dc-pop {
     width: 300px;
     max-width: 92vw;

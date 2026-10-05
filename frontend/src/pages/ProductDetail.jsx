@@ -8,6 +8,7 @@ import {copiaDeProducto} from '../utils/productos.js';
 import {formatEUR} from '../utils/format.js';
 import {getDateRange} from '../utils/dates.js';
 import {avisar} from '../utils/dialogo.js';
+import {rutaPedido} from '../utils/rutas.js';
 import PageToolbar from '../components/PageToolbar.jsx';
 import DateRangeSelector from '../components/DateRangeSelector.jsx';
 import ProductModal from '../components/ProductModal.jsx';
@@ -356,7 +357,7 @@ function PestanaPedidos({token, productoId, rango}) {
                             const tachado = l.voidedAt ? {textDecoration: 'line-through', color: '#94a3b8'} : {};
                             return (
                                 <tr key={l.id} style={{cursor: 'pointer'}}
-                                    onClick={() => navigate('/tareas', {state: {filterOrderId: l.orderId, orderNumber: l.orderNum}})}>
+                                    onClick={() => navigate(rutaPedido({id: l.orderId, orderNum: l.orderNum}))}>
                                     <td style={{fontSize: '0.8rem', color: '#64748b', whiteSpace: 'nowrap'}}>
                                         {new Date(l.createdAt).toLocaleDateString('es-ES', {dateStyle: 'medium'})}
                                     </td>

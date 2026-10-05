@@ -134,7 +134,9 @@ beneficio por esfuerzo: primero se arregla lo roto, después se construye.
 
 ### Fase 1 — Arreglar el enlace del calendario y hacer robusto el "ir a pedido"
 
-Esfuerzo: medio día. Sin backend.
+Esfuerzo: medio día. Sin backend. **Hecha** (`utils/rutas.js`, popover propio en
+`DateCarousel`, `Tareas` lee `?pedido=`). Comprobada en navegador con la API
+simulada: con ratón y en tablet táctil.
 
 1. **`Tareas` lee el pedido de la URL.** Admite `/tareas?pedido=TPV/2026/0163`
    además del `state` actual (que se mantiene por compatibilidad). Así el

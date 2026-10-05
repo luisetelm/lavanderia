@@ -10,6 +10,7 @@ import {
     fetchInvoicesReport
 } from '../api.js';
 import { formatEUR } from '../utils/format.js';
+import { rutaPedido } from '../utils/rutas.js';
 import { FACTURA_SEPA_EN_CURSO } from '../utils/sepa.js';
 import {useNavigate} from 'react-router-dom';
 import * as XLSX from 'xlsx';
@@ -331,11 +332,7 @@ export default function Ventas({token}) {
     const navigate = useNavigate();
 
     const verPedido = (o) => {
-        navigate('/tareas', {
-            state: {
-                filterOrderId: o.id, orderNumber: o.orderNum || o.id
-            }
-        });
+        navigate(rutaPedido(o));
     };
 
     // Buscar ventas por rango de fechas usando fetchOrders

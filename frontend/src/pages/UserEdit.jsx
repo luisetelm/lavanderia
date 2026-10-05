@@ -4,6 +4,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import UIkit from 'uikit';
 import { fetchUser } from '../api.js';
 import { formatEUR } from '../utils/format.js';
+import { rutaPedido } from '../utils/rutas.js';
 import UserForm from '../components/UserForm.jsx';
 import PageToolbar from '../components/PageToolbar.jsx';
 import ClientPricesTab from '../components/ClientPricesTab.jsx';
@@ -200,7 +201,7 @@ export default function UserEdit({ token, user: loggedUser }) {
                             const s = STATUS_LABELS[o.status] || { text: o.status, cls: '' };
                             return (
                               <tr key={o.id} style={{ cursor: 'pointer' }}
-                                onClick={() => navigate('/tareas', { state: { filterOrderId: o.id, orderNumber: o.orderNum } })}>
+                                onClick={() => navigate(rutaPedido(o))}>
                                 <td style={{fontWeight: 500}}>{o.orderNum}</td>
                                 <td><span className={`uk-label ${s.cls}`} style={{fontSize: '0.65rem'}}>{s.text}</span></td>
                                 <td style={{textAlign: 'right'}}>{formatEUR(o.total)}</td>

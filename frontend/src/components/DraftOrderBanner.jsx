@@ -8,6 +8,7 @@ import { getPrintSettings } from '../utils/printSettings.js';
 import DraftLines from './DraftLines.jsx';
 import UIkit from 'uikit';
 import { normalizarTelefono, esTelefonoValido, TELEFONO_AYUDA } from '../utils/telefono.js';
+import { rutaPedido } from '../utils/rutas.js';
 
 // Barra flotante del pedido en curso. En cualquier ruta muestra el resumen y
 // permite validar o descartar; fuera del POS además se puede desplegar para
@@ -192,9 +193,7 @@ export default function DraftOrderBanner({ token, worker }) {
                 }
             }
 
-            navigate('/tareas', {
-                state: { filterOrderId: o.id, orderNumber: o.orderNum || o.id },
-            });
+            navigate(rutaPedido(o));
         } catch (err) {
             if (err?.error) {
                 setError(`No se ha podido crear el pedido: ${err.error}`);

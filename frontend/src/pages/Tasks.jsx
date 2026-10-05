@@ -1,7 +1,7 @@
 import React, {useEffect, useState, useRef} from 'react';
 import {fetchOrders, fetchUsers, payWithCard, payWithCash} from '../api.js';
 import PaymentSection from '../components/PaymentSection.jsx';
-import {useLocation} from 'react-router-dom';
+import {useLocation, useSearchParams} from 'react-router-dom';
 import PageToolbar from '../components/PageToolbar.jsx';
 import Pagination from '../components/Pagination.jsx';
 
@@ -25,8 +25,13 @@ export default function Tasks({token, user}) {
     const [receivedAmount, setReceivedAmount] = useState('');
     const [isPaying, setIsPaying] = useState(false);
 
+    // Pedido a abrir: va en la URL (?pedido=TPV/2026/0163) para que sobreviva a
+    // una recarga o a abrir el enlace en otra pestaña. El state de la ruta se
+    // sigue admitiendo por compatibilidad con enlaces antiguos.
     const location = useLocation();
-    const {filterOrderId, orderNumber} = location.state || {};
+    const [searchParams] = useSearchParams();
+    const pedidoUrl = searchParams.get('pedido') || '';
+    const {orderNumber} = location.state || {};
 
     const load = async (search = '', status = 'all', workerId, sort = 'createdAt', order = 'desc', pageArg = 0) => {
         setLoading(true);
@@ -55,11 +60,12 @@ export default function Tasks({token, user}) {
     };
 
 
+    // Al llegar con un pedido se busca ese; al volver a /tareas sin pedido
+    // (menú lateral) se limpia la búsqueda para no quedarse filtrado.
     useEffect(() => {
-        if (filterOrderId && orderNumber) {
-            setQuery(orderNumber.toString());
-        }
-    }, [filterOrderId, orderNumber]);
+        const n = pedidoUrl || orderNumber;
+        setQuery(n ? String(n) : '');
+    }, [pedidoUrl, orderNumber]);
 
     // Cargar trabajadores UNA sola vez para pasarlos a todas las PaymentSection
     useEffect(() => {

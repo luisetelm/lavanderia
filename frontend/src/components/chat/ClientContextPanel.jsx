@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { avisar } from '../../utils/dialogo.js';
 import { formatEUR } from '../../utils/format.js';
 import { lineasActivas } from '../../utils/lineas.js';
+import { rutaPedido } from '../../utils/rutas.js';
 import { fetchUser, fetchUsers, createUser, linkConversationClient } from '../../api.js';
 import { useDraftOrder } from '../../hooks/useDraftOrder.js';
 import { useMessages } from '../../hooks/useMessages.js';
@@ -165,7 +166,7 @@ function LinkedClient({ conv, onInsertText }) {
                     <OrderCard
                         key={o.id}
                         order={o}
-                        onOpen={() => go('/tareas', { filterOrderId: o.id, orderNumber: o.orderNum })}
+                        onOpen={() => go(rutaPedido(o))}
                         onCompose={onInsertText ? () => onInsertText(redactarAviso(o)) : null}
                     />
                 ))
@@ -180,7 +181,7 @@ function LinkedClient({ conv, onInsertText }) {
                             key={o.id}
                             order={o}
                             compact
-                            onOpen={() => go('/tareas', { filterOrderId: o.id, orderNumber: o.orderNum })}
+                            onOpen={() => go(rutaPedido(o))}
                         />
                     ))}
                     {pastOrders.length > 5 && (

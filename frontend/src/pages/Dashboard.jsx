@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { fetchDashboard, updateOrder, fetchTrackingBoard, fetchSepaDebits } from '../api.js';
 import { formatEUR } from '../utils/format.js';
+import { rutaPedido } from '../utils/rutas.js';
 import { useNavigate } from 'react-router-dom';
 import StatusChangeModal from '../components/StatusChangeModal.jsx';
 
@@ -237,7 +238,7 @@ export default function Dashboard({ token, user }) {
                                     background: isPast(o.fechaLimite) ? '#fef2f2' : isUrgent(o.fechaLimite) ? '#fffbeb' : 'transparent',
                                     cursor: 'pointer',
                                 }}
-                                    onClick={() => navigate('/tareas', { state: { filterOrderId: o.id, orderNumber: o.orderNum || o.id } })}
+                                    onClick={() => navigate(rutaPedido(o))}
                                 >
                                     <div style={{ flex: 1, minWidth: 0 }}>
                                         <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>
@@ -304,7 +305,7 @@ export default function Dashboard({ token, user }) {
                                     gap: 10,
                                     cursor: 'pointer',
                                 }}
-                                    onClick={() => navigate('/tareas', { state: { filterOrderId: o.id, orderNumber: o.orderNum || o.id } })}
+                                    onClick={() => navigate(rutaPedido(o))}
                                 >
                                     <div style={{ flex: 1, minWidth: 0 }}>
                                         <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>
@@ -363,7 +364,7 @@ export default function Dashboard({ token, user }) {
                                 fontSize: '0.8rem',
                                 cursor: 'pointer',
                             }}
-                                onClick={() => navigate('/tareas', { state: { filterOrderId: o.id, orderNumber: o.orderNum || o.id } })}
+                                onClick={() => navigate(rutaPedido(o))}
                             >
                                 <span style={{
                                     width: 8, height: 8, borderRadius: '50%',

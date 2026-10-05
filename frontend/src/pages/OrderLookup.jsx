@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { findOrderByNum, findOrdersByPortalToken } from '../api.js';
+import { rutaPedido } from '../utils/rutas.js';
 
 // Página de aterrizaje al escanear el QR de un ticket. Admite los dos QR que
 // imprime el sistema:
@@ -19,10 +20,7 @@ export default function OrderLookup({ token }) {
     // useCallback para poder declararlo como dependencia del efecto sin que
     // se recree en cada render (y relance la búsqueda en bucle).
     const openOrder = useCallback((order) => {
-        navigate('/tareas', {
-            replace: true,
-            state: { filterOrderId: order.id, orderNumber: order.orderNum },
-        });
+        navigate(rutaPedido(order), { replace: true });
     }, [navigate]);
 
     useEffect(() => {
