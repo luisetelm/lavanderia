@@ -21,10 +21,11 @@ const THREAD_PAGE_SIZE = 50; // mensajes por página; se cargan más al subir en
  *  - conv: conversación seleccionada (de la lista compartida)
  *  - onBack: volver a la lista (null en modo ancho, donde la lista siempre se ve)
  *  - onToggleInfo / infoOpen: panel de contexto del cliente
+ *  - onMarkUnread: marcar la conversación como no leída (cierra el hilo)
  *  - composerText / setComposerText: el texto del compositor vive fuera para que
  *    el panel de contexto pueda insertar frases ("su pedido nº X está listo").
  */
-export default function ChatThread({ token, conv, onBack, onToggleInfo, infoOpen, composerText, setComposerText }) {
+export default function ChatThread({ token, conv, onBack, onToggleInfo, infoOpen, onMarkUnread, composerText, setComposerText }) {
     const convId = conv?.id;
 
     const [messages, setMessages] = useState([]);
@@ -301,6 +302,11 @@ export default function ChatThread({ token, conv, onBack, onToggleInfo, infoOpen
                             : <span className="msg-wa-window closed" title="Han pasado más de 24 h desde el último mensaje del cliente: por WhatsApp sólo se pueden enviar plantillas">· WA sólo plantillas</span>}
                     </div>
                 </div>
+                {onMarkUnread && (
+                    <button className="msg-info-btn" onClick={onMarkUnread} title="Marcar como no leída, para volver a ella más tarde">
+                        <span uk-icon="icon: mail; ratio: 0.9"></span>
+                    </button>
+                )}
                 {onToggleInfo && (
                     <button
                         className={`msg-info-btn ${infoOpen ? 'active' : ''} ${conv.clientId ? '' : 'attention'}`}

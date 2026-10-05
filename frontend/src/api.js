@@ -665,6 +665,10 @@ export function markConversationAsRead(token, conversationId) {
     return request(`/messages/read/${conversationId}`, token, { method: 'POST', body: JSON.stringify({}) });
 }
 
+export function markConversationAsUnread(token, conversationId) {
+    return request(`/messages/unread/${conversationId}`, token, { method: 'POST', body: JSON.stringify({}) });
+}
+
 // Vincula la conversación de un número desconocido a un cliente existente
 export function linkConversationClient(token, conversationId, clientId) {
     return request(`/messages/conversations/${conversationId}/link-client`, token, {

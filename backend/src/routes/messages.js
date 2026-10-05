@@ -110,6 +110,24 @@ export default async function (fastify) {
         }
     });
 
+    // Marcar como no leída: para volver a una conversación más tarde. Sube el
+    // contador a 1 (no se sabe cuántos mensajes "faltan" por leer); los mensajes
+    // en sí no cambian de estado.
+    fastify.post('/unread/:conversationId', async (req, reply) => {
+        const conversationId = Number(req.params.conversationId);
+        if (isNaN(conversationId)) return reply.code(400).send({ error: 'conversationId inválido' });
+        try {
+            await prisma.conversation.update({
+                where: { id: conversationId },
+                data: { unreadCount: 1 },
+            });
+            return reply.send({ ok: true });
+        } catch (err) {
+            console.error('[Messages] Error marcando como no leída:', err);
+            return reply.code(500).send({ error: 'Error marcando como no leída' });
+        }
+    });
+
     /* ─────────────────────────────────────────────
      *  GET / — Historial de mensajes de una conversación
      * ───────────────────────────────────────────── */

@@ -12,7 +12,7 @@ const WA_ICON = (
  * Es la primera pantalla del widget: tiene que dejar ver de un vistazo quién
  * espera respuesta.
  */
-export default function ConversationList({ conversations, loading, selectedConvId, onSelect }) {
+export default function ConversationList({ conversations, loading, selectedConvId, onSelect, onMarkUnread }) {
     const [search, setSearch] = useState('');
     const [onlyUnread, setOnlyUnread] = useState(false);
 
@@ -79,6 +79,16 @@ export default function ConversationList({ conversations, loading, selectedConvI
                                         </span>
                                     </span>
                                     {c.unreadCount > 0 && <span className="msg-badge">{c.unreadCount}</span>}
+                                    {c.unreadCount === 0 && onMarkUnread && (
+                                        <button
+                                            type="button"
+                                            className="msg-conv-unread-btn"
+                                            title="Marcar como no leída"
+                                            onClick={(e) => { e.stopPropagation(); onMarkUnread(c.id); }}
+                                        >
+                                            <span uk-icon="icon: mail; ratio: 0.7"></span>
+                                        </button>
+                                    )}
                                 </div>
                             </div>
                         </div>

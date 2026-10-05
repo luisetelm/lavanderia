@@ -25,7 +25,7 @@ export default function ChatWidget() {
     const {
         enabled, token, conversations, loading, unreadTotal,
         isOpen, toggle, close, wide, setWide,
-        selectedConvId, setSelectedConvId, openConversation, markRead,
+        selectedConvId, setSelectedConvId, openConversation, markRead, markUnread,
         toasts, dismissToast, notifPermission, requestNotifications,
     } = useMessages();
     const { bannerHeight } = useDraftOrder();
@@ -157,6 +157,7 @@ export default function ChatWidget() {
                                 loading={loading}
                                 selectedConvId={selectedConvId}
                                 onSelect={handleSelect}
+                                onMarkUnread={markUnread}
                             />
                         )}
 
@@ -167,6 +168,7 @@ export default function ChatWidget() {
                                 onBack={isWide ? null : () => setSelectedConvId(null)}
                                 onToggleInfo={selectedConv ? () => setInfoOpen(v => !v) : null}
                                 infoOpen={infoOpen}
+                                onMarkUnread={() => markUnread(selectedConv.id)}
                                 composerText={composerText}
                                 setComposerText={setComposerText}
                             />

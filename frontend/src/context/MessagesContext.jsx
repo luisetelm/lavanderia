@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { fetchConversations, markConversationAsRead } from '../api.js';
+import { fetchConversations, markConversationAsRead, markConversationAsUnread } from '../api.js';
 import { convDisplayName, previewText, puedeVerMensajes } from '../components/chat/chatUtils.js';
 
 // Estado de mensajería compartido por toda la aplicación.
@@ -97,6 +97,22 @@ export function MessagesProvider({ token, user, children }) {
             await markConversationAsRead(token, convId);
         } catch (err) {
             console.error('Error marcando como leído:', err);
+        }
+    }, [token]);
+
+    /* ── Marcar como no leída: para volver a ella más tarde ── */
+    const markUnread = useCallback(async (convId) => {
+        if (!convId) return;
+        setConversations(prev => prev.map(c => c.id === convId ? { ...c, unreadCount: Math.max(1, c.unreadCount || 0) } : c));
+        // Que el polling no lo tome por un mensaje nuevo (ni toast ni sonido).
+        const p = prevConvStateRef.current?.get(convId);
+        if (p) prevConvStateRef.current.set(convId, { ...p, unread: Math.max(1, p.unread || 0) });
+        // Si está abierta, se cierra: con el hilo a la vista se marcaría leída al instante.
+        setSelectedConvId(prev => (prev === convId ? null : prev));
+        try {
+            await markConversationAsUnread(token, convId);
+        } catch (err) {
+            console.error('Error marcando como no leída:', err);
         }
     }, [token]);
 
@@ -237,13 +253,13 @@ export function MessagesProvider({ token, user, children }) {
     const value = useMemo(() => ({
         enabled, token,
         conversations, loading, unreadTotal,
-        refreshConversations, markRead, patchConversation,
+        refreshConversations, markRead, markUnread, patchConversation,
         isOpen, open, close, toggle,
         wide, setWide,
         selectedConvId, setSelectedConvId, openConversation,
         toasts, dismissToast,
         notifPermission, requestNotifications,
-    }), [enabled, token, conversations, loading, unreadTotal, refreshConversations, markRead, patchConversation,
+    }), [enabled, token, conversations, loading, unreadTotal, refreshConversations, markRead, markUnread, patchConversation,
         isOpen, open, close, toggle, wide, setWide, selectedConvId, openConversation, toasts, dismissToast,
         notifPermission, requestNotifications]);
 
