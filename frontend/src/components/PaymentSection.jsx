@@ -1,6 +1,7 @@
 import React, {useState, useEffect, useCallback} from 'react';
 import {Link} from 'react-router-dom';
 import {rutaCliente, rutaPedido} from '../utils/rutas.js';
+import {etiquetaCobro, sePuedeRecoger} from '../utils/pedidos.js';
 import { confirmar, avisar } from '../utils/dialogo.js';
 import {
     createInvoice,
@@ -611,7 +612,7 @@ export default function PaymentSection({token, orderId, onPaid, initialOrder = n
                     </a>
                 </div>)}
                 <div>
-                    <strong>Estado pago:</strong> {order.paid ? 'Pagado' : (Number(order.total) <= 0 ? 'No requiere pago' : 'Pendiente de pago')}
+                    <strong>Estado pago:</strong> {order.paid ? 'Pagado' : (Number(order.total) <= 0 ? 'No requiere pago' : etiquetaCobro(order))}
                 </div>
                 {(() => {
                     const pay = (order.payments || []).find(p => p.status === 'completed') || (order.payments || [])[0] || null;
@@ -1101,7 +1102,7 @@ export default function PaymentSection({token, orderId, onPaid, initialOrder = n
                         );
                     })()}
 
-                    {order.status === 'ready' && (order.paid || Number(order.total) <= 0) && (<button
+                    {order.status === 'ready' && sePuedeRecoger(order) && (<button
                         type="button"
                         className="uk-button uk-button-default uk-width-1-1@l"
                         onClick={() => showConfirmModal('collected')}
@@ -1110,7 +1111,7 @@ export default function PaymentSection({token, orderId, onPaid, initialOrder = n
                         Marcar como recogido
                     </button>)}
 
-                    {order.status === 'ready' && !order.paid && Number(order.total) > 0 && (
+                    {order.status === 'ready' && !sePuedeRecoger(order) && (
                         <p style={{ fontSize: '0.8rem', color: '#f59e0b', margin: '4px 0' }}>
                             ⚠️ Cobra el pedido antes de marcar como recogido.
                         </p>

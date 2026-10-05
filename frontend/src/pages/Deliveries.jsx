@@ -9,6 +9,7 @@ import {avisar} from '../utils/dialogo.js';
 import {printInternalLabel} from '../utils/printUtils.js';
 import {getPrintSettings} from '../utils/printSettings.js';
 import {rutaCliente, rutaPedido} from '../utils/rutas.js';
+import {etiquetaCobro, pagaAFinDeMes, sePuedeRecoger} from '../utils/pedidos.js';
 
 // Vista de Entregas: lo que hay que entregar un día, pensada para dejarla
 // abierta en la tablet de la lavandería. Un día por pantalla (va en la URL),
@@ -127,7 +128,7 @@ export default function Deliveries({token}) {
         const nombre = o.client ? `${o.client.firstName || ''} ${o.client.lastName || ''}`.trim() : '';
         const trabajando = ocupado === o.id;
         const puedeListo = o.status !== 'ready' && o.status !== 'collected' && todosHechos;
-        const puedeEntregar = o.status === 'ready' && (o.paid || sinCobro);
+        const puedeEntregar = o.status === 'ready' && sePuedeRecoger(o);
         return (
             <div className="ent-fila">
                 <div className="ent-info">
@@ -142,7 +143,7 @@ export default function Deliveries({token}) {
                     </div>
                     <div className="ent-prendas" title={resumen}>{prendas} prenda{prendas !== 1 ? 's' : ''} · {resumen}</div>
                     <div className="ent-meta">
-                        <span className={o.paid || sinCobro ? 'ok' : 'warn'}>{o.paid ? 'Pagado' : sinCobro ? 'Sin cobro' : `Pendiente de pago · ${formatEUR(o.total)}`}</span>
+                        <span className={sePuedeRecoger(o) ? 'ok' : 'warn'}>{etiquetaCobro(o)}{!o.paid && !sinCobro ? ` · ${formatEUR(o.total)}` : ''}</span>
                         {hay && !todosHechos && <span className="warn"> · Tracking en curso</span>}
                         {o.client?.phone && <span> · {o.client.phone}</span>}
                         {o.observaciones && <span className="nota"> · {o.observaciones}</span>}
@@ -163,7 +164,7 @@ export default function Deliveries({token}) {
                             {trabajando ? <span uk-spinner="ratio: 0.6"></span> : <><span uk-icon="icon: sign-out; ratio: 0.9"></span> Entregar</>}
                         </button>
                     )}
-                    {o.status === 'ready' && !puedeEntregar && (
+                    {o.status === 'ready' && !puedeEntregar && !pagaAFinDeMes(o) && (
                         <Link to={rutaPedido(o)} className="uk-button uk-button-default" title="Abrir el pedido para cobrarlo">Cobrar</Link>
                     )}
                     {o.status === 'collected' && <span className="ent-hecho"><span uk-icon="icon: check; ratio: 0.8"></span> Entregado</span>}
