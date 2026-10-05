@@ -1,11 +1,11 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { fetchTrackingBoard, updateStepStatus, batchCompleteSteps, undoStep } from '../api.js';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import UIkit from 'uikit';
 import PageToolbar from '../components/PageToolbar.jsx';
 import { confirmar } from '../utils/dialogo.js';
 import { COLOR_HEX } from '../utils/colores.js';
-import { rutaPedido } from '../utils/rutas.js';
+import { rutaCliente, rutaPedido } from '../utils/rutas.js';
 import { printFinishedLabelForOrder, printGarmentFinishedLabel } from '../utils/printUtils.js';
 
 /* Qué paso se deshace desde una tarjeta:
@@ -399,7 +399,9 @@ export default function TrackingBoard({ token }) {
                                                             )}
                                                         </div>
                                                         <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: 2 }}>
-                                                            #{item.orderNum} · {item.clientName}
+                                                            #{item.orderNum} · {item.clientId
+                                                                ? <Link to={rutaCliente(item.clientId)} onClick={e => e.stopPropagation()} title="Ver la ficha del cliente" style={{ color: 'inherit', textDecoration: 'underline dotted' }}>{item.clientName}</Link>
+                                                                : item.clientName}
                                                         </div>
                                                         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                                                             {item.fechaLimite && (

@@ -2,7 +2,7 @@ import React, {useEffect, useState} from 'react';
 import UIkit from 'uikit';
 import {fetchUsers, updateUser} from '../api.js';
 import Pagination from '../components/Pagination.jsx';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import UserForm from '../components/UserForm.jsx';
 import PageToolbar from '../components/PageToolbar.jsx';
 
@@ -11,8 +11,25 @@ function Users({token, user: loggedUser}) {
     const [users, setUsers] = useState([]);
     const [showNew, setShowNew] = useState(false);
     const [error, setError] = useState('');
-    const [searchTerm, setSearchTerm] = useState('');
-    const [currentPage, setCurrentPage] = useState(1);
+    // Búsqueda, rol, propiedad y página en la URL (?q=&rol=&propiedad=&pagina=):
+    // el menú "Clientes" es /usuarios?rol=customer y el botón atrás respeta los filtros.
+    const [searchParams, setSearchParams] = useSearchParams();
+    const searchTerm = searchParams.get('q') || '';
+    const currentPage = Math.max(1, parseInt(searchParams.get('pagina'), 10) || 1);
+    const rol = searchParams.get('rol') || '';
+    const propiedad = searchParams.get('propiedad') || '';
+    const setParams = (cambios) => {
+        const next = new URLSearchParams(searchParams);
+        if (!('pagina' in cambios)) next.delete('pagina');
+        Object.entries(cambios).forEach(([k, v]) => {
+            if (!v || (k === 'pagina' && String(v) === '1')) next.delete(k); else next.set(k, String(v));
+        });
+        setSearchParams(next, {replace: true});
+    };
+    const setSearchTerm = (v) => setParams({q: v});
+    const setCurrentPage = (p) => setParams({pagina: p});
+    const setRol = (v) => setParams({rol: v});
+    const setPropiedad = (v) => setParams({propiedad: v});
     const [loading, setLoading] = useState(false);
     const usersPerPage = 50;
 
@@ -23,8 +40,6 @@ function Users({token, user: loggedUser}) {
     const navigate = useNavigate();
 
     // Filtros por rol y por propiedades del propio usuario (gran cliente, facturación automática...)
-    const [rol, setRol] = useState('');
-    const [propiedad, setPropiedad] = useState('');
     const PROPIEDADES = [
         ['gran_cliente', 'Grandes clientes'],
         ['dias_fijos', 'Con días fijos de entrega'],
@@ -36,12 +51,12 @@ function Users({token, user: loggedUser}) {
     const ROLES = [['customer', 'Clientes'], ['cashier', 'Cajeros'], ['admin', 'Administración']];
     const filtros = [
         {label: 'Rol', active: rol !== '', options: [
-            {label: 'Todos', active: rol === '', onClick: () => { setRol(''); setCurrentPage(1); }},
-            ...ROLES.map(([v, l]) => ({label: l, active: rol === v, onClick: () => { setRol(v); setCurrentPage(1); }})),
+            {label: 'Todos', active: rol === '', onClick: () => setRol('')},
+            ...ROLES.map(([v, l]) => ({label: l, active: rol === v, onClick: () => setRol(v)})),
         ]},
         {label: 'Propiedad', active: propiedad !== '', options: [
-            {label: 'Todas', active: propiedad === '', onClick: () => { setPropiedad(''); setCurrentPage(1); }},
-            ...PROPIEDADES.map(([v, l]) => ({label: l, active: propiedad === v, onClick: () => { setPropiedad(v); setCurrentPage(1); }})),
+            {label: 'Todas', active: propiedad === '', onClick: () => setPropiedad('')},
+            ...PROPIEDADES.map(([v, l]) => ({label: l, active: propiedad === v, onClick: () => setPropiedad(v)})),
         ]},
     ];
 
@@ -83,7 +98,7 @@ function Users({token, user: loggedUser}) {
     return (
         <div>
             <PageToolbar
-                title="Usuarios"
+                title={rol === 'customer' ? 'Clientes' : 'Usuarios'}
                 filters={filtros}
                 actions={
                     <button

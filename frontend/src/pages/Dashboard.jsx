@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { fetchDashboard, updateOrder, fetchTrackingBoard, fetchSepaDebits } from '../api.js';
 import { formatEUR } from '../utils/format.js';
-import { rutaEntregas, rutaPedido } from '../utils/rutas.js';
-import { useNavigate } from 'react-router-dom';
+import { rutaCliente, rutaEntregas, rutaPedido } from '../utils/rutas.js';
+import { Link, useNavigate } from 'react-router-dom';
 import StatusChangeModal from '../components/StatusChangeModal.jsx';
 
 
@@ -173,8 +173,8 @@ export default function Dashboard({ token, user }) {
 
             {/* Estado de pedidos - pills */}
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 20 }}>
-                <StatusPill label="Pendientes" count={ordersByStatus.pending} color={STATUS_COLORS.pending} onClick={() => navigate('/tareas')} />
-                <StatusPill label="Listos" count={ordersByStatus.ready} color={STATUS_COLORS.ready} onClick={() => navigate('/tareas')} />
+                <StatusPill label="Pendientes" count={ordersByStatus.pending} color={STATUS_COLORS.pending} onClick={() => navigate('/tareas?estado=pending')} />
+                <StatusPill label="Listos" count={ordersByStatus.ready} color={STATUS_COLORS.ready} onClick={() => navigate('/tareas?estado=ready')} />
                 <StatusPill label="Recogidos hoy" count={ordersByStatus.collectedToday} color={STATUS_COLORS.collected} />
             </div>
 
@@ -251,7 +251,7 @@ export default function Dashboard({ token, user }) {
                                         <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>
                                             #{o.orderNum}
                                             <span style={{ fontWeight: 400, color: '#64748b', marginLeft: 6 }}>
-                                                {o.client ? `${o.client.firstName} ${o.client.lastName || ''}` : '—'}
+                                                {o.client ? <Link to={rutaCliente(o.client)} onClick={e => e.stopPropagation()} title="Ver la ficha del cliente" style={{color: 'inherit'}}>{o.client.firstName} {o.client.lastName || ''}</Link> : '—'}
                                             </span>
                                         </div>
                                         <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: 2 }}>
@@ -318,7 +318,7 @@ export default function Dashboard({ token, user }) {
                                         <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>
                                             #{o.orderNum}
                                             <span style={{ fontWeight: 400, color: '#64748b', marginLeft: 6 }}>
-                                                {o.client ? `${o.client.firstName} ${o.client.lastName || ''}` : '—'}
+                                                {o.client ? <Link to={rutaCliente(o.client)} onClick={e => e.stopPropagation()} title="Ver la ficha del cliente" style={{color: 'inherit'}}>{o.client.firstName} {o.client.lastName || ''}</Link> : '—'}
                                             </span>
                                         </div>
                                         {o.client?.phone && (
@@ -380,7 +380,7 @@ export default function Dashboard({ token, user }) {
                                 }}></span>
                                 <span style={{ fontWeight: 600 }}>#{o.orderNum}</span>
                                 <span style={{ color: '#64748b', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                    {o.client ? `${o.client.firstName} ${o.client.lastName || ''}` : '—'}
+                                    {o.client ? <Link to={rutaCliente(o.client)} onClick={e => e.stopPropagation()} title="Ver la ficha del cliente" style={{color: 'inherit'}}>{o.client.firstName} {o.client.lastName || ''}</Link> : '—'}
                                 </span>
                                 <span style={{ color: '#94a3b8', fontSize: '0.7rem', flexShrink: 0 }}>
                                     {timeAgo(o.updatedAt)}

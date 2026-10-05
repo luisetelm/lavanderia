@@ -31,15 +31,15 @@ No test framework is configured.
 
 **Pages (`src/pages/`):**
 - `POS.jsx` — Main POS: cart, customer selection, delivery dates, payments, cash register (movements, closures). Largest file (~850 lines).
-- `Tasks.jsx` — Order list with status/search/date filters, debounced search (300ms). Each row is the full `PaymentSection` card; its order number links to `OrderDetail.jsx` to see that order alone.
+- `Tasks.jsx` — Order list with status/search/date filters, debounced search (300ms). Filters live in the URL (`?q=&estado=&trabajador=&orden=&dir=&pagina=`). Each row is the full `PaymentSection` card; its order number links to `OrderDetail.jsx` to see that order alone.
 - `OrderDetail.jsx` — Order page (`/pedidos/:id`): header with back button, client link, phone, "Nuevo pedido" for that client and portal link, over `PaymentSection` (payments, status, lines, tracking, history, invoices).
 - `Deliveries.jsx` — Entregas (`/entregas?dia=YYYY-MM-DD`): what has to be delivered one day, overdue orders on top, grouped by status, with big "Listo" / "Entregar" buttons for the workshop tablet. Uses `GET /orders?deliveryFrom&deliveryTo` (delivery date, not creation) and `status` with comma-separated values; auto-refreshes every minute.
 - `Ventas.jsx` — Sales dashboard with date range filters, invoice filtering, Excel export. Admin only.
 - `Inventory.jsx` — Product catalog: filters and sort persisted in localStorage, activity columns (`GET /api/products/summary`), inline editing, Excel export, and admin-only duplicate, archive, bulk price change (`BulkPriceModal`, preview computed by the backend) and categories (`ProductCategoriesModal`). `GET /api/products` returns only active products unless `?archived=all`, so the POS never shows archived ones.
 - `ProductDetail.jsx` — Product page (`/productos/:id`): data, order KPIs vs previous period, charts (`components/ProductCharts.jsx`, hand-made SVG) with price changes marked, orders, top clients, agreed prices, price history (`backend/src/utils/historialPrecios.js`) and admin-only lead times. Times are measured from order creation to each step's completion, never per-step duration (steps are usually completed without being started). See `docs/productos.md`.
 - `StripeBalance.jsx` — Stripe balance (`/stripe`, admin only): pending and available balance, payout schedule, payouts to the bank (expandable to the charges, refunds and fees each one includes) and recent balance movements. Read live from Stripe via `GET /api/stripe/balance` and `GET /api/stripe/payouts/:id/transactions`; each movement is matched to its order/invoice/client through `Payment.stripePaymentId` (the payment_intent). Nothing is stored.
-- `Users.jsx` — User list with role/search filters, pagination.
-- `UserEdit.jsx` — User detail with financial summary and order history.
+- `Users.jsx` — User list with role/search filters and pagination, all in the URL (`?q=&rol=&propiedad=&pagina=`); the sidebar entry "Clientes" is `/usuarios?rol=customer`.
+- `UserEdit.jsx` — User detail with financial summary and order history; for clients also "Nuevo pedido" (loads the client into the draft order and opens the POS), "Chat" when a conversation exists, and the delivery date of each order (overdue in red).
 
 **Components (`src/components/`):** Reusable UI — `PaymentSection` (card/cash payments, invoice generation, status updates), `CartSummary`, `CustomerSelector`, `DateCarousel`, `CashModal`, `Pagination`, `UserForm`, `VentaRow`, `Ticket`, `OrderValidation`, `AuthRedirect`.
 

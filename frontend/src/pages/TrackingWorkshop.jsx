@@ -1,3 +1,5 @@
+import { Link } from 'react-router-dom';
+import { rutaCliente, rutaPedido } from '../utils/rutas.js';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { fetchTrackingBoard, updateStepStatus, undoStep, batchCompleteSteps } from '../api.js';
 import PageToolbar from '../components/PageToolbar.jsx';
@@ -687,10 +689,11 @@ function GarmentCard({ item, busy, onStart, onComplete }) {
             padding: 10,
         }}>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-                <span style={{ fontVariantNumeric: 'tabular-nums' }}>
+                <Link to={rutaPedido({ id: item.orderId, orderNum: item.orderNum })} title="Abrir el pedido"
+                      style={{ fontVariantNumeric: 'tabular-nums', color: 'inherit' }}>
                     <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>{prefix}</span>
                     <strong style={{ fontSize: '1.25rem', letterSpacing: '0.02em' }}>{seq}</strong>
-                </span>
+                </Link>
                 {urgency && (
                     <span style={{
                         fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.04em',
@@ -724,7 +727,9 @@ function GarmentCard({ item, busy, onStart, onComplete }) {
             </div>
 
             <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: 2 }}>
-                {item.clientName}
+                {item.clientId
+                    ? <Link to={rutaCliente(item.clientId)} title="Ver la ficha del cliente" style={{ color: 'inherit', textDecoration: 'underline dotted' }}>{item.clientName}</Link>
+                    : item.clientName}
                 {item.fechaLimite && (
                     <> · Entrega {new Date(item.fechaLimite).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}</>
                 )}

@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { lineasActivas } from '../utils/lineas.js';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useDraftOrder } from '../hooks/useDraftOrder.js';
+import { useMessages } from '../hooks/useMessages.js';
 import UIkit from 'uikit';
 import { fetchUser } from '../api.js';
 import { formatEUR } from '../utils/format.js';
-import { rutaPedido } from '../utils/rutas.js';
+import { rutaEntregas, rutaPedido } from '../utils/rutas.js';
 import UserForm from '../components/UserForm.jsx';
 import PageToolbar from '../components/PageToolbar.jsx';
 import ClientPricesTab from '../components/ClientPricesTab.jsx';
@@ -62,6 +64,19 @@ export default function UserEdit({ token, user: loggedUser }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState('orders');
+  const draft = useDraftOrder();
+  const chat = useMessages();
+  const esCliente = user && !['admin', 'cashier', 'worker'].includes(user.role);
+  const conversacion = esCliente ? (chat.conversations || []).find(c => Number(c.clientId) === Number(user.id)) : null;
+
+  const nuevoPedido = () => {
+    draft.setSelectedUser({
+      id: user.id, firstName: user.firstName, lastName: user.lastName,
+      phone: user.phone, email: user.email, isbigclient: user.isbigclient,
+      discount: user.discount, notifyChannel: user.notifyChannel,
+    });
+    navigate('/pos');
+  };
 
   const load = async () => {
     setLoading(true);
@@ -106,9 +121,26 @@ export default function UserEdit({ token, user: loggedUser }) {
       <PageToolbar
         title={user ? `${user.firstName} ${user.lastName}` : 'Editar usuario'}
         actions={
-          <button className="uk-button uk-button-small uk-button-default" onClick={() => navigate('/usuarios')}>
-            <span uk-icon="icon: arrow-left; ratio: 0.8" style={{marginRight: 4}}></span> Volver
-          </button>
+          <div style={{display: 'flex', gap: 8, flexWrap: 'wrap'}}>
+            <button className="uk-button uk-button-small uk-button-default" onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/usuarios'))}>
+              <span uk-icon="icon: arrow-left; ratio: 0.8" style={{marginRight: 4}}></span> Volver
+            </button>
+            {esCliente && user.phone && (
+              <a className="uk-button uk-button-small uk-button-default" href={`tel:${user.phone}`} title="Llamar">
+                <span uk-icon="icon: receiver; ratio: 0.8" style={{marginRight: 4}}></span> {user.phone}
+              </a>
+            )}
+            {esCliente && conversacion && chat.enabled && (
+              <button className="uk-button uk-button-small uk-button-default" onClick={() => chat.openConversation(conversacion.id)} title="Abrir la conversación con el cliente">
+                <span uk-icon="icon: comments; ratio: 0.8" style={{marginRight: 4}}></span> Chat
+              </button>
+            )}
+            {esCliente && (
+              <button className="uk-button uk-button-small uk-button-primary" onClick={nuevoPedido} title="Abre el TPV con este cliente ya seleccionado">
+                <span uk-icon="icon: cart; ratio: 0.8" style={{marginRight: 4}}></span> Nuevo pedido
+              </button>
+            )}
+          </div>
         }
       />
 
@@ -193,16 +225,19 @@ export default function UserEdit({ token, user: loggedUser }) {
                             <th>Estado</th>
                             <th style={{textAlign: 'right'}}>Total</th>
                             <th>Cobro</th>
-                            <th>Fecha</th>
+                            <th>Creado</th>
+                            <th>Entrega</th>
                           </tr>
                         </thead>
                         <tbody>
                           {orders.map(o => {
                             const s = STATUS_LABELS[o.status] || { text: o.status, cls: '' };
+                            const atrasado = !['collected', 'cancelled'].includes(o.status) && o.fechaLimite
+                              && new Date(o.fechaLimite) < new Date(new Date().toDateString());
                             return (
                               <tr key={o.id} style={{ cursor: 'pointer' }}
                                 onClick={() => navigate(rutaPedido(o))}>
-                                <td style={{fontWeight: 500}}>{o.orderNum}</td>
+                                <td style={{fontWeight: 500}}><Link to={rutaPedido(o)} onClick={e => e.stopPropagation()}>{o.orderNum}</Link></td>
                                 <td><span className={`uk-label ${s.cls}`} style={{fontSize: '0.65rem'}}>{s.text}</span></td>
                                 <td style={{textAlign: 'right'}}>{formatEUR(o.total)}</td>
                                 <td>
@@ -210,8 +245,16 @@ export default function UserEdit({ token, user: loggedUser }) {
                                     {o.paid ? 'Pagado' : 'Pendiente'}
                                   </span>
                                 </td>
-                                <td style={{fontSize: '0.8rem', color: '#64748b'}}>
-                                  {o.createdAt ? new Date(o.createdAt).toLocaleDateString('es-ES', { dateStyle: 'medium' }) : '-'}
+                                <td style={{fontSize: '0.8rem', color: '#64748b', whiteSpace: 'nowrap'}}>
+                                  {o.createdAt ? new Date(o.createdAt).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: '2-digit' }) : '-'}
+                                </td>
+                                <td style={{fontSize: '0.8rem', color: atrasado ? '#dc2626' : '#64748b', fontWeight: atrasado ? 700 : 400, whiteSpace: 'nowrap'}}>
+                                  {o.fechaLimite ? (
+                                    <Link to={rutaEntregas(new Date(o.fechaLimite).toISOString().slice(0, 10))} onClick={e => e.stopPropagation()}
+                                          style={{color: 'inherit'}} title="Ver las entregas de ese día">
+                                      {new Date(o.fechaLimite).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: '2-digit' })}{atrasado ? ' · atrasado' : ''}
+                                    </Link>
+                                  ) : '-'}
                                 </td>
                               </tr>
                             );

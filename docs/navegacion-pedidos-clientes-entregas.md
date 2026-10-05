@@ -214,7 +214,11 @@ pantalla propia que se puede dejar abierta en la tablet.
 
 ### Fase 4 — Interconexión general
 
-Esfuerzo: 1,5 días. Sin backend.
+Esfuerzo: 1,5 días. Sin backend. **Hecha** (el tablero del taller devuelve
+además `clientId`). Tareas y Usuarios llevan sus filtros en la URL; el menú
+tiene "Clientes" (`/usuarios?rol=customer`); la ficha de cliente tiene
+Nuevo pedido, Chat (si hay conversación) y columna de entrega; el cliente es
+enlace en Dashboard, Ventas, Taller, supervisión y facturas pendientes del TPV.
 
 1. **Helper `rutaCliente(client)`** y nombre de cliente enlazado en:
    `PaymentSection`, tarjeta de Tareas, las tres listas del Dashboard,

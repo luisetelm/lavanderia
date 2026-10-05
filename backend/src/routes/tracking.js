@@ -330,6 +330,7 @@ export default async function (fastify, opts) {
                     orderNum: step.orderLine.order.orderNum,
                     fechaLimite: step.orderLine.order.fechaLimite,
                     orderStatus: step.orderLine.order.status,
+                    clientId: step.orderLine.order.client?.id || null,
                     clientName: step.orderLine.order.client
                         ? `${step.orderLine.order.client.firstName} ${step.orderLine.order.client.lastName || ''}`.trim()
                         : '—',

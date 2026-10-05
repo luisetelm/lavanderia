@@ -216,7 +216,8 @@ export default function App() {
                         <li><NavLink to="/entregas"><span uk-icon="icon: calendar; ratio: 0.9"></span> Entregas</NavLink></li>
                         {/* 'end' para que /tracking/supervision no marque también este enlace */}
                         <li><NavLink to="/tracking" end><span uk-icon="icon: bolt; ratio: 0.9"></span> Taller</NavLink></li>
-                        <li><NavLink to="/usuarios"><span uk-icon="icon: users; ratio: 0.9"></span> Usuarios</NavLink></li>
+                        <li><NavLink to="/usuarios?rol=customer" className={({isActive}) => isActive && location.search.includes('rol=customer') ? 'active' : ''}><span uk-icon="icon: happy; ratio: 0.9"></span> Clientes</NavLink></li>
+                        <li><NavLink to="/usuarios" className={({isActive}) => isActive && !location.search.includes('rol=customer') ? 'active' : ''}><span uk-icon="icon: users; ratio: 0.9"></span> Usuarios</NavLink></li>
                         {/* Impresión es configuración DEL DISPOSITIVO (qué imprime este
                             equipo, y si manda a la cola). La tablet del taller la usan
                             trabajadores, así que no puede ser sólo de administración. */}

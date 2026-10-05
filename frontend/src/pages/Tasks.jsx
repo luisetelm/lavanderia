@@ -11,23 +11,47 @@ export default function Tasks({token, user}) {
     const [workers, setWorkers] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
-    const [query, setQuery] = useState('');
-    const [filterStatus, setFilterStatus] = useState('all');
-    const [filterWorker, setFilterWorker] = useState(''); // Todas las tareas por defecto
-    const [sortBy, setSortBy] = useState('createdAt');
-    const [sortOrder, setSortOrder] = useState('desc');
-    const [page, setPage] = useState(0);
+    // Todos los filtros viven en la URL: se pueden compartir, el botón atrás
+    // los respeta y el Dashboard puede enlazar a "pendientes" o "listos".
+    //   ?q=texto  ?estado=pending|ready|collected  ?trabajador=ID
+    //   ?orden=createdAt|fechaLimite|updatedAt  ?dir=asc|desc  ?pagina=N
+    //   ?pedido=NUM (enlaces antiguos: busca ese pedido)
+    const [searchParams, setSearchParams] = useSearchParams();
+    const location = useLocation();
+    const query = searchParams.get('q') ?? searchParams.get('pedido') ?? '';
+    const filterStatus = searchParams.get('estado') || 'all';
+    const filterWorker = searchParams.get('trabajador') ? Number(searchParams.get('trabajador')) : '';
+    const sortBy = searchParams.get('orden') || 'createdAt';
+    const sortOrder = searchParams.get('dir') || 'desc';
+    const page = Math.max(0, (parseInt(searchParams.get('pagina'), 10) || 1) - 1);
+    const DEFAULTS = {q: '', estado: 'all', trabajador: '', orden: 'createdAt', dir: 'desc', pagina: '1'};
+    // Cambiar un filtro vuelve a la primera página; cambiar de página, no.
+    const setParams = (cambios) => {
+        const next = new URLSearchParams(searchParams);
+        if (!('pagina' in cambios)) next.delete('pagina');
+        if ('q' in cambios) next.delete('pedido');
+        Object.entries(cambios).forEach(([k, v]) => {
+            if (v === undefined || v === null || String(v) === '' || String(v) === String(DEFAULTS[k])) next.delete(k);
+            else next.set(k, String(v));
+        });
+        setSearchParams(next, {replace: true});
+    };
+    const setQuery = (v) => setParams({q: v});
+    const setFilterStatus = (v) => setParams({estado: v});
+    const setFilterWorker = (v) => setParams({trabajador: v});
+    const setSort = (orden, dir) => setParams({orden, dir});
+    const setPage = (p0) => setParams({pagina: p0 + 1});
+
     const [meta, setMeta] = useState(null);
     const debounceRef = useRef(null);
     const PAGE_SIZE = 20;
 
-    // Pedido a abrir: va en la URL (?pedido=TPV/2026/0163) para que sobreviva a
-    // una recarga o a abrir el enlace en otra pestaña. El state de la ruta se
-    // sigue admitiendo por compatibilidad con enlaces antiguos.
-    const location = useLocation();
-    const [searchParams] = useSearchParams();
-    const pedidoUrl = searchParams.get('pedido') || '';
-    const {orderNumber} = location.state || {};
+    // Enlaces antiguos que traían el pedido en el state de la ruta
+    const orderNumberState = location.state?.orderNumber;
+    useEffect(() => {
+        if (orderNumberState && !searchParams.get('q') && !searchParams.get('pedido')) setParams({q: String(orderNumberState)});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [orderNumberState]);
 
     const load = async (search = '', status = 'all', workerId, sort = 'createdAt', order = 'desc', pageArg = 0) => {
         setLoading(true);
@@ -56,13 +80,6 @@ export default function Tasks({token, user}) {
     };
 
 
-    // Al llegar con un pedido se busca ese; al volver a /tareas sin pedido
-    // (menú lateral) se limpia la búsqueda para no quedarse filtrado.
-    useEffect(() => {
-        const n = pedidoUrl || orderNumber;
-        setQuery(n ? String(n) : '');
-    }, [pedidoUrl, orderNumber]);
-
     // Cargar trabajadores UNA sola vez para pasarlos a todas las PaymentSection
     useEffect(() => {
         let cancelled = false;
@@ -77,11 +94,6 @@ export default function Tasks({token, user}) {
         return () => { cancelled = true; };
     }, [token]);
 
-    // Al cambiar búsqueda/filtros/orden, volver a la primera página
-    useEffect(() => {
-        setPage(0);
-    }, [query, filterStatus, filterWorker, sortBy, sortOrder]);
-
     // Carga con debounce; incluye la página actual
     useEffect(() => {
         if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -92,8 +104,7 @@ export default function Tasks({token, user}) {
     }, [query, token, filterStatus, filterWorker, sortBy, sortOrder, page]);
 
     const handlePageChange = (newPage1Based) => {
-        const newPage = newPage1Based - 1; // Pagination usa base 1
-        setPage(newPage);
+        setPage(newPage1Based - 1); // Pagination usa base 1
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
@@ -123,12 +134,12 @@ export default function Tasks({token, user}) {
                     label: 'Ordenar',
                     active: sortBy !== 'createdAt' || sortOrder !== 'desc',
                     options: [
-                        { label: 'Creación (reciente)', active: sortBy === 'createdAt' && sortOrder === 'desc', onClick: () => { setSortBy('createdAt'); setSortOrder('desc'); } },
-                        { label: 'Creación (antigua)', active: sortBy === 'createdAt' && sortOrder === 'asc', onClick: () => { setSortBy('createdAt'); setSortOrder('asc'); } },
-                        { label: 'Entrega (reciente)', active: sortBy === 'fechaLimite' && sortOrder === 'desc', onClick: () => { setSortBy('fechaLimite'); setSortOrder('desc'); } },
-                        { label: 'Entrega (antigua)', active: sortBy === 'fechaLimite' && sortOrder === 'asc', onClick: () => { setSortBy('fechaLimite'); setSortOrder('asc'); } },
-                        { label: 'Actualización (reciente)', active: sortBy === 'updatedAt' && sortOrder === 'desc', onClick: () => { setSortBy('updatedAt'); setSortOrder('desc'); } },
-                        { label: 'Actualización (antigua)', active: sortBy === 'updatedAt' && sortOrder === 'asc', onClick: () => { setSortBy('updatedAt'); setSortOrder('asc'); } },
+                        { label: 'Creación (reciente)', active: sortBy === 'createdAt' && sortOrder === 'desc', onClick: () => setSort('createdAt', 'desc') },
+                        { label: 'Creación (antigua)', active: sortBy === 'createdAt' && sortOrder === 'asc', onClick: () => setSort('createdAt', 'asc') },
+                        { label: 'Entrega (reciente)', active: sortBy === 'fechaLimite' && sortOrder === 'desc', onClick: () => setSort('fechaLimite', 'desc') },
+                        { label: 'Entrega (antigua)', active: sortBy === 'fechaLimite' && sortOrder === 'asc', onClick: () => setSort('fechaLimite', 'asc') },
+                        { label: 'Actualización (reciente)', active: sortBy === 'updatedAt' && sortOrder === 'desc', onClick: () => setSort('updatedAt', 'desc') },
+                        { label: 'Actualización (antigua)', active: sortBy === 'updatedAt' && sortOrder === 'asc', onClick: () => setSort('updatedAt', 'asc') },
                     ]
                 },
             ]}

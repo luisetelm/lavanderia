@@ -1,5 +1,7 @@
 // javascript
 // Archivo: `frontend/src/components/VentaRow.jsx`
+import {Link} from 'react-router-dom';
+import {rutaCliente} from '../utils/rutas.js';
 import React, { useState, useEffect } from 'react';
 import { avisar, confirmar } from '../utils/dialogo.js';
 import {
@@ -562,7 +564,7 @@ export default function VentaRow({
                 </td>
                 <td>{venta.orderNum}</td>
                 <td>{fecha}</td>
-                <td>{cliente}</td>
+                <td>{venta.client?.id ? <Link to={rutaCliente(venta.client)} title="Ver la ficha del cliente">{cliente}</Link> : cliente}</td>
                 <td>{total}</td>
                 <td>
                     <div>

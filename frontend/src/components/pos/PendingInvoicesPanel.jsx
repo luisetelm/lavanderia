@@ -1,3 +1,5 @@
+import { Link } from 'react-router-dom';
+import { rutaCliente } from '../../utils/rutas.js';
 import React, { useState, useEffect, useCallback } from 'react';
 import { fetchUnpaidInvoices, collectInvoice, downloadInvoicePDF } from '../../api.js';
 import { formatEUR } from '../../utils/format.js';
@@ -161,7 +163,7 @@ export default function PendingInvoicesPanel({ show, onClose, token, onCollected
                                                 )}
                                             </div>
                                             <div style={{ fontSize: '0.82rem', color: '#334155' }}>
-                                                {clientName}
+                                                {client?.id ? <Link to={rutaCliente(client)} title="Ver la ficha del cliente" style={{color: 'inherit', textDecoration: 'underline dotted'}}>{clientName}</Link> : clientName}
                                                 {client?.phone && (
                                                     <span style={{ color: '#94a3b8', marginLeft: 6 }}>{client.phone}</span>
                                                 )}
