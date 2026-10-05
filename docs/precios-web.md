@@ -14,7 +14,7 @@ Los productos archivados no salen aunque tengan sección.
 
 ## Qué precio sale
 
-Sólo el **precio al público** (`basePrice`, IVA incluido), el mismo del mostrador.
+Sólo el **precio al público** (`basePrice`, IVA incluido), el mismo del mostrador. En la web y en la plantilla de WhatsApp va siempre como «desde», porque es el precio para la fecha de entrega que propone el calendario: adelantarla lleva el suplemento de urgencia (`sql/027`), que se calcula en el TPV en cada pedido.
 
 - La **tarifa de gran cliente** (`bigClientPrice`) y los **precios pactados** con cada cliente no se publican nunca. Son acuerdos con hoteles, restaurantes y apartamentos a los que se factura a fin de mes.
 - En la sección **Hostelería** los productos salen **sin precio**: la web dice «presupuesto» y remite a WhatsApp. Sirve para enseñar qué se hace (mantelería, ropa de cama, uniformes), no cuánto cuesta.

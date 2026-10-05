@@ -26,7 +26,7 @@ export const PLANTILLA_PRECIO_WEB = {
     components: [
         {
             type: 'BODY',
-            text: 'Hola, somos Tinte y Burbuja. Nos has pedido desde tinteyburbuja.com el precio de {{1}}: {{2}}, IVA incluido.\n\nSi quieres contarnos algo más de la prenda o saber el plazo, responde a este mensaje y te atendemos. Estamos en C/ Cronista Cazabán, 7, Úbeda.',
+            text: 'Hola, somos Tinte y Burbuja. Nos has pedido desde tinteyburbuja.com el precio de {{1}}: desde {{2}}, IVA incluido, para la fecha de entrega normal. Si lo necesitas antes, lleva un suplemento de urgencia.\n\nSi quieres contarnos algo más de la prenda o saber el plazo, responde a este mensaje y te atendemos. Estamos en C/ Cronista Cazabán, 7, Úbeda.',
             example: { body_text: [['Traje de caballero', '18,50 € por prenda']] },
         },
     ],
