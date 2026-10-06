@@ -65,6 +65,7 @@ export async function sugerirRespuesta({usuario, nombreUsuario, conversacionId, 
     const conv = await ejecutarHerramienta(hConv, {conversacionId, limite: 25}, ctx);
     if (!conv.ok) throw new ErrorAsistente(conv.status === 404 ? 404 : 502, conv.error);
     const inicio = Date.now();
+    console.log(`[asistente] conversación ${conversacionId}: ${conv.resultado?.mensajes?.length ?? 0} mensajes leídos, llamando a ${MODELO}`);
 
     const sistema = [
         instrucciones(ctx.usuario),
