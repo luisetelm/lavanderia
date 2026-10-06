@@ -60,6 +60,7 @@ export async function sugerirRespuesta({usuario, nombreUsuario, conversacionId, 
 
     // La conversación se lee aquí y va en el primer mensaje: ahorra una vuelta
     // de herramienta (la más lenta) y el modelo sólo consulta lo que falte.
+    console.log(`[asistente] conversación ${conversacionId}: leyendo con ${apiInterna()}`);
     const hConv = herramientasPara(ctx.usuario).find(h => h.nombre === 'conversacion');
     const conv = await ejecutarHerramienta(hConv, {conversacionId, limite: 25}, ctx);
     if (!conv.ok) throw new ErrorAsistente(conv.status === 404 ? 404 : 502, conv.error);

@@ -442,7 +442,10 @@ export default async function (fastify) {
             });
             return reply.send(r);
         } catch (err) {
-            if (err instanceof ErrorAsistente) return reply.code(err.statusCode).send({ error: err.message });
+            if (err instanceof ErrorAsistente) {
+                console.warn(`[Messages] Asistente (conversación ${convId}): ${err.statusCode} ${err.message}`);
+                return reply.code(err.statusCode).send({ error: err.message });
+            }
             console.error('[Messages] Error del asistente:', err);
             return reply.code(500).send({ error: 'El asistente no ha podido redactar la respuesta' });
         }
