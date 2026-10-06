@@ -11,6 +11,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import {betaZodTool} from '@anthropic-ai/sdk/helpers/beta/zod';
+import {zodOutputFormat} from '@anthropic-ai/sdk/helpers/zod';
 import {z} from 'zod';
 import jwt from 'jsonwebtoken';
 import {crearApi} from '../mcp/api.js';
@@ -18,6 +19,14 @@ import {herramientasPara, ejecutarHerramienta} from '../mcp/herramientas.js';
 import {instrucciones} from '../mcp/servidor.js';
 
 const MODELO = process.env.ASISTENTE_MODELO || 'claude-opus-5-5';
+
+// Salida estructurada: el mensaje para el cliente y, aparte, lo que debe
+// comprobar quien atiende. Nunca van juntos en el mismo texto, porque el
+// mensaje acaba en el compositor del chat y podría enviarse tal cual.
+const Respuesta = z.object({
+    mensaje: z.string().describe('Texto que se enviará al cliente, listo para mandar'),
+    notas: z.string().nullable().describe('Qué debe comprobar o decidir la persona antes de enviar (dudas, datos que faltan). null si no hay nada'),
+});
 
 export class ErrorAsistente extends Error {
     constructor(status, mensaje) {
@@ -36,7 +45,7 @@ function apiInterna() {
  * @param {string} opts.nombreUsuario
  * @param {number} opts.conversacionId
  * @param {string} [opts.indicacion]  lo que el empleado quiere decir, si lo ha escrito
- * @returns {Promise<{texto:string, herramientas:string[], modelo:string}>}
+ * @returns {Promise<{texto:string, notas:string|null, herramientas:string[], modelo:string}>}
  */
 export async function sugerirRespuesta({usuario, nombreUsuario, conversacionId, indicacion}) {
     if (!process.env.ANTHROPIC_API_KEY) {
@@ -74,15 +83,14 @@ export async function sugerirRespuesta({usuario, nombreUsuario, conversacionId, 
         'La conversación ya viene en el mensaje. Consulta sólo lo que falte para contestar (pedidos del cliente con listar_pedidos o ver_pedido, precios con precio_efectivo o presupuestar_pedido, entregas, carga de trabajo), con las menos llamadas posibles; no inventes datos, fechas ni precios.',
         'Si el cliente pregunta por un pedido, mira su estado real y la fecha de entrega. Si pide precio, da el que le corresponde a él (precio_efectivo) y di que es con IVA. Si pide una fecha antes de la sugerida, avisa del suplemento de urgencia.',
         'Escribe como la lavandería: cercano, breve (dos o tres frases salvo que haga falta más), en castellano, con tuteo, sin emojis salvo que el cliente los use. Firma como Tinte y Burbuja sólo si la conversación es nueva.',
-        'Si falta información para contestar bien, propón el mensaje más útil posible y, en una línea final entre corchetes, indica a la persona qué debe comprobar.',
-        'Responde únicamente con el texto del mensaje (y la línea entre corchetes si procede), sin comillas ni explicaciones.',
+        'Si falta información para contestar bien, propón el mensaje más útil posible y explica en «notas» qué debe comprobar o decidir la persona. El campo «mensaje» es sólo lo que leerá el cliente: nada de notas, corchetes, dudas internas ni explicaciones ahí.',
     ].join('\n');
 
     const client = new Anthropic({timeout: 45_000, maxRetries: 1});
     const runner = client.beta.messages.toolRunner({
         model: MODELO,
         max_tokens: 4000,
-        output_config: {effort: 'low'},
+        output_config: {effort: 'low', format: zodOutputFormat(Respuesta)},
         // Si un clasificador rechaza la petición, la API la reintenta sola en
         // otro modelo en vez de dejar al empleado sin sugerencia.
         betas: ['server-side-fallback-2026-07-01'],
@@ -120,8 +128,16 @@ export async function sugerirRespuesta({usuario, nombreUsuario, conversacionId, 
     if (final?.stop_reason === 'refusal') {
         throw new ErrorAsistente(422, 'El asistente ha declinado redactar esta respuesta.');
     }
-    const texto = (final?.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
+    const crudo = (final?.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
+    let salida;
+    try {
+        salida = Respuesta.parse(JSON.parse(crudo));
+    } catch {
+        throw new ErrorAsistente(502, 'El asistente ha devuelto una respuesta que no se puede interpretar.');
+    }
+    const texto = salida.mensaje.trim();
+    const notas = salida.notas?.trim() || null;
     if (!texto) throw new ErrorAsistente(502, 'El asistente no ha devuelto texto.');
     console.log(`[asistente] conversación ${conversacionId}: ${Date.now() - inicio} ms, herramientas: ${[...new Set(usadas)].join(', ') || 'ninguna'}, modelo ${final?.model || MODELO}`);
-    return {texto, herramientas: [...new Set(usadas)], modelo: final?.model || MODELO};
+    return {texto, notas, herramientas: [...new Set(usadas)], modelo: final?.model || MODELO};
 }

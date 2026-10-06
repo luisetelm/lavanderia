@@ -36,6 +36,9 @@ export default function ChatThread({ token, conv, onBack, onToggleInfo, infoOpen
     const [showTemplates, setShowTemplates] = useState(false);
     const [templatesLoading, setTemplatesLoading] = useState(false);
     const [sugiriendo, setSugiriendo] = useState(false);
+    // Notas del asistente para quien atiende (qué comprobar antes de enviar):
+    // se enseñan aparte y nunca entran en el compositor.
+    const [notasAsistente, setNotasAsistente] = useState(null);
     const [attachedFile, setAttachedFile] = useState(null);
     const [attachPreview, setAttachPreview] = useState(null);
     const [dragOver, setDragOver] = useState(false);
@@ -90,6 +93,7 @@ export default function ChatThread({ token, conv, onBack, onToggleInfo, infoOpen
         setShowTemplates(false);
         clearAttachment();
         if (!convId) return;
+        setNotasAsistente(null);
         loadMessages(convId);
         const interval = setInterval(() => loadMessages(convId, { silent: true }), THREAD_POLL_MS);
         return () => clearInterval(interval);
@@ -215,6 +219,7 @@ export default function ChatThread({ token, conv, onBack, onToggleInfo, infoOpen
         try {
             await sendMessage(token, { conversationId: convId, channel, content: text });
             setComposerText('');
+            setNotasAsistente(null);
             await loadMessages(convId, { silent: true });
         } catch (err) {
             avisar(err.error || 'Error enviando mensaje', 'danger');
@@ -232,6 +237,7 @@ export default function ChatThread({ token, conv, onBack, onToggleInfo, infoOpen
         try {
             const r = await suggestReply(token, convId, (composerText || '').trim() || undefined);
             setComposerText(r.texto || '');
+            setNotasAsistente(r.notas || null);
             inputRef.current?.focus();
         } catch (err) {
             avisar(err.error || 'El asistente no ha podido redactar la respuesta', 'danger');
@@ -469,6 +475,15 @@ export default function ChatThread({ token, conv, onBack, onToggleInfo, infoOpen
             )}
 
             {/* Compositor */}
+            {notasAsistente && (
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, margin: '0 10px 6px', padding: '8px 10px', borderRadius: 8, background: '#fff7ed', border: '1px solid #fdba74', color: '#9a3412', fontSize: 12, lineHeight: 1.4 }}>
+                    <span style={{ fontSize: 14 }}>✨</span>
+                    <div style={{ flex: 1 }}>
+                        <strong>Antes de enviar, comprueba:</strong> {notasAsistente}
+                    </div>
+                    <button onClick={() => setNotasAsistente(null)} title="Cerrar" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', padding: 0, fontSize: 14, lineHeight: 1 }}>×</button>
+                </div>
+            )}
             <div className="msg-composer">
                 <select className="uk-select uk-form-small msg-composer-channel" value={channel} onChange={e => setChannel(e.target.value)}>
                     <option value="whatsapp">WA</option>
