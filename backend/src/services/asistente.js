@@ -106,7 +106,7 @@ export async function sugerirRespuesta({usuario, nombreUsuario, conversacionId, 
     let final;
     try {
         final = await Promise.race([
-            runner.done(),
+            runner.runUntilDone(), // done() sólo espera; runUntilDone() ejecuta el bucle
             new Promise((_, rej) => setTimeout(() => rej(new ErrorAsistente(504, 'El asistente ha tardado demasiado; vuelve a intentarlo.')), 100_000)),
         ]);
     } catch (e) {
