@@ -58,41 +58,58 @@ export async function sugerirRespuesta({usuario, nombreUsuario, conversacionId, 
         },
     }));
 
+    // La conversación se lee aquí y va en el primer mensaje: ahorra una vuelta
+    // de herramienta (la más lenta) y el modelo sólo consulta lo que falte.
+    const hConv = herramientasPara(ctx.usuario).find(h => h.nombre === 'conversacion');
+    const conv = await ejecutarHerramienta(hConv, {conversacionId, limite: 25}, ctx);
+    if (!conv.ok) throw new ErrorAsistente(conv.status === 404 ? 404 : 502, conv.error);
+    const inicio = Date.now();
+
     const sistema = [
         instrucciones(ctx.usuario),
         '',
         'Tarea: redactar la respuesta que la lavandería mandará por el chat a un cliente. No puedes enviar nada; sólo propones el texto y la persona lo revisa.',
-        `Empieza leyendo la conversación ${conversacionId} con la herramienta conversacion. Consulta lo que haga falta (pedidos del cliente con listar_pedidos o ver_pedido, precios con precio_efectivo o presupuestar_pedido, entregas, carga de trabajo) antes de contestar; no inventes datos, fechas ni precios.`,
+        'La conversación ya viene en el mensaje. Consulta sólo lo que falte para contestar (pedidos del cliente con listar_pedidos o ver_pedido, precios con precio_efectivo o presupuestar_pedido, entregas, carga de trabajo), con las menos llamadas posibles; no inventes datos, fechas ni precios.',
         'Si el cliente pregunta por un pedido, mira su estado real y la fecha de entrega. Si pide precio, da el que le corresponde a él (precio_efectivo) y di que es con IVA. Si pide una fecha antes de la sugerida, avisa del suplemento de urgencia.',
         'Escribe como la lavandería: cercano, breve (dos o tres frases salvo que haga falta más), en castellano, con tuteo, sin emojis salvo que el cliente los use. Firma como Tinte y Burbuja sólo si la conversación es nueva.',
         'Si falta información para contestar bien, propón el mensaje más útil posible y, en una línea final entre corchetes, indica a la persona qué debe comprobar.',
         'Responde únicamente con el texto del mensaje (y la línea entre corchetes si procede), sin comillas ni explicaciones.',
     ].join('\n');
 
-    const client = new Anthropic();
+    const client = new Anthropic({timeout: 45_000, maxRetries: 1});
     const runner = client.beta.messages.toolRunner({
         model: MODELO,
         max_tokens: 4000,
-        output_config: {effort: 'medium'},
+        output_config: {effort: 'low'},
         // Si un clasificador rechaza la petición, la API la reintenta sola en
         // otro modelo en vez de dejar al empleado sin sugerencia.
         betas: ['server-side-fallback-2026-07-01'],
         fallbacks: 'default',
         system: sistema,
         tools,
-        max_iterations: 10,
+        max_iterations: 5,
         messages: [{
             role: 'user',
-            content: indicacion
-                ? `Redacta la respuesta para la conversación ${conversacionId}. Lo que quiero transmitir: ${indicacion}`
-                : `Redacta la respuesta para la conversación ${conversacionId}.`,
+            content: [
+                `Conversación ${conversacionId}:`,
+                JSON.stringify(conv.resultado),
+                '',
+                indicacion
+                    ? `Redacta la respuesta. Lo que quiero transmitir: ${indicacion}`
+                    : 'Redacta la respuesta al último mensaje del cliente.',
+            ].join('\n'),
         }],
     });
 
     let final;
     try {
-        final = await runner.done();
+        final = await Promise.race([
+            runner.done(),
+            new Promise((_, rej) => setTimeout(() => rej(new ErrorAsistente(504, 'El asistente ha tardado demasiado; vuelve a intentarlo.')), 100_000)),
+        ]);
     } catch (e) {
+        if (e instanceof ErrorAsistente) throw e;
+        if (e instanceof Anthropic.APIConnectionTimeoutError) throw new ErrorAsistente(504, 'La API de Claude no ha respondido a tiempo.');
         if (e instanceof Anthropic.AuthenticationError) throw new ErrorAsistente(503, 'La clave de la API de Claude no es válida.');
         if (e instanceof Anthropic.RateLimitError) throw new ErrorAsistente(429, 'El asistente está saturado; prueba en un momento.');
         if (e instanceof Anthropic.APIConnectionError) throw new ErrorAsistente(502, 'No se pudo conectar con la API de Claude.');
@@ -103,5 +120,6 @@ export async function sugerirRespuesta({usuario, nombreUsuario, conversacionId, 
     }
     const texto = (final?.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
     if (!texto) throw new ErrorAsistente(502, 'El asistente no ha devuelto texto.');
+    console.log(`[asistente] conversación ${conversacionId}: ${Date.now() - inicio} ms, herramientas: ${[...new Set(usadas)].join(', ') || 'ninguna'}, modelo ${final?.model || MODELO}`);
     return {texto, herramientas: [...new Set(usadas)], modelo: final?.model || MODELO};
 }
