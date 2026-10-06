@@ -1,6 +1,7 @@
 import { sendSMScustomer } from '../services/twilio.js';
 import { sendTextMessage, uploadMediaToWhatsApp, sendMediaMessage, formatWhatsAppPhone } from '../services/whatsapp.js';
 import { findOrCreateConversation, touchConversation, getWhatsAppWindow } from '../services/conversation.js';
+import { sugerirRespuesta, ErrorAsistente } from '../services/asistente.js';
 import fs from 'fs';
 import path from 'path';
 import { pipeline } from 'stream/promises';
@@ -416,6 +417,34 @@ export default async function (fastify) {
         } catch (err) {
             console.error('[Messages] Error vinculando cliente:', err);
             return reply.code(500).send({ error: 'Error vinculando cliente' });
+        }
+    });
+
+    /* ─────────────────────────────────────────────
+     *  POST /conversations/:id/suggest — Borrador de respuesta con el asistente
+     *  (services/asistente.js: Claude + herramientas de lectura del conector MCP).
+     *  No envía nada: el texto vuelve al compositor para que lo revise quien atiende.
+     *  Body opcional: { indicacion: 'lo que quiero decirle' }
+     * ───────────────────────────────────────────── */
+    fastify.post('/conversations/:id/suggest', async (req, reply) => {
+        const convId = Number(req.params.id);
+        if (!Number.isInteger(convId)) return reply.code(400).send({ error: 'Conversación inválida' });
+        const conv = await prisma.conversation.findUnique({ where: { id: convId }, select: { id: true } });
+        if (!conv) return reply.code(404).send({ error: 'Conversación no encontrada' });
+
+        const yo = await prisma.user.findUnique({ where: { id: req.user.userId }, select: { firstName: true, lastName: true } });
+        try {
+            const r = await sugerirRespuesta({
+                usuario: req.user,
+                nombreUsuario: `${yo?.firstName || ''} ${yo?.lastName || ''}`.trim(),
+                conversacionId: convId,
+                indicacion: typeof req.body?.indicacion === 'string' ? req.body.indicacion.trim().slice(0, 500) : undefined,
+            });
+            return reply.send(r);
+        } catch (err) {
+            if (err instanceof ErrorAsistente) return reply.code(err.statusCode).send({ error: err.message });
+            console.error('[Messages] Error del asistente:', err);
+            return reply.code(500).send({ error: 'El asistente no ha podido redactar la respuesta' });
         }
     });
 }

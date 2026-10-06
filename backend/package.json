@@ -5,16 +5,21 @@
   "scripts": {
     "dev": "node src/server.js",
     "prisma:generate": "prisma generate",
-    "prisma:push": "prisma db push"
+    "prisma:push": "prisma db push",
+    "mcp": "node src/mcp/stdio.js",
+    "mcp:http": "node src/mcp/http.js"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.131.0",
     "@aws-sdk/client-ses": "^3.0.0",
     "@fastify/multipart": "^9.4.0",
     "@fastify/static": "^8.2.0",
+    "@modelcontextprotocol/sdk": "^1.32.1",
     "@prisma/client": "^4.16.0",
     "bcrypt": "^5.1.0",
     "cors": "^2.8.5",
     "dotenv": "^16.0.0",
+    "express": "^5.2.1",
     "fastify": "^5.0.0",
     "jsonwebtoken": "^9.0.0",
     "labsmobile-sms": "^1.0.1",
@@ -23,7 +28,8 @@
     "papaparse": "^5.5.3",
     "puppeteer": "^24.22.3",
     "stripe": "^20.4.1",
-    "twilio": "^4.0.0"
+    "twilio": "^4.0.0",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "nodemon": "^2.0.0",

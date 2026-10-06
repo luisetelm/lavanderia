@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { avisar } from '../../utils/dialogo.js';
 import {
     fetchMessages, sendMessage, sendMediaMessage,
-    fetchWhatsAppTemplates, sendWhatsAppMessage, setupDefaultTemplates,
+    fetchWhatsAppTemplates, sendWhatsAppMessage, setupDefaultTemplates, suggestReply,
 } from '../../api.js';
 import MediaBubble, { MediaUnavailable } from './MediaBubble.jsx';
 import {
@@ -35,6 +35,7 @@ export default function ChatThread({ token, conv, onBack, onToggleInfo, infoOpen
     const [templates, setTemplates] = useState([]);
     const [showTemplates, setShowTemplates] = useState(false);
     const [templatesLoading, setTemplatesLoading] = useState(false);
+    const [sugiriendo, setSugiriendo] = useState(false);
     const [attachedFile, setAttachedFile] = useState(null);
     const [attachPreview, setAttachPreview] = useState(null);
     const [dragOver, setDragOver] = useState(false);
@@ -210,6 +211,23 @@ export default function ChatThread({ token, conv, onBack, onToggleInfo, infoOpen
             avisar(err.error || 'Error enviando mensaje', 'danger');
         } finally {
             setSending(false);
+        }
+    };
+
+    // Borrador con el asistente: lee la conversación y los pedidos del cliente y
+    // deja el texto en el compositor para revisarlo antes de enviar. Si ya hay
+    // algo escrito se usa como indicación de lo que se quiere decir.
+    const sugerirRespuesta = async () => {
+        if (sugiriendo) return;
+        setSugiriendo(true);
+        try {
+            const r = await suggestReply(token, convId, (composerText || '').trim() || undefined);
+            setComposerText(r.texto || '');
+            inputRef.current?.focus();
+        } catch (err) {
+            avisar(err.error || 'El asistente no ha podido redactar la respuesta', 'danger');
+        } finally {
+            setSugiriendo(false);
         }
     };
 
@@ -453,6 +471,15 @@ export default function ChatThread({ token, conv, onBack, onToggleInfo, infoOpen
                         {templatesLoading ? '...' : '📄'}
                     </button>
                 )}
+
+                <button
+                    className="msg-composer-tpl-btn"
+                    onClick={sugerirRespuesta}
+                    disabled={sugiriendo || sending}
+                    title={(composerText || '').trim() ? 'Redactar con el asistente lo que has escrito' : 'Proponer respuesta con el asistente'}
+                >
+                    {sugiriendo ? <span uk-spinner="ratio: 0.4"></span> : '✨'}
+                </button>
 
                 {waWindowClosed ? (
                     <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6, padding: '0 8px', fontSize: 12, color: '#94a3b8' }}>

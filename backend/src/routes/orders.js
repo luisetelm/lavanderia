@@ -5,6 +5,7 @@ import {crearFactura, crearRectificativa, convertBigIntToString} from "./invoice
 import { sendCollectedNotification, sendReadyNotification } from '../services/notify.js';
 import { facturaDe } from '../utils/facturaDe.js';
 import { calcularLinea, preciosPactadosVigentes } from '../utils/precioLinea.js';
+import { calcularPresupuesto } from '../utils/presupuesto.js';
 import { getWorkCalendar, getDayInfo, nextWorkingDay, ymd, addDays, mondayOf } from '../utils/workCalendar.js';
 import {
     cargaDelDia, reservasPorDia, leerCargaMaxima, sugerirFecha, pedidosPorDia, calcularFechaSugerida,
@@ -17,6 +18,40 @@ import path from 'path';
 
 export default async function (fastify, opts) {
     const prisma = fastify.prisma;
+
+    // Presupuesto: valora un pedido exactamente igual que POST / pero sin
+    // guardar nada. Lo usa el conector MCP (herramienta presupuestar_pedido)
+    // para enseñar el importe, el origen de cada precio y el suplemento de
+    // urgencia antes de confirmar el alta.
+    fastify.post('/quote', async (req, reply) => {
+        const {clientId, lines, fechaLimite: fechaLimiteRaw, sinSuplemento} = req.body || {};
+        let client = null;
+        if (clientId) {
+            client = await prisma.user.findUnique({where: {id: Number(clientId)}});
+            if (!client) return reply.status(400).send({error: 'clientId inválido'});
+        }
+        try {
+            const p = await calcularPresupuesto(prisma, {
+                client, lines, fechaLimiteRaw: fechaLimiteRaw || null, sinSuplemento: sinSuplemento === true,
+            });
+            return reply.send({
+                client: client ? {
+                    id: client.id,
+                    nombre: `${client.firstName || ''} ${client.lastName || ''}`.trim(),
+                    isbigclient: client.isbigclient === true,
+                    discount: Number(client.discount) || 0,
+                } : null,
+                lineas: p.lineas.map(l => ({...l, totalPrice: Math.round(l.totalPrice * 100) / 100})),
+                total: Math.round(p.total * 100) / 100,
+                fechaLimite: p.fechaLimite.toISOString().slice(0, 10),
+                fechaLimiteElegida: p.fechaLimiteElegida,
+                suplementoUrgencia: p.suplementoUrgencia,
+            });
+        } catch (e) {
+            if (e.statusCode) return reply.status(e.statusCode).send({error: e.message});
+            throw e;
+        }
+    });
 
     fastify.post('/', async (req, reply) => {
         const prisma = fastify.prisma;
@@ -98,122 +133,29 @@ export default async function (fastify, opts) {
             }
         }
 
-        if (!lines || !Array.isArray(lines) || lines.length === 0) {
-            return reply.status(400).send({error: 'Debe haber al menos una línea en el pedido'});
+        // Líneas valoradas, fecha límite y suplemento de urgencia: mismo cálculo
+        // que devuelve POST /quote sin guardar (utils/presupuesto.js).
+        let presupuesto;
+        try {
+            presupuesto = await calcularPresupuesto(prisma, {
+                client, lines, fechaLimiteRaw, sinSuplemento: req.body.sinSuplemento === true,
+            });
+        } catch (e) {
+            if (e.statusCode) return reply.status(e.statusCode).send({error: e.message});
+            throw e;
         }
+        const {lineCreates, total, fechaLimite} = presupuesto;
 
-        // Calcular totales y preparar líneas
-        let total = 0;
-        const lineCreates = [];
+        // Notas y fotos de recepción, indexadas por posición de línea (el
+        // suplemento de urgencia, si lo hay, va al final y no desplaza nada).
         const pendingAnnotations = []; // [{ lineIndex, notes, photos }]
-
-        // Precio de cada línea con la regla única de utils/precioLinea.js:
-        // precio pactado del cliente > tarifa de gran cliente > precio normal,
-        // y el descuento del cliente sólo sobre lo que no está pactado.
-        // Los pactados se cargan una sola vez para todo el pedido.
-        const pactados = await preciosPactadosVigentes(prisma, client?.id);
-
-        for (const l of lines) {
-            let calculada;
-            try {
-                // Sin redondear el total de línea, como se ha guardado siempre.
-                calculada = await calcularLinea(
-                    prisma,
-                    {productId: l.productId, variantId: l.variantId, quantity: l.quantity},
-                    client,
-                    {pactados, redondear: false},
-                );
-            } catch (e) {
-                if (e.statusCode) return reply.status(e.statusCode).send({error: e.message});
-                throw e;
-            }
-            const {unitPrice, quantity, discount: discountPct, totalPrice} = calculada;
-
-            total += totalPrice;
-
+        lines.forEach((l, lineIndex) => {
             const rawPhotos = l.photos || [];
             const rawNotes = (l.notes || '').trim();
-            lineCreates.push({
-                productId: l.productId,
-                variantId: l.variantId || null,
-                quantity,
-                unitPrice,
-                discount: discountPct,
-                totalPrice,
-                color: l.color || null,
-            });
-            // Guardar notas y fotos temporalmente indexadas por posición de línea
             if (rawNotes || rawPhotos.length > 0) {
-                pendingAnnotations.push({ lineIndex: lineCreates.length - 1, notes: rawNotes, photos: rawPhotos });
+                pendingAnnotations.push({ lineIndex, notes: rawNotes, photos: rawPhotos });
             }
-        }
-
-        // Fecha límite: si viene, se parsea; si no, se propone (ej. dentro de una semana laboral)
-        // Por defecto, una semana vista saltando a un día abierto (horario + festivos).
-        const defaultFechaLimite = async () => {
-            const target = await nextWorkingDay(prisma, addDays(ymd(new Date()), 7));
-            return new Date(`${target}T00:00:00.000Z`);
-        };
-
-        let fechaLimite = fechaLimiteRaw ? new Date(fechaLimiteRaw) : await defaultFechaLimite();
-        if (Number.isNaN(fechaLimite.getTime())) {
-            return reply.status(400).send({error: 'Fecha límite no válida.'});
-        }
-        // opcional: rechazar pasado
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        if (fechaLimite < today) {
-            return reply.status(400).send({error: 'La fecha límite no puede ser anterior a hoy.'});
-        }
-        // Rechazar días en que la lavandería está cerrada (festivos / horario semanal)
-        if (fechaLimiteRaw) {
-            const dayInfo = await getDayInfo(prisma, fechaLimiteRaw);
-            if (dayInfo && !dayInfo.isWorking) {
-                const motivo = dayInfo.label ? ` (${dayInfo.label})` : '';
-                return reply.status(400).send({error: `La lavandería está cerrada ese día${motivo}. Elige otra fecha de entrega.`});
-            }
-        }
-
-        // Entrega adelantada: si la fecha elegida es anterior a la sugerida por
-        // el calendario, se añade el suplemento de urgencia como una línea más
-        // (% sobre las líneas que computan en la carga). Quien pica el pedido
-        // puede eximirlo desde el TPV (sinSuplemento). Los grandes clientes (hoteles,
-        // restaurantes) tienen días fijos de recogida y entrega y precios
-        // pactados: no eligen fecha por disponibilidad, así que nunca lo pagan.
-        let suplementoUrgencia = null;
-        const fechaElegida = fechaLimiteRaw ? String(fechaLimiteRaw).slice(0, 10) : null;
-        const eximido = client?.isbigclient === true
-            || req.body.sinSuplemento === true;
-        if (fechaElegida && !eximido) {
-            const [{ sugerida, calendar }, tramos, producto] = await Promise.all([
-                calcularFechaSugerida(prisma),
-                leerSuplementoUrgencia(prisma),
-                productoSuplementoUrgencia(prisma),
-            ]);
-            // Por tramos: % por cada día laborable adelantado, con tope.
-            const dias = diasLaborablesAdelantados(calendar, fechaElegida, sugerida);
-            const pct = porcentajeUrgencia(dias, tramos);
-            if (pct > 0) {
-                if (!producto) {
-                    console.error('[urgencia] Falta el producto SUPL-URGENCIA: ejecutar sql/027_suplemento_urgencia.sql');
-                } else {
-                    const importe = await importeSuplementoUrgencia(prisma, lineCreates, pct);
-                    if (importe > 0) {
-                        suplementoUrgencia = { fechaSugerida: sugerida, dias, pct, importe };
-                        total += importe;
-                        lineCreates.push({
-                            productId: producto.id,
-                            variantId: null,
-                            quantity: 1,
-                            unitPrice: importe,
-                            discount: 0,
-                            totalPrice: importe,
-                            color: null,
-                        });
-                    }
-                }
-            }
-        }
+        });
 
         // Generar orderNum (usa tu helper correctamente con fastify)
         const orderNum = await nextOrderNum(prisma);

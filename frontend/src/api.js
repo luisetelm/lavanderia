@@ -661,6 +661,15 @@ export function sendMessage(token, { conversationId, channel, content, orderId }
     });
 }
 
+// Borrador de respuesta redactado por el asistente (Claude con las herramientas
+// del conector MCP). No envía nada: devuelve { texto, herramientas, modelo }.
+export function suggestReply(token, conversationId, indicacion) {
+    return request(`/messages/conversations/${conversationId}/suggest`, token, {
+        method: 'POST',
+        body: JSON.stringify(indicacion ? { indicacion } : {}),
+    });
+}
+
 export function markConversationAsRead(token, conversationId) {
     return request(`/messages/read/${conversationId}`, token, { method: 'POST', body: JSON.stringify({}) });
 }

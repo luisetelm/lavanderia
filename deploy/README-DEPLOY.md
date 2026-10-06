@@ -363,6 +363,76 @@ curl https://app.tinteyburbuja.com/api/qz/cert   # → debe devolver el certific
 ---
 
 
+## Conector MCP para Claude (claude.ai, app de escritorio y Claude Code)
+
+El conector expone las herramientas de la lavandería (clientes, pedidos, precios,
+entregas, chat...) a Claude. Es un proceso aparte del backend (`backend/src/mcp/http.js`,
+pm2 `lavanderia-mcp`, puerto 4100) que llama a la API por HTTP con el token del
+usuario que conecta. Detalles en `docs/conector-mcp.md`.
+
+### Una sola vez
+
+1. Tablas del servidor OAuth:
+   ```bash
+   cd /var/www/lavanderia/backend
+   psql -U lavanderia -d lavanderia -h localhost -f sql/032_mcp_oauth.sql
+   ```
+2. Variables en `backend/.env`:
+   ```env
+   # Conector MCP
+   MCP_PORT=4100
+   MCP_PUBLIC_URL=https://app.tinteyburbuja.com
+   # (opcional) API interna que usan las herramientas; por defecto http://127.0.0.1:4000/api
+   #MCP_API_URL=http://127.0.0.1:4000/api
+
+   # Asistente del chat (botón ✨ del compositor): clave de la API de Claude
+   ANTHROPIC_API_KEY=sk-ant-...
+   #ASISTENTE_MODELO=claude-opus-5-5
+   ```
+3. Nginx: `deploy/nginx-lavanderia.conf` ya incluye las rutas `/mcp` y
+   `/.well-known/oauth-*`. Copiarlo de nuevo y recargar:
+   ```bash
+   sudo cp deploy/nginx-lavanderia.conf /etc/nginx/sites-available/lavanderia
+   sudo nginx -t && sudo systemctl reload nginx
+   ```
+4. Arrancar (a partir de ahí `deploy.sh` lo reinicia solo):
+   ```bash
+   cd /var/www/lavanderia/backend
+   npx prisma generate
+   pm2 start src/mcp/http.js --name lavanderia-mcp --env production
+   pm2 save
+   ```
+5. Comprobar:
+   ```bash
+   curl -s https://app.tinteyburbuja.com/mcp/salud
+   # → {"ok":true,"servidor":"tinte-y-burbuja"}
+   curl -s https://app.tinteyburbuja.com/.well-known/oauth-protected-resource/mcp
+   ```
+
+### Conectarlo en Claude
+
+- **claude.ai / app de escritorio:** Ajustes → Conectores → Añadir conector
+  personalizado → URL `https://app.tinteyburbuja.com/mcp`. Al conectar pide
+  entrar con el email y la contraseña de la app; sólo puede hacerlo el personal
+  (admin, cajero, taller) y cada acción queda registrada a su nombre.
+- **Claude Code (en este repositorio):** `.mcp.json` ya declara el servidor en
+  modo local (`backend/src/mcp/stdio.js`). Sólo hay que poner en `backend/.env`
+  el usuario con el que actuar:
+  ```env
+  MCP_API_URL=https://app.tinteyburbuja.com/api
+  MCP_EMAIL=tu-usuario@tinteyburbuja.com
+  MCP_PASSWORD=...
+  ```
+
+### Logs y reinicio
+
+```bash
+pm2 logs lavanderia-mcp
+pm2 restart lavanderia-mcp
+```
+
+---
+
 ## Comandos útiles
 
 ```bash

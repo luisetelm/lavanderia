@@ -656,3 +656,36 @@ model ProformaOrder {
   @@index([orderId])
   @@map("proforma_order")
 }
+
+// Conector MCP remoto (sql/032, src/mcp/oauth.js): clientes OAuth registrados
+// dinámicamente (claude.ai, app de escritorio) y sus códigos/tokens, ligados al
+// usuario de la app que entró. Sin relación Prisma con User a propósito (la FK
+// está en SQL) para no tocar el modelo User.
+model McpOauthClient {
+  id        String         @id @db.VarChar(255)
+  info      Json
+  createdAt DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  tokens    McpOauthToken[]
+
+  @@map("mcp_oauth_client")
+}
+
+model McpOauthToken {
+  id            Int            @id @default(autoincrement())
+  tipo          String         @db.VarChar(16) // 'codigo' | 'acceso' | 'refresco'
+  hash          String         @unique @db.VarChar(64)
+  clientId      String         @map("client_id") @db.VarChar(255)
+  userId        Int            @map("user_id")
+  scopes        String[]       @default([])
+  codeChallenge String?        @map("code_challenge") @db.VarChar(255)
+  redirectUri   String?        @map("redirect_uri")
+  resource      String?
+  expiresAt     DateTime       @map("expires_at") @db.Timestamptz(6)
+  usedAt        DateTime?      @map("used_at") @db.Timestamptz(6)
+  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  client        McpOauthClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("mcp_oauth_token")
+}

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "tinte-y-burbuja": {
+      "command": "node",
+      "args": ["backend/src/mcp/stdio.js"]
+    }
+  }
+}
