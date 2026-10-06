@@ -6,8 +6,10 @@ echo "=== Desplegando Tinte y Burbuja ==="
 APP_DIR="/var/www/lavanderia"
 cd "$APP_DIR"
 
-# Pull últimos cambios
+# Pull últimos cambios. npm install reescribe backend/package-lock.json en cada
+# deploy y el pull se negaba a pisarlo: se descarta antes (es un archivo generado).
 echo "--- Git pull ---"
+git checkout -- backend/package-lock.json 2>/dev/null || true
 git pull origin main
 
 # Backend
