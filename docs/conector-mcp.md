@@ -28,7 +28,8 @@ backend/src/mcp/
   servidor.js      McpServer: instrucciones + registro de herramientas según el rol
   stdio.js         arranque local (Claude Code / escritorio): entra con MCP_EMAIL/MCP_PASSWORD
   oauth.js         servidor OAuth 2.1 (registro dinámico, PKCE, login con el usuario de la app)
-  http.js          servidor remoto: Streamable HTTP en /mcp + OAuth + metadatos .well-known
+  http.js          app Express del servidor remoto: Streamable HTTP en /mcp + OAuth + metadatos .well-known
+  arranque-http.js arranque como proceso (pm2 lavanderia-mcp)
 backend/src/services/asistente.js   borrador de respuesta del chat con la API de Claude
 backend/src/utils/presupuesto.js    cálculo compartido de líneas/fecha/urgencia (lo usa POST /orders y /orders/quote)
 backend/sql/032_mcp_oauth.sql       tablas mcp_oauth_client y mcp_oauth_token

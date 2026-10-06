@@ -7,7 +7,7 @@
     "prisma:generate": "prisma generate",
     "prisma:push": "prisma db push",
     "mcp": "node src/mcp/stdio.js",
-    "mcp:http": "node src/mcp/http.js"
+    "mcp:http": "node src/mcp/arranque-http.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.131.0",

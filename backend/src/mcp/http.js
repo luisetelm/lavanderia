@@ -1,6 +1,7 @@
 // Conector MCP remoto (Streamable HTTP + OAuth) para claude.ai y la app de
-// escritorio. Proceso aparte del backend (pm2 «lavanderia-mcp», puerto
-// MCP_PORT); nginx le pasa /mcp y /.well-known/oauth-*.
+// escritorio. Aquí sólo se construye la app Express (crearAppMcp); el proceso
+// lo arranca arranque-http.js (pm2 «lavanderia-mcp», puerto MCP_PORT); nginx
+// le pasa /mcp y /.well-known/oauth-*.
 //
 //   GET  /.well-known/oauth-authorization-server   metadatos OAuth (RFC 8414)
 //   GET  /.well-known/oauth-protected-resource/mcp metadatos del recurso (RFC 9728)
@@ -17,12 +18,8 @@
 //   MCP_API_URL      API interna (http://127.0.0.1:4000/api)
 //   JWT_SECRET       el mismo del backend
 
-import dotenv from 'dotenv';
-import path from 'node:path';
-import {fileURLToPath} from 'node:url';
 import express from 'express';
 import jwt from 'jsonwebtoken';
-import {PrismaClient} from '@prisma/client';
 import {StreamableHTTPServerTransport} from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import {authorizationHandler} from '@modelcontextprotocol/sdk/server/auth/handlers/authorize.js';
 import {tokenHandler} from '@modelcontextprotocol/sdk/server/auth/handlers/token.js';
@@ -34,7 +31,6 @@ import {crearProveedorOAuth} from './oauth.js';
 import {crearApi} from './api.js';
 import {crearServidorMcp, NOMBRE_SERVIDOR} from './servidor.js';
 
-dotenv.config({path: path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../.env')});
 
 const RUTA_MCP = '/mcp';
 const RUTA_LOGIN = '/mcp/login';
@@ -161,22 +157,4 @@ app.all(RUTA_MCP, express.json({limit: '4mb'}), exigirToken, async (req, res) =>
 app.get('/mcp/salud', (req, res) => res.json({ok: true, servidor: NOMBRE_SERVIDOR}));
 
 return app;
-}
-
-// Arranque como proceso (pm2 lavanderia-mcp)
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-    const PORT = Number(process.env.MCP_PORT) || 4100;
-    if (!process.env.JWT_SECRET) {
-        console.error('[mcp-http] Falta JWT_SECRET en .env');
-        process.exit(1);
-    }
-    const app = crearAppMcp({
-        prisma: new PrismaClient(),
-        publicUrl: process.env.MCP_PUBLIC_URL || `http://localhost:${PORT}`,
-        apiUrl: process.env.MCP_API_URL || `http://127.0.0.1:${process.env.PORT || 4000}/api`,
-        jwtSecret: process.env.JWT_SECRET,
-    });
-    app.listen(PORT, '127.0.0.1', () => {
-        console.log(`[mcp-http] ${NOMBRE_SERVIDOR} escuchando en http://127.0.0.1:${PORT}${RUTA_MCP}`);
-    });
 }

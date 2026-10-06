@@ -19,10 +19,10 @@ npx prisma generate
 echo "--- Backend: reiniciando ---"
 pm2 restart lavanderia || pm2 start src/server.js --name lavanderia --env production
 
-# Conector MCP para Claude (src/mcp/http.js, puerto MCP_PORT=4100). Necesita las
+# Conector MCP para Claude (src/mcp/arranque-http.js, puerto MCP_PORT=4100). Necesita las
 # tablas de sql/032_mcp_oauth.sql y MCP_PUBLIC_URL en .env; ver README-DEPLOY.md.
 echo "--- Conector MCP: reiniciando ---"
-pm2 restart lavanderia-mcp || pm2 start src/mcp/http.js --name lavanderia-mcp --env production
+pm2 restart lavanderia-mcp || pm2 start src/mcp/arranque-http.js --name lavanderia-mcp --env production
 
 # Aviso si falta la clave privada de QZ Tray (no se sube por git, ver README)
 if [ ! -f "$APP_DIR/backend/certs/private-key.pem" ]; then

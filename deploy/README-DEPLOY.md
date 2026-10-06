@@ -399,7 +399,7 @@ usuario que conecta. Detalles en `docs/conector-mcp.md`.
    ```bash
    cd /var/www/lavanderia/backend
    npx prisma generate
-   pm2 start src/mcp/http.js --name lavanderia-mcp --env production
+   pm2 start src/mcp/arranque-http.js --name lavanderia-mcp --env production
    pm2 save
    ```
 5. Comprobar:
