@@ -147,6 +147,15 @@ export default function ChatThread({ token, conv, onBack, onToggleInfo, infoOpen
         }
     }, [composerText]);
 
+    // El compositor crece con el texto (hasta el tope del CSS) para que un
+    // borrador largo, como los del asistente, se lea entero antes de enviarlo.
+    useEffect(() => {
+        const el = inputRef.current;
+        if (!el) return;
+        el.style.height = 'auto';
+        el.style.height = `${el.scrollHeight}px`;
+    }, [composerText]);
+
     /* ── Adjuntos ── */
     function clearAttachment() {
         setAttachedFile(null);
@@ -506,11 +515,11 @@ export default function ChatThread({ token, conv, onBack, onToggleInfo, infoOpen
                             style={{ display: 'none' }}
                             onChange={(e) => { handleFileSelect(e.target.files?.[0]); e.target.value = ''; }}
                         />
-                        <input
+                        <textarea
                             ref={inputRef}
-                            type="text"
-                            className="uk-input uk-form-small msg-composer-input"
-                            placeholder={attachedFile ? 'Añade un mensaje al archivo...' : 'Escribe un mensaje...'}
+                            rows={1}
+                            className="uk-textarea uk-form-small msg-composer-input"
+                            placeholder={attachedFile ? 'Añade un mensaje al archivo...' : 'Escribe un mensaje... (Mayús+Enter: salto de línea)'}
                             value={composerText}
                             onChange={e => setComposerText(e.target.value)}
                             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}

@@ -986,7 +986,7 @@ h1, h2, h3, h4, h5, h6 {
 /* Composer */
 .msg-composer {
   display: flex;
-  align-items: center;
+  align-items: flex-end; /* el área de texto crece hacia arriba; los botones quedan abajo */
   gap: 6px;
   padding: 8px 10px;
   border-top: 1px solid @color-border;
@@ -1029,10 +1029,16 @@ h1, h2, h3, h4, h5, h6 {
 .msg-composer-input {
   flex: 1;
   min-width: 0;
-  height: 34px !important;
-  font-size: 14px !important;
+  /* Área de texto de una línea que crece con el contenido (ChatThread ajusta
+     la altura al scrollHeight) hasta unas seis líneas; después hace scroll. */
+  height: 34px;
+  min-height: 34px !important;
+  max-height: 150px;
+  overflow-y: auto;
+  resize: none;
+  line-height: 20px;
+  padding: 6px 14px !important;
   border-radius: 18px !important;
-  padding-left: 14px !important;
   /* Evitar zoom en iOS al hacer focus */
   font-size: 16px !important;
 }
@@ -1874,7 +1880,8 @@ h1, h2, h3, h4, h5, h6 {
   }
 
   .msg-composer-input {
-    height: 36px !important;
+    min-height: 36px !important;
+    padding: 7px 14px !important;
     /* 16px evita que iOS haga zoom al enfocar el input */
     font-size: 16px !important;
     -webkit-appearance: none;
