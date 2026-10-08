@@ -7,6 +7,7 @@
 import { findOrCreateConversation, touchConversation, buildPhoneCandidates } from '../services/conversation.js';
 import { normalizePhone, isValidPhone, TELEFONO_AYUDA } from '../utils/validatePhone.js';
 import { sendTemplateMessage, PLANTILLA_PRECIO_WEB, componentesPrecioWeb } from '../services/whatsapp.js';
+import { fetchReviewsConResumen, estrellasDe, textoOriginal } from '../services/google.js';
 
 const SECCIONES = ['lavado', 'tintoreria', 'hosteleria'];
 
@@ -66,6 +67,59 @@ export default async function publicRoutes(fastify) {
 
         reply.header('Cache-Control', `public, max-age=${CACHE_SEGUNDOS}`);
         return { currency: 'EUR', vatIncluded: true, updatedAt: actualizado, sections: secciones };
+    });
+
+    // Reseñas de Google para la web pública (sección "Opiniones").
+    //
+    // Se leen del Perfil de Empresa con la conexión de la página de reseñas de
+    // la app y se guardan en memoria una hora: la web las pide en cada visita y
+    // la API de Google tiene cuota. Si Google falla y hay una copia anterior se
+    // sirve esa; si no hay ninguna, 503 y la web enseña su lista fija.
+    //
+    // Sólo salen reseñas con texto y de 4 o 5 estrellas (es un escaparate, no
+    // el panel de gestión), las más recientes primero; la media y el total son
+    // los reales de Google, con todas las reseñas.
+    const RESENAS_CACHE_MS = 60 * 60 * 1000;
+    const RESENAS_MAX = 12;
+    let resenasCache = null; // { en: timestamp, datos }
+
+    fastify.get('/reviews', async (req, reply) => {
+        const ahora = Date.now();
+        if (!resenasCache || ahora - resenasCache.en > RESENAS_CACHE_MS) {
+            try {
+                const { reviews, averageRating, totalReviewCount } = await fetchReviewsConResumen(prisma);
+                const publicables = reviews
+                    .map((r) => ({
+                        id: r.reviewId,
+                        name: r.reviewer?.displayName || 'Cliente de Google',
+                        photo: r.reviewer?.profilePhotoUrl || null,
+                        rating: estrellasDe(r),
+                        text: textoOriginal(r.comment),
+                        date: r.createTime || r.updateTime || null,
+                        reply: r.reviewReply?.comment ? textoOriginal(r.reviewReply.comment) : null,
+                    }))
+                    .filter((r) => r.rating >= 4 && r.text.length >= 15)
+                    .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0))
+                    .slice(0, RESENAS_MAX);
+                resenasCache = {
+                    en: ahora,
+                    datos: {
+                        averageRating: averageRating != null ? Math.round(averageRating * 10) / 10 : null,
+                        totalReviews: totalReviewCount,
+                        updatedAt: new Date(ahora).toISOString(),
+                        reviews: publicables,
+                    },
+                };
+            } catch (e) {
+                fastify.log.error({ err: e }, 'public/reviews: no se pudieron leer las reseñas de Google');
+                if (!resenasCache) {
+                    return reply.code(503).send({ error: 'Reseñas no disponibles ahora mismo' });
+                }
+                resenasCache.en = ahora; // no insistir a Google hasta dentro de una hora
+            }
+        }
+        reply.header('Cache-Control', `public, max-age=${CACHE_SEGUNDOS}`);
+        return resenasCache.datos;
     });
 
     // Alguien quiere saber un precio y deja su teléfono.

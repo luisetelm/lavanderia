@@ -167,11 +167,17 @@ async function localConfigurado(prisma) {
     return { accountId, locationId };
 }
 
-export async function fetchReviews(prisma) {
+/**
+ * Reseñas del local con el resumen que da Google en la misma respuesta
+ * (media y total de reseñas, incluidas las que no vienen en la página).
+ * Google devuelve como mucho 50 por página, las más recientes primero.
+ * @returns {{reviews: object[], averageRating: number|null, totalReviewCount: number|null}}
+ */
+export async function fetchReviewsConResumen(prisma) {
     const accessToken = await getAccessToken(prisma);
     const { accountId, locationId } = await localConfigurado(prisma);
 
-    const url = `https://mybusiness.googleapis.com/v4/accounts/${accountId}/locations/${locationId}/reviews`;
+    const url = `https://mybusiness.googleapis.com/v4/accounts/${accountId}/locations/${locationId}/reviews?pageSize=50`;
     const res = await fetch(url, {
         headers: { Authorization: `Bearer ${accessToken}` },
     });
@@ -182,7 +188,35 @@ export async function fetchReviews(prisma) {
     }
 
     const data = await res.json();
-    return data.reviews || [];
+    return {
+        reviews: data.reviews || [],
+        averageRating: typeof data.averageRating === 'number' ? data.averageRating : null,
+        totalReviewCount: typeof data.totalReviewCount === 'number' ? data.totalReviewCount : null,
+    };
+}
+
+export async function fetchReviews(prisma) {
+    return (await fetchReviewsConResumen(prisma)).reviews;
+}
+
+const ESTRELLAS = { ONE: 1, TWO: 2, THREE: 3, FOUR: 4, FIVE: 5 };
+
+/** Estrellas de una reseña como número (Google las da como 'FIVE'). */
+export function estrellasDe(review) {
+    return ESTRELLAS[review?.starRating] || 0;
+}
+
+/**
+ * Texto de la reseña tal como lo escribió el cliente, sin la traducción que
+ * Google añade al final ("(Translated by Google) ..." u "(Original) ...").
+ */
+export function textoOriginal(comment) {
+    if (!comment) return '';
+    let t = String(comment);
+    const original = t.match(/\(Original\)\s*([\s\S]*)$/);
+    if (original) t = original[1];
+    t = t.replace(/\s*\(Translated by Google\)[\s\S]*$/, '');
+    return t.trim();
 }
 
 export async function replyToReview(prisma, reviewId, replyText) {
