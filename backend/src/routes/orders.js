@@ -161,14 +161,18 @@ export default async function (fastify, opts) {
         const orderNum = await nextOrderNum(prisma);
 
 
-        // Crear pedido en estado pendiente (sin pago)
+        // Crear pedido en estado pendiente (sin pago). Un pedido a 0 € (descuento
+        // del 100 %, pedidos internos) nace cobrado con método 'none', como ya hace
+        // PATCH /lines/:lineId cuando el total queda a 0: no hay nada que cobrar y
+        // así no aparece como pendiente de cobro (sql/033 ajustó los anteriores).
+        const gratuito = Number(total) <= 0;
         const order = await prisma.order.create({
             data: {
                 orderNum,
                 clientId: client.id,
                 total,
-                paid: false,
-                paymentMethod: null,
+                paid: gratuito,
+                paymentMethod: gratuito ? 'none' : null,
                 observaciones: observaciones || null,
                 fechaLimite,
                 lines: {create: lineCreates},

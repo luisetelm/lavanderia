@@ -1117,7 +1117,8 @@ export default function PaymentSection({token, orderId, onPaid, initialOrder = n
                         </p>
                     )}
 
-                    {!order.paid && (<button
+                    {/* Un pedido a 0 € nace cobrado (método 'none') pero se puede cancelar igual */}
+                    {(!order.paid || Number(order.total) <= 0) && order.status !== 'cancelled' && (<button
                         className="uk-button uk-button-danger uk-width-1-1@l"
                         onClick={handleCancelOrder}
                         disabled={isProcessing}
@@ -1125,7 +1126,7 @@ export default function PaymentSection({token, orderId, onPaid, initialOrder = n
                     >Cancelar</button>)}
 
                     {/* Botón para generar factura si está cobrado y no facturado, o para descargar si ya existe */}
-                    {order.paid && (!order.invoiceTickets || order.invoiceTickets.length === 0) && (
+                    {order.paid && Number(order.total) > 0 && (!order.invoiceTickets || order.invoiceTickets.length === 0) && (
                         <button
                             className="uk-button uk-button-primary uk-width-1-1@l"
                             onClick={handleGenerateInvoice}
