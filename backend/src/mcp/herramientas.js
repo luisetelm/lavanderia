@@ -73,6 +73,7 @@ function pedidoCompacto(o) {
             id: o.client.id,
             nombre: nombreDe(o.client),
             telefono: o.client.phone || null,
+            granCliente: o.client.isbigclient === true || undefined,
             facturacionMensual: o.client.autoMonthlyInvoice === true || undefined,
         } : (o.clientId ? {id: o.clientId} : null),
         lineas: Array.isArray(o.lines) ? o.lines.map(lineaCompacta) : undefined,
@@ -626,7 +627,7 @@ export const HERRAMIENTAS = [
     {
         nombre: 'cambiar_estado_pedido',
         titulo: 'Cambiar estado de un pedido',
-        descripcion: 'Cambia el estado de un pedido: pending (pendiente), in_progress (en proceso), ready (listo para recoger), collected (entregado al cliente) o cancelled (anulado, deja el total a 0). Un pedido no cobrado no puede marcarse como entregado salvo que el cliente facture a fin de mes. Al pasar a listo o entregado se puede avisar al cliente. Confirma con la persona antes de anular o entregar.',
+        descripcion: 'Cambia el estado de un pedido: pending (pendiente), in_progress (en proceso), ready (listo para recoger), collected (entregado al cliente) o cancelled (anulado, deja el total a 0). Un pedido no cobrado no puede marcarse como entregado salvo que el cliente sea gran cliente o facture a fin de mes (puede cobrarse igualmente antes o después con registrar_pago). Al pasar a listo o entregado se puede avisar al cliente. Confirma con la persona antes de anular o entregar.',
         soloLectura: false,
         esquema: {
             pedido: z.union([z.number().int(), z.string()]).describe('Id o número de pedido'),

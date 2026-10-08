@@ -374,15 +374,16 @@ export default async function (fastify, opts) {
         if (status) {
             // No permitir marcar como recogido si no está pagado (salvo pedidos de importe 0)
             if (status === 'collected') {
-                // Un pedido sin cobrar no se entrega... salvo que el cliente pague
-                // con la factura de fin de mes (autoMonthlyInvoice): ese pedido se
-                // factura y se cobra después, y se lo lleva sin pasar por caja.
+                // Un pedido sin cobrar no se entrega... salvo que el cliente sea gran
+                // cliente (isbigclient) o pague con la factura de fin de mes
+                // (autoMonthlyInvoice): puede llevárselo sin haber pagado y cobrarse
+                // en el momento o más tarde.
                 const currentOrder = await prisma.order.findUnique({
                     where: { id: orderId },
-                    select: { paid: true, total: true, client: { select: { autoMonthlyInvoice: true } } },
+                    select: { paid: true, total: true, client: { select: { isbigclient: true, autoMonthlyInvoice: true } } },
                 });
-                const facturaMensual = !!currentOrder?.client?.autoMonthlyInvoice;
-                if (currentOrder && !currentOrder.paid && Number(currentOrder.total) > 0 && !facturaMensual) {
+                const cobroAplazado = !!currentOrder?.client?.isbigclient || !!currentOrder?.client?.autoMonthlyInvoice;
+                if (currentOrder && !currentOrder.paid && Number(currentOrder.total) > 0 && !cobroAplazado) {
                     return reply.status(400).send({ error: 'No se puede marcar como recogido un pedido que no ha sido cobrado. Cobra primero el pedido.' });
                 }
             }
@@ -663,7 +664,7 @@ export default async function (fastify, opts) {
                     }
                 }
             }, client: {
-                select: {id: true, firstName: true, lastName: true, phone: true, email: true, notifyChannel: true, autoMonthlyInvoice: true},
+                select: {id: true, firstName: true, lastName: true, phone: true, email: true, notifyChannel: true, isbigclient: true, autoMonthlyInvoice: true},
             }, notification: {
                 select: {id: true, type: true, sentAt: true, status: true, content: true}
             }, invoiceTickets: {
@@ -1202,7 +1203,7 @@ export default async function (fastify, opts) {
                             }
                         }
                     },
-                    client: {select: {id: true, firstName: true, lastName: true, email: true, phone: true, notifyChannel: true, denominacionsocial: true, nif: true, autoMonthlyInvoice: true}},
+                    client: {select: {id: true, firstName: true, lastName: true, email: true, phone: true, notifyChannel: true, denominacionsocial: true, nif: true, isbigclient: true, autoMonthlyInvoice: true}},
                     notification: {select: {id: true, type: true, sentAt: true, status: true, content: true}},
                     invoiceTickets: {
                         include: {

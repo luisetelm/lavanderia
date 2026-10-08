@@ -164,7 +164,7 @@ export default function Deliveries({token}) {
                             {trabajando ? <span uk-spinner="ratio: 0.6"></span> : <><span uk-icon="icon: sign-out; ratio: 0.9"></span> Entregar</>}
                         </button>
                     )}
-                    {o.status === 'ready' && !puedeEntregar && !pagaAFinDeMes(o) && (
+                    {o.status === 'ready' && !o.paid && !sinCobro && !pagaAFinDeMes(o) && (
                         <Link to={rutaPedido(o)} className="uk-button uk-button-default" title="Abrir el pedido para cobrarlo">Cobrar</Link>
                     )}
                     {o.status === 'collected' && <span className="ent-hecho"><span uk-icon="icon: check; ratio: 0.8"></span> Entregado</span>}

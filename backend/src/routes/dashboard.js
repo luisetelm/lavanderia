@@ -40,7 +40,7 @@ export default async function dashboardRoutes(fastify) {
                     ],
                     take: 15,
                     include: {
-                        client: { select: { id: true, firstName: true, lastName: true, phone: true, notifyChannel: true, autoMonthlyInvoice: true } },
+                        client: { select: { id: true, firstName: true, lastName: true, phone: true, notifyChannel: true, isbigclient: true, autoMonthlyInvoice: true } },
                         lines: {
                             select: {
                                 id: true,
@@ -58,7 +58,7 @@ export default async function dashboardRoutes(fastify) {
                     orderBy: { updatedAt: 'asc' },
                     take: 15,
                     include: {
-                        client: { select: { id: true, firstName: true, lastName: true, phone: true, notifyChannel: true, autoMonthlyInvoice: true } },
+                        client: { select: { id: true, firstName: true, lastName: true, phone: true, notifyChannel: true, isbigclient: true, autoMonthlyInvoice: true } },
                     },
                 }),
 

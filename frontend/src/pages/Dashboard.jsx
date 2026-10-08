@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { fetchDashboard, updateOrder, fetchTrackingBoard, fetchSepaDebits } from '../api.js';
 import { formatEUR } from '../utils/format.js';
 import { rutaCliente, rutaEntregas, rutaPedido } from '../utils/rutas.js';
-import { pagaAFinDeMes } from '../utils/pedidos.js';
+import { cobroAplazado, esGranCliente, pagaAFinDeMes } from '../utils/pedidos.js';
 import { Link, useNavigate } from 'react-router-dom';
 import StatusChangeModal from '../components/StatusChangeModal.jsx';
 
@@ -334,7 +334,7 @@ export default function Dashboard({ token, user }) {
                                     <div style={{ textAlign: 'right', flexShrink: 0 }}>
                                         <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>{formatEUR(o.total)}</div>
                                         {!o.paid && (
-                                            <span style={{ fontSize: '0.65rem', color: pagaAFinDeMes(o) ? '#64748b' : '#ef4444', fontWeight: 600 }}>{pagaAFinDeMes(o) ? 'Factura mensual' : 'Sin cobrar'}</span>
+                                            <span style={{ fontSize: '0.65rem', color: cobroAplazado(o) ? '#64748b' : '#ef4444', fontWeight: 600 }}>{pagaAFinDeMes(o) ? 'Factura mensual' : esGranCliente(o) ? 'Sin cobrar · gran cliente' : 'Sin cobrar'}</span>
                                         )}
                                         {o.paid && (
                                             <span style={{ fontSize: '0.65rem', color: '#22c55e', fontWeight: 600 }}>Cobrado</span>
