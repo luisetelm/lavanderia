@@ -363,6 +363,60 @@ export default async function (fastify, opts) {
         return reply.send(serialized);
     });
 
+    // ─── POST /api/orders/bulk-status ── Cambiar el estado de varios pedidos a la vez ──
+    // Mismas reglas que el cambio individual (PATCH /:id): un pedido sin cobrar no
+    // se entrega salvo cobro aplazado (gran cliente o factura a fin de mes), y un
+    // pedido cobrado no se anula. Los que no cumplen se omiten con su motivo, y el
+    // resto cambia; no es todo o nada para que un pedido raro no frene a los demás.
+    const ESTADOS_PEDIDO = ['pending', 'in_progress', 'ready', 'collected', 'cancelled'];
+    fastify.post('/bulk-status', async (req, reply) => {
+        const prisma = fastify.prisma;
+        const {ids, status, sendSMS} = req.body || {};
+        const orderIds = [...new Set((Array.isArray(ids) ? ids : []).map(Number).filter(n => Number.isInteger(n) && n > 0))];
+        if (!orderIds.length) return reply.status(400).send({error: 'Indica al menos un pedido.'});
+        if (orderIds.length > 500) return reply.status(400).send({error: 'Como mucho 500 pedidos por tanda.'});
+        if (!ESTADOS_PEDIDO.includes(status)) return reply.status(400).send({error: 'Estado no válido.'});
+
+        const pedidos = await prisma.order.findMany({
+            where: {id: {in: orderIds}},
+            select: {
+                id: true, orderNum: true, status: true, paid: true, total: true,
+                client: {select: {phone: true, isbigclient: true, autoMonthlyInvoice: true}},
+            },
+        });
+        const porId = new Map(pedidos.map(p => [p.id, p]));
+
+        const cambiados = [];
+        const omitidos = [];
+        for (const id of orderIds) {
+            const p = porId.get(id);
+            if (!p) { omitidos.push({id, motivo: 'No existe'}); continue; }
+            if (p.status === status) { omitidos.push({id, orderNum: p.orderNum, motivo: 'Ya estaba en ese estado'}); continue; }
+            const cobroAplazado = !!p.client?.isbigclient || !!p.client?.autoMonthlyInvoice;
+            if (status === 'collected' && !p.paid && Number(p.total) > 0 && !cobroAplazado) {
+                omitidos.push({id, orderNum: p.orderNum, motivo: 'Sin cobrar'}); continue;
+            }
+            if (status === 'cancelled' && p.paid && Number(p.total) > 0) {
+                omitidos.push({id, orderNum: p.orderNum, motivo: 'Está cobrado'}); continue;
+            }
+            const data = {status, updatedAt: new Date()};
+            if (status === 'cancelled') data.total = 0;
+            await prisma.order.update({where: {id}, data});
+            cambiados.push({id, orderNum: p.orderNum, estadoAnterior: p.status});
+
+            if (sendSMS && p.client?.phone) {
+                try {
+                    if (status === 'ready') await sendReadyNotification(prisma, id, sendSMS);
+                    if (status === 'collected') await sendCollectedNotification(prisma, id, sendSMS);
+                } catch (e) {
+                    fastify.log.error({err: e, orderId: id}, 'bulk-status: no se pudo avisar al cliente');
+                }
+            }
+        }
+
+        return reply.send({status, cambiados, omitidos});
+    });
+
     fastify.patch('/:id', async (req, reply) => {
         const prisma = fastify.prisma;
         const orderId = Number(req.params.id);

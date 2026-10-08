@@ -209,6 +209,13 @@ export async function updateOrder(token, taskId, data) {
     return res.json();
 }
 
+/** Cambia el estado de varios pedidos a la vez. Devuelve {status, cambiados, omitidos}. */
+export function bulkUpdateOrderStatus(token, ids, status, sendSMS = false) {
+    return request('/orders/bulk-status', token, {
+        method: 'POST', body: JSON.stringify({ids, status, sendSMS}),
+    });
+}
+
 export async function updateOrderLine(token, lineId, data) {
     const res = await fetch(`/api/orders/lines/${lineId}`, {
         method: 'PATCH',

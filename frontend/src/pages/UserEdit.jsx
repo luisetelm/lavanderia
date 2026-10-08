@@ -4,17 +4,20 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useDraftOrder } from '../hooks/useDraftOrder.js';
 import { useMessages } from '../hooks/useMessages.js';
 import UIkit from 'uikit';
-import { fetchUser } from '../api.js';
+import { bulkUpdateOrderStatus, fetchUser } from '../api.js';
 import { formatEUR } from '../utils/format.js';
 import { rutaEntregas, rutaPedido } from '../utils/rutas.js';
 import UserForm from '../components/UserForm.jsx';
 import PageToolbar from '../components/PageToolbar.jsx';
 import ClientPricesTab from '../components/ClientPricesTab.jsx';
 import ClientSepaTab from '../components/ClientSepaTab.jsx';
+import BulkStatusModal from '../components/BulkStatusModal.jsx';
+import { ESTADOS_LOTE } from '../utils/pedidos.js';
 import { FACTURA_SEPA_EN_CURSO, FACTURA_SEPA_FALLIDA } from '../utils/sepa.js';
 
 const STATUS_LABELS = {
   pending: { text: 'Pendiente', cls: 'uk-label-warning' },
+  in_progress: { text: 'En proceso', cls: 'uk-label-warning' },
   ready: { text: 'Listo', cls: 'uk-label-success' },
   collected: { text: 'Recogido', cls: '' },
   cancelled: { text: 'Cancelado', cls: 'uk-label-danger' },
@@ -64,6 +67,11 @@ export default function UserEdit({ token, user: loggedUser }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState('orders');
+  // Cambio de estado en lote: pedidos marcados, estado de destino y confirmación.
+  const [seleccion, setSeleccion] = useState(() => new Set());
+  const [estadoLote, setEstadoLote] = useState('collected');
+  const [confirmarLote, setConfirmarLote] = useState(false);
+  const [cambiandoLote, setCambiandoLote] = useState(false);
   const draft = useDraftOrder();
   const chat = useMessages();
   const esCliente = user && !['admin', 'cashier', 'worker'].includes(user.role);
@@ -95,6 +103,35 @@ export default function UserEdit({ token, user: loggedUser }) {
 
   const orders = user?.orders || [];
   const invoices = user?.invoices || [];
+  const seleccionados = orders.filter(o => seleccion.has(o.id));
+  const todosMarcados = orders.length > 0 && seleccionados.length === orders.length;
+  const alternar = (id) => setSeleccion(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const alternarTodos = () => setSeleccion(todosMarcados ? new Set() : new Set(orders.map(o => o.id)));
+  const cobroAplazado = !!(user?.isbigclient || user?.autoMonthlyInvoice);
+
+  const aplicarLote = async (sendSMS) => {
+    setConfirmarLote(false);
+    setCambiandoLote(true);
+    try {
+      const r = await bulkUpdateOrderStatus(token, seleccionados.map(o => o.id), estadoLote, sendSMS);
+      const n = r.cambiados.length;
+      const m = r.omitidos.length;
+      UIkit.notification({
+        message: `${n} pedido${n !== 1 ? 's' : ''} cambiado${n !== 1 ? 's' : ''}${m ? ` · ${m} omitido${m !== 1 ? 's' : ''}` : ''}`,
+        status: n ? 'success' : 'warning', pos: 'top-right', timeout: 4000,
+      });
+      setSeleccion(new Set());
+      await load();
+    } catch (err) {
+      UIkit.notification({ message: err.error || 'No se pudo cambiar el estado', status: 'danger', pos: 'top-right' });
+    } finally {
+      setCambiandoLote(false);
+    }
+  };
   const notifications = user?.notifications || [];
   const loginLogs = user?.loginLogs || [];
 
@@ -218,9 +255,26 @@ export default function UserEdit({ token, user: loggedUser }) {
                     <div style={{textAlign: 'center', padding: 20, color: '#94a3b8'}}>Sin pedidos</div>
                   ) : (
                     <div className="uk-overflow-auto">
+                      {seleccionados.length > 0 && (
+                        <div style={{display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '8px 10px', marginBottom: 8, background: '#f1f5f9', borderRadius: 6, fontSize: '0.82rem'}}>
+                          <strong>{seleccionados.length} seleccionado{seleccionados.length !== 1 ? 's' : ''}</strong>
+                          <span style={{color: '#64748b'}}>Cambiar a</span>
+                          <select className="uk-select uk-form-small" style={{width: 'auto'}} value={estadoLote} onChange={e => setEstadoLote(e.target.value)}>
+                            {ESTADOS_LOTE.map(e => <option key={e.value} value={e.value}>{e.label}</option>)}
+                          </select>
+                          <button type="button" className="uk-button uk-button-primary uk-button-small" disabled={cambiandoLote} onClick={() => setConfirmarLote(true)}>
+                            {cambiandoLote ? <span uk-spinner="ratio: 0.5"></span> : 'Aplicar'}
+                          </button>
+                          <button type="button" className="uk-button uk-button-text uk-button-small" onClick={() => setSeleccion(new Set())}>Quitar selección</button>
+                        </div>
+                      )}
                       <table className="uk-table uk-table-divider uk-table-small uk-table-hover" style={{margin: 0}}>
                         <thead>
                           <tr>
+                            <th style={{width: 28}}>
+                              <input className="uk-checkbox" type="checkbox" checked={todosMarcados} onChange={alternarTodos}
+                                     title={todosMarcados ? 'Quitar la selección' : 'Seleccionar todos los pedidos'}/>
+                            </th>
                             <th>#</th>
                             <th>Estado</th>
                             <th style={{textAlign: 'right'}}>Total</th>
@@ -235,8 +289,11 @@ export default function UserEdit({ token, user: loggedUser }) {
                             const atrasado = !['collected', 'cancelled'].includes(o.status) && o.fechaLimite
                               && new Date(o.fechaLimite) < new Date(new Date().toDateString());
                             return (
-                              <tr key={o.id} style={{ cursor: 'pointer' }}
+                              <tr key={o.id} style={{ cursor: 'pointer', background: seleccion.has(o.id) ? '#eff6ff' : undefined }}
                                 onClick={() => navigate(rutaPedido(o))}>
+                                <td onClick={e => e.stopPropagation()}>
+                                  <input className="uk-checkbox" type="checkbox" checked={seleccion.has(o.id)} onChange={() => alternar(o.id)}/>
+                                </td>
                                 <td style={{fontWeight: 500}}><Link to={rutaPedido(o)} onClick={e => e.stopPropagation()}>{o.orderNum}</Link></td>
                                 <td><span className={`uk-label ${s.cls}`} style={{fontSize: '0.65rem'}}>{s.text}</span></td>
                                 <td style={{textAlign: 'right'}}>{formatEUR(o.total)}</td>
@@ -263,6 +320,17 @@ export default function UserEdit({ token, user: loggedUser }) {
                       </table>
                     </div>
                   )
+                )}
+
+                {confirmarLote && (
+                  <BulkStatusModal
+                    pedidos={seleccionados}
+                    status={estadoLote}
+                    cobroAplazado={cobroAplazado}
+                    clientChannel={user?.notifyChannel || null}
+                    onConfirm={aplicarLote}
+                    onCancel={() => setConfirmarLote(false)}
+                  />
                 )}
 
                 {/* ── Facturas ── */}

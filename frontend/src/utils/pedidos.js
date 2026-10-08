@@ -31,3 +31,12 @@ export function etiquetaCobro(order) {
     if (esGranCliente(order)) return 'Pendiente de pago · gran cliente';
     return 'Pendiente de pago';
 }
+
+/** Estados a los que se puede pasar un pedido (cambio individual o en lote), en orden de flujo. */
+export const ESTADOS_LOTE = [
+    {value: 'pending', label: 'Pendiente'},
+    {value: 'in_progress', label: 'En proceso'},
+    {value: 'ready', label: 'Listo para recoger'},
+    {value: 'collected', label: 'Entregado'},
+    {value: 'cancelled', label: 'Cancelado'},
+];
