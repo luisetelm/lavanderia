@@ -591,6 +591,114 @@ export function convertBigIntToString(obj) {
     return obj;
 }
 
+// ── Justificante de cobro ──────────────────────────────────────────────────
+// Cuando una factura NORMAL pasa a cobrada, su PDF (que se emitió diciendo
+// "Pendiente" y con los datos para la transferencia) se vuelve a generar con
+// "Pagada", la fecha y la forma de cobro, y se envía al cliente como justificante.
+//
+// Lo llaman todos los caminos de cobro de una factura: POST /:id/collect y
+// /collect-batch (efectivo, tarjeta, transferencia), el webhook de Stripe (enlace
+// de pago) y services/sepa.js (adeudo confirmado). Las simplificadas no tienen
+// PDF ni se envían, así que no les aplica.
+//
+// Nunca lanza: el cobro ya está hecho y un fallo del PDF o del correo no debe
+// deshacerlo ni romper la respuesta. Por eso se llama sin await.
+const METODO_COBRO = {
+    cash: 'Efectivo', card_pos: 'Tarjeta', card: 'Tarjeta', transfer: 'Transferencia',
+    stripe: 'Tarjeta (pago en línea)', sepa: 'Adeudo SEPA en cuenta',
+};
+
+export async function enviarJustificanteCobro(prisma, invoiceId, {metodo} = {}) {
+    try {
+        const id = BigInt(invoiceId);
+        const result = await prisma.invoices.findUnique({
+            where: {id}, include: {
+                User: true, invoiceLines: true, invoiceTickets: {
+                    include: {order: {include: {lines: {include: {product: true}}}}}
+                }
+            },
+        });
+        if (!result) return {sent: false, motivo: 'La factura no existe'};
+        if (result.type !== 'n' || result.isRectifying) return {sent: false, motivo: 'Sólo se envía justificante de facturas normales'};
+        if (!(result.paid === true || result.paymentStatus === 'paid')) return {sent: false, motivo: 'La factura no está cobrada'};
+
+        // Forma de cobro: la que diga quien llama o, si no, la del último pago de la factura
+        let metodoCobro = metodo;
+        if (!metodoCobro) {
+            const pago = await prisma.payment.findFirst({
+                where: {invoiceId: id, status: 'completed', amount: {gt: 0}},
+                orderBy: {createdAt: 'desc'},
+            });
+            metodoCobro = pago?.method;
+        }
+        const formaCobro = METODO_COBRO[metodoCobro] || null;
+        const fechaCobro = new Date().toLocaleDateString('es-ES', {timeZone: 'Europe/Madrid'});
+        const importe = Number(result.totalGross || 0).toLocaleString('es-ES', {
+            minimumFractionDigits: 2, maximumFractionDigits: 2
+        }) + ' €';
+
+        // 1) Regenerar el PDF con el estado de cobro
+        const pdfDir = path.join(process.cwd(), 'invoices_pdfs');
+        if (!fs.existsSync(pdfDir)) fs.mkdirSync(pdfDir, {recursive: true});
+        const pdfFilename = `factura_${result.id}.pdf`;
+        const pdfPath = path.join(pdfDir, pdfFilename);
+
+        const cliente = result.User || {};
+        const direccionCompleta = [cliente.direccion, cliente.codigopostal, cliente.localidad, cliente.provincia, cliente.pais].filter(Boolean).join(', ');
+        const esFisica = (cliente.tipopersona || '').toLowerCase().includes('fís');
+        const etiquetaNombre = esFisica ? 'Nombre' : 'Denominación social';
+        const valorNombre = esFisica ? `${cliente.firstName || ''} ${cliente.lastName || ''}`.trim() : (cliente.denominacionsocial || `${cliente.firstName || ''} ${cliente.lastName || ''}`.trim());
+
+        const html = buildInvoiceHtml({
+            invoice: {...result, paid: true, cobro: `Cobrada el ${fechaCobro}${formaCobro ? ` · ${formaCobro}` : ''}`},
+            cliente: {...cliente, direccionCompleta, etiquetaNombre, valorNombre},
+        });
+
+        const browser = await puppeteer.launch({headless: 'new', args: ['--no-sandbox', '--disable-setuid-sandbox']});
+        try {
+            const page = await browser.newPage();
+            await page.setContent(html, {waitUntil: 'load'});
+            await page.pdf({path: pdfPath, format: 'A4', printBackground: true});
+        } finally {
+            await browser.close();
+        }
+
+        // 2) Enviarlo al cliente, con copia a la lavandería como al emitir
+        if (!cliente.email) return {sent: false, pdf: true, motivo: 'El cliente no tiene email'};
+        if (envioDesactivado(`justificante de cobro ${result.number}`)) return {sent: false, pdf: true, motivo: 'Envío desactivado'};
+
+        const {FROM_EMAIL, FROM_NAME, SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS} = process.env;
+        const transporter = nodemailer.createTransport({
+            host: SMTP_HOST,
+            port: Number(SMTP_PORT) || 587,
+            secure: false,
+            requireTLS: true,
+            auth: {user: SMTP_USER, pass: SMTP_PASS},
+        });
+        await transporter.sendMail({
+            from: {name: FROM_NAME || 'Tinte y Burbuja', address: FROM_EMAIL},
+            to: [cliente.email, 'hola@tinteyburbuja.com'],
+            subject: `Justificante de pago - Factura ${result.number} - Tinte y Burbuja`,
+            html: emailTemplate({
+                title: `Pago recibido · Factura ${result.number}`,
+                body: `
+                    <p>Estimado/a cliente,</p>
+                    <p>Hemos registrado el pago de la factura <strong>${result.number}</strong> por importe de <strong>${importe}</strong>, con fecha ${fechaCobro}${formaCobro ? ` (${formaCobro.toLowerCase()})` : ''}.</p>
+                    <p>Adjuntamos la factura, ya marcada como pagada, como justificante.</p>
+                    <p>Gracias por confiar en nosotros.</p>
+                    <p>Un saludo,<br><strong>Tinte y Burbuja</strong></p>
+                `,
+            }),
+            attachments: [{filename: pdfFilename, content: fs.readFileSync(pdfPath)}],
+        });
+        console.log(`[Justificante] Enviado el justificante de cobro de ${result.number} a ${cliente.email}`);
+        return {sent: true, pdf: true};
+    } catch (err) {
+        console.error(`[Justificante] No se pudo enviar el justificante de cobro de la factura ${invoiceId}:`, err?.message || err);
+        return {sent: false, error: err?.message || String(err)};
+    }
+}
+
 // Generador de HTML, usa issuedAt de la factura
 function buildInvoiceHtml({invoice, cliente}) {
     const money = (n) => Number(n || 0).toLocaleString('es-ES', {
@@ -724,6 +832,7 @@ function buildInvoiceHtml({invoice, cliente}) {
           <td class="num strong">
             ${money(invoice.totalGross ?? ((invoice.totalNet ?? 0) + (invoice.totalTax ?? 0) - (invoice.totalWithholding ?? 0)))}
             <div class="status-badge ${isPaid ? 'status-paid' : 'status-due'}">${paidStatus}</div>
+            ${isPaid && invoice.cobro ? `<div style="font-size:11px; font-weight:400; color:#16a34a; margin-top:4px;">${invoice.cobro}</div>` : ''}
           </td>
         </tr>
       </table>
@@ -1141,6 +1250,9 @@ export default async function (fastify) {
                 }
             });
 
+            // Justificante de cobro al cliente, en segundo plano (no retrasa ni rompe la respuesta)
+            enviarJustificanteCobro(prisma, invoiceId, {metodo: method});
+
             // Devolver factura actualizada
             const updated = await prisma.invoices.findUnique({
                 where: {id: invoiceId},
@@ -1233,6 +1345,11 @@ export default async function (fastify) {
                     results.push({invoiceId: rawId, status: 'collected'});
                 }
             });
+
+            // Justificantes de cobro en segundo plano y de uno en uno (cada PDF abre un navegador)
+            (async () => {
+                for (const r of results) await enviarJustificanteCobro(prisma, r.invoiceId, {metodo: method});
+            })();
 
             return reply.send({collected: results.length, results});
         } catch (e) {

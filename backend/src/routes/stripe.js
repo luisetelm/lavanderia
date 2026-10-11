@@ -4,6 +4,7 @@ import {
     guardarMandato, adeudoCobrado, adeudoRechazado, adeudoDevuelto, mandatoActualizado,
 } from '../services/sepa.js';
 import { facturaDe, facturaPendienteDe, avisoFacturaPendiente } from '../utils/facturaDe.js';
+import { enviarJustificanteCobro } from './invoices.js';
 
 // Stripe da importes en céntimos y fechas en segundos Unix
 const aEuros = (centimos) => Number(((centimos || 0) / 100).toFixed(2));
@@ -455,6 +456,8 @@ export async function stripeWebhookRoutes(fastify) {
                             where: { id: invoiceId },
                             data: { paid: true, paymentStatus: 'paid' }
                         });
+                        // Justificante de cobro al cliente, en segundo plano
+                        enviarJustificanteCobro(prisma, invoiceId, { metodo: 'stripe' });
 
                         // Marcar pedidos vinculados como pagados
                         for (const ticket of (invoice.invoiceTickets || [])) {

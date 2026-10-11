@@ -1,4 +1,5 @@
 import stripe from './stripe.js';
+import { enviarJustificanteCobro } from '../routes/invoices.js';
 
 // Domiciliación SEPA con Stripe (docs/domiciliacion-sepa.md).
 //
@@ -246,6 +247,11 @@ export async function adeudoCobrado(prisma, intent) {
             }
         }
     });
+    // Justificante de cobro al cliente, en segundo plano: con SEPA el cargo llega
+    // días después de la factura y sin que el cliente haga nada.
+    if (pago.invoice && pago.invoice.paid !== true) {
+        enviarJustificanteCobro(prisma, pago.invoiceId, {metodo: 'sepa'});
+    }
     console.log(`[SEPA] Adeudo ${intent.id} cobrado`);
 }
 
