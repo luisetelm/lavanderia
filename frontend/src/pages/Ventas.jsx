@@ -133,6 +133,7 @@ export default function Ventas({token}) {
             const paymentMethod = v.paymentMethod ? (
                 v.paymentMethod === 'card' ? 'Tarjeta' :
                     v.paymentMethod === 'cash' ? 'Efectivo' :
+                    v.paymentMethod === 'mixed' ? 'Efectivo y tarjeta' :
                         v.paymentMethod === 'transfer' ? 'Transferencia' :
                             v.paymentMethod === 'sepa' ? 'Adeudo SEPA' :
                                 v.paymentMethod
@@ -364,8 +365,9 @@ export default function Ventas({token}) {
                 if (!types.has(invoiceTypeFilter)) return false;
             }
             // payment method
-            if (methodFilter === 'cash' && v.paymentMethod !== 'cash') return false;
-            if (methodFilter === 'card' && v.paymentMethod !== 'card') return false;
+            // Un cobro mixto (efectivo + tarjeta) sale en los dos filtros
+            if (methodFilter === 'cash' && v.paymentMethod !== 'cash' && v.paymentMethod !== 'mixed') return false;
+            if (methodFilter === 'card' && v.paymentMethod !== 'card' && v.paymentMethod !== 'mixed') return false;
             // NUEVO: solo importes > 0
             const totalNum = Number(v.total);
             if (onlyPositive && !(totalNum > 0)) return false;

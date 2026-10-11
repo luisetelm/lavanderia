@@ -480,7 +480,7 @@ export async function printSaleTicket(order, products = [], options = {}) {
           <div class="client-info">
             <div><strong>Cliente:</strong> ${clientName}</div>
             ${client.phone ? `<div><strong>Teléfono:</strong> ${client.phone}</div>` : ''}
-            ${order.paid ? `<div class="payment-info">Pago: ${order.paymentMethod === 'cash' ? 'Efectivo' : 'Tarjeta'}</div>` : `<div class="ticket-no-pagado">Pendiente de pago</div>`}
+            ${order.paid ? `<div class="payment-info">Pago: ${order.paymentMethod === 'cash' ? 'Efectivo' : order.paymentMethod === 'mixed' ? 'Efectivo y tarjeta' : 'Tarjeta'}</div>` : `<div class="ticket-no-pagado">Pendiente de pago</div>`}
           </div>
           
           <hr/>

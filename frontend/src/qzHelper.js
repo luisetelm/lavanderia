@@ -27,7 +27,7 @@ Tel: ${client.phone || ''}
 ${lines.join('\n')}
 
 Total: ${order.total.toFixed(2)}€
-Pago: ${order.paymentMethod === 'cash' ? 'Efectivo' : 'Tarjeta'}
+Pago: ${order.paymentMethod === 'cash' ? 'Efectivo' : order.paymentMethod === 'mixed' ? 'Efectivo y tarjeta' : 'Tarjeta'}
 
 Gracias por su confianza!
 `.trim();

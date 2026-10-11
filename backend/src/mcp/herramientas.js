@@ -644,15 +644,21 @@ export const HERRAMIENTAS = [
     {
         nombre: 'registrar_pago',
         titulo: 'Registrar el cobro de un pedido',
-        descripcion: 'Cobra un pedido completo en efectivo o con tarjeta (TPV físico). Con tarjeta se emite la factura simplificada; en efectivo se anota el movimiento de caja y se devuelve el cambio. No admite cobros parciales. Confirma siempre con la persona antes de cobrar.',
+        descripcion: 'Cobra un pedido completo en efectivo, con tarjeta (TPV físico) o mixto (una parte en efectivo y el resto con tarjeta). Con tarjeta o mixto se emite la factura simplificada; el efectivo se anota en caja y se devuelve el cambio. Siempre se cobra el total del pedido: no admite dejar una parte pendiente. Confirma siempre con la persona antes de cobrar.',
         soloLectura: false,
         esquema: {
             pedido: z.union([z.number().int(), z.string()]).describe('Id o número de pedido'),
-            metodo: z.enum(['efectivo', 'tarjeta']),
-            importeRecibido: z.number().positive().optional().describe('Obligatorio en efectivo: lo que entrega el cliente'),
+            metodo: z.enum(['efectivo', 'tarjeta', 'mixto']),
+            importeEfectivo: z.number().positive().optional().describe('Obligatorio en mixto: la parte que se paga en efectivo (mayor que 0 y menor que el total); el resto va a tarjeta'),
+            importeRecibido: z.number().positive().optional().describe('Lo que entrega el cliente en efectivo, para el cambio. Obligatorio en efectivo; en mixto, por defecto la parte en efectivo justa'),
         },
-        async ejecutar({pedido, metodo, importeRecibido}, {api}) {
+        async ejecutar({pedido, metodo, importeEfectivo, importeRecibido}, {api}) {
             const id = await resolverPedidoId(api, pedido);
+            if (metodo === 'mixto') {
+                if (!importeEfectivo) throw error('En un cobro mixto indica importeEfectivo: la parte que se paga en efectivo.');
+                const r = await api.post(`/orders/${id}/pay`, {method: 'mixed', cashAmount: importeEfectivo, receivedAmount: importeRecibido});
+                return {pedido: pedidoCompacto(r.order), cambio: eur(r.change)};
+            }
             const r = await api.post(`/orders/${id}/pay`, {method: metodo === 'efectivo' ? 'cash' : 'card', receivedAmount: importeRecibido});
             return {pedido: pedidoCompacto(r.order), cambio: eur(r.change)};
         },

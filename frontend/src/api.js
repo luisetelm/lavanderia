@@ -327,6 +327,19 @@ export function payWithCash(token, orderId, receivedAmount) {
     });
 }
 
+// Cobro mixto: cashAmount se queda en caja y el resto del total va a tarjeta (TPV).
+// receivedAmount es lo que entrega el cliente en efectivo (para la vuelta); por defecto, lo justo.
+export function payMixed(token, orderId, cashAmount, receivedAmount) {
+    return request(`/orders/${orderId}/pay`, token, {
+        method: 'POST', body: JSON.stringify({
+            method: 'mixed',
+            cashAmount: parseFloat(cashAmount),
+            receivedAmount: receivedAmount === undefined || receivedAmount === null || receivedAmount === ''
+                ? undefined : parseFloat(receivedAmount),
+        }),
+    });
+}
+
 
 // helper para refrescar un pedido existente (asume que tu backend tiene GET /orders/:id)
 export function fetchOrder(token, orderId) {

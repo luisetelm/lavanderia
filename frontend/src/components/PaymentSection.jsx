@@ -9,6 +9,7 @@ import {
     fetchUsers,
     payWithCard,
     payWithCash,
+    payMixed,
     updateOrder,
     updateOrder as apiUpdateOrder,
     retryNotification,
@@ -198,6 +199,20 @@ export default function PaymentSection({token, orderId, onPaid, initialOrder = n
     const handleCashPay = async (received) => {
         if (!order) return 0;
         const {order: paidOrder, change} = await payWithCash(token, order.id, received);
+        setOrder(paidOrder);
+        setLastChange(change);
+        onPaid?.();
+        if (getPrintSettings().onPay) {
+            try { await printSaleTicket(paidOrder, [], {token, variant: 'customer'}); }
+            catch (e) { console.warn('Impresión automática al cobrar falló:', e); }
+        }
+        return change;
+    };
+
+    // Cobro mixto: parte en efectivo (a caja) y el resto con tarjeta en el TPV
+    const handleMixedPay = async (cashAmount, received) => {
+        if (!order) return 0;
+        const {order: paidOrder, change} = await payMixed(token, order.id, cashAmount, received);
         setOrder(paidOrder);
         setLastChange(change);
         onPaid?.();
@@ -585,6 +600,7 @@ export default function PaymentSection({token, orderId, onPaid, initialOrder = n
                 onClose={() => setShowPaymentModal(false)}
                 onPayCard={handleCardPay}
                 onPayCash={handleCashPay}
+                onPayMixed={handleMixedPay}
                 onStripeLink={handleStripePaymentLink}
             />
         )}
@@ -617,9 +633,17 @@ export default function PaymentSection({token, orderId, onPaid, initialOrder = n
                 {(() => {
                     const pay = (order.payments || []).find(p => p.status === 'completed') || (order.payments || [])[0] || null;
                     const METHOD = { cash: 'Efectivo', card_pos: 'Tarjeta (TPV)', card: 'Tarjeta', stripe: 'Stripe', transfer: 'Transferencia', sepa: 'Adeudo SEPA', none: 'Sin cobro' };
-                    const methodLabel = pay?.method
+                    // Cobro repartido en varios métodos (p. ej. parte en efectivo y parte con tarjeta):
+                    // se muestra cada método con su importe.
+                    const porMetodo = (order.payments || [])
+                        .filter(p => p.status === 'completed')
+                        .reduce((acc, p) => { acc[p.method] = (acc[p.method] || 0) + Number(p.amount || 0); return acc; }, {});
+                    const partes = Object.entries(porMetodo).filter(([, imp]) => Math.abs(imp) >= 0.005);
+                    const methodLabel = partes.length > 1
+                        ? partes.map(([m, imp]) => `${METHOD[m] || m} ${formatEUR(imp)}`).join(' + ')
+                        : pay?.method
                         ? (METHOD[pay.method] || pay.method)
-                        : (order.paymentMethod ? (order.paymentMethod === 'cash' ? 'Efectivo' : order.paymentMethod === 'none' ? 'Sin cobro' : 'Tarjeta') : 'No seleccionado');
+                        : (order.paymentMethod ? (order.paymentMethod === 'cash' ? 'Efectivo' : order.paymentMethod === 'none' ? 'Sin cobro' : order.paymentMethod === 'mixed' ? 'Efectivo y tarjeta' : 'Tarjeta') : 'No seleccionado');
                     return (<>
                         <div>
                             <strong>Método de pago:</strong> {methodLabel}

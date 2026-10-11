@@ -150,6 +150,7 @@ export default function VentaRow({
     const paymentMethodLabel = venta?.paymentMethod
         ? (venta.paymentMethod === 'card' ? 'Tarjeta'
             : venta.paymentMethod === 'cash' ? 'Efectivo'
+            : venta.paymentMethod === 'mixed' ? 'Efectivo y tarjeta'
             : venta.paymentMethod === 'transfer' ? 'Transferencia'
             : venta.paymentMethod === 'sepa' ? 'Adeudo SEPA'
             : venta.paymentMethod)

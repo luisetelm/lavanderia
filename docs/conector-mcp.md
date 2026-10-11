@@ -62,7 +62,7 @@ además exige `confirmadoPorUsuario=true`):
 |---|---|---|
 | `crear_pedido` | alta real del pedido (cliente existente o nuevo) | `POST /orders` |
 | `cambiar_estado_pedido` | pending / in_progress / ready / collected / cancelled, con aviso opcional al cliente | `PATCH /orders/:id` |
-| `registrar_pago` | cobro completo en efectivo (con cambio) o tarjeta | `POST /orders/:id/pay` |
+| `registrar_pago` | cobro completo en efectivo (con cambio), tarjeta o mixto (parte en efectivo y resto con tarjeta) | `POST /orders/:id/pay` |
 | `fijar_precio_pactado` (admin) | precio pactado por cliente y producto con vigencia | `POST /users/:id/prices` |
 | `enviar_mensaje` | texto por WhatsApp (ventana abierta) o SMS en una conversación existente | `POST /messages/send` |
 

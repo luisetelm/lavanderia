@@ -9,13 +9,17 @@ import { formatEUR } from '../utils/format.js';
  *  - onClose()                           cierra el modal
  *  - onPayCard(): Promise                ejecuta el pago con tarjeta (lanza en error)
  *  - onPayCash(received): Promise<number> ejecuta el pago en efectivo, devuelve la vuelta
+ *  - onPayMixed(cash, received): Promise<number>  cobro mixto: `cash` en efectivo y el resto
+ *                                        con tarjeta; devuelve la vuelta. Si no se pasa, no se ofrece.
  *  - onStripeLink(): Promise<string>     genera/copia el enlace Stripe, devuelve la url
  */
-export default function PaymentModal({ total, onClose, onPayCard, onPayCash, onStripeLink }) {
+export default function PaymentModal({ total, onClose, onPayCard, onPayCash, onPayMixed, onStripeLink }) {
     const totalNum = Number(total || 0);
 
-    const [method, setMethod] = useState(null);   // null | 'card' | 'cash' | 'stripe'
+    const [method, setMethod] = useState(null);   // null | 'card' | 'cash' | 'mixed' | 'stripe'
     const [received, setReceived] = useState('');
+    const [mixCash, setMixCash] = useState('');         // parte en efectivo del cobro mixto
+    const [mixReceived, setMixReceived] = useState(''); // efectivo entregado (opcional, para la vuelta)
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState('');
     const [done, setDone] = useState(null);        // { type, change?, url? }
@@ -43,6 +47,24 @@ export default function PaymentModal({ total, onClose, onPayCard, onPayCash, onS
     const confirmCash = async () => {
         if (insufficient || received === '') return;
         try { const ch = await run(() => onPayCash(receivedNum)); setDone({ type: 'cash', change: ch }); } catch { /* */ }
+    };
+
+    // Cobro mixto: parte en efectivo (mayor que 0 y menor que el total) y el resto con tarjeta
+    const cent = (n) => Math.round(n * 100) / 100;
+    const mixCashNum = cent(parseFloat(mixCash));
+    const mixCardNum = cent(totalNum - mixCashNum);
+    const mixInvalid = mixCash !== '' && (isNaN(mixCashNum) || mixCashNum <= 0 || mixCardNum <= 0);
+    const mixReceivedNum = mixReceived === '' ? mixCashNum : cent(parseFloat(mixReceived));
+    const mixShort = mixReceived !== '' && (isNaN(mixReceivedNum) || mixReceivedNum < mixCashNum);
+    const mixChange = !isNaN(mixReceivedNum) && !isNaN(mixCashNum) ? Math.max(0, cent(mixReceivedNum - mixCashNum)) : 0;
+    const mixReady = mixCash !== '' && !mixInvalid && !mixShort;
+
+    const confirmMixed = async () => {
+        if (!mixReady) return;
+        try {
+            const ch = await run(() => onPayMixed(mixCashNum, mixReceivedNum));
+            setDone({ type: 'mixed', change: ch, cash: mixCashNum, card: mixCardNum });
+        } catch { /* error mostrado */ }
     };
 
     const confirmStripe = async () => {
@@ -77,6 +99,17 @@ export default function PaymentModal({ total, onClose, onPayCard, onPayCash, onS
                         {done.type === 'card' && (
                             <p style={{ margin: '10px 0 0', fontWeight: 600 }}>Pago con tarjeta registrado</p>
                         )}
+                        {done.type === 'mixed' && (
+                            <>
+                                <p style={{ margin: '10px 0 4px', fontWeight: 600 }}>Cobro mixto registrado</p>
+                                <p style={{ margin: 0, fontSize: 13, color: '#64748b' }}>
+                                    {formatEUR(done.cash)} en efectivo y {formatEUR(done.card)} con tarjeta
+                                </p>
+                                <p style={{ fontSize: '1.3rem', fontWeight: 700, color: '#166534', margin: '6px 0 0' }}>
+                                    Vuelta: {formatEUR(done.change)}
+                                </p>
+                            </>
+                        )}
                         {done.type === 'stripe' && (
                             <>
                                 <p style={{ margin: '10px 0 6px', fontWeight: 600 }}>Enlace de pago generado</p>
@@ -101,6 +134,12 @@ export default function PaymentModal({ total, onClose, onPayCard, onPayCash, onS
                                 onClick={() => setMethod('cash')}>
                             💵 Efectivo
                         </button>
+                        {onPayMixed && totalNum > 0.01 && (
+                            <button className="uk-button uk-button-default uk-width-1-1" style={{ textAlign: 'left', minHeight: 48 }}
+                                    onClick={() => setMethod('mixed')}>
+                                💵 + 💳 Parte en efectivo y parte con tarjeta
+                            </button>
+                        )}
                         <button className="uk-button uk-button-default uk-width-1-1" style={{ textAlign: 'left', minHeight: 48 }}
                                 onClick={() => setMethod('stripe')}>
                             🔗 Enlace de pago (Stripe)
@@ -158,6 +197,53 @@ export default function PaymentModal({ total, onClose, onPayCard, onPayCash, onS
                                 <button className="uk-button uk-button-primary uk-width-1-1"
                                         disabled={busy || received === '' || insufficient} onClick={confirmCash}>
                                     {busy ? 'Procesando…' : 'Confirmar cobro en efectivo'}
+                                </button>
+                            </div>
+                        )}
+
+                        {method === 'mixed' && (
+                            <div>
+                                <label style={{ fontSize: 12, color: '#64748b' }}>Parte en efectivo</label>
+                                <input
+                                    type="number" autoFocus inputMode="decimal" min="0" step="0.01"
+                                    className="uk-input" value={mixCash}
+                                    onChange={(e) => { setMixCash(e.target.value); setError(''); }}
+                                    placeholder="€"
+                                    disabled={busy}
+                                    style={mixInvalid ? { borderColor: '#f0506e' } : undefined}
+                                />
+                                <div style={{ display: 'flex', justifyContent: 'space-between', margin: '8px 0 12px', fontSize: 13 }}>
+                                    {mixInvalid
+                                        ? <span style={{ color: '#f0506e', fontWeight: 600 }}>Debe ser mayor que 0 y menor que el total</span>
+                                        : <span style={{ color: '#64748b' }}>Resto con tarjeta (TPV)</span>}
+                                    {!mixInvalid && mixCash !== '' && <span style={{ fontWeight: 700 }}>{formatEUR(mixCardNum)}</span>}
+                                </div>
+
+                                <label style={{ fontSize: 12, color: '#64748b' }}>Efectivo entregado (opcional, para calcular la vuelta)</label>
+                                <input
+                                    type="number" inputMode="decimal" min="0" step="0.01"
+                                    className="uk-input" value={mixReceived}
+                                    onChange={(e) => { setMixReceived(e.target.value); setError(''); }}
+                                    onKeyDown={(e) => { if (e.key === 'Enter') confirmMixed(); }}
+                                    placeholder={mixCash !== '' && !mixInvalid ? `${mixCashNum} (justo)` : '€'}
+                                    disabled={busy}
+                                    style={mixShort ? { borderColor: '#f0506e' } : undefined}
+                                />
+                                <div style={{ display: 'flex', justifyContent: 'space-between', margin: '8px 0 12px', fontSize: 13 }}>
+                                    {mixShort
+                                        ? <span style={{ color: '#f0506e', fontWeight: 600 }}>No cubre la parte en efectivo</span>
+                                        : <span style={{ color: '#64748b' }}>Vuelta</span>}
+                                    {!mixShort && <span style={{ fontWeight: 700, color: '#166534' }}>{formatEUR(mixChange)}</span>}
+                                </div>
+
+                                {mixReady && (
+                                    <p style={{ fontSize: '0.85rem', margin: '0 0 12px' }}>
+                                        Cobra <b>{formatEUR(mixCardNum)}</b> en el TPV y guarda <b>{formatEUR(mixCashNum)}</b> en caja antes de confirmar.
+                                    </p>
+                                )}
+                                <button className="uk-button uk-button-primary uk-width-1-1"
+                                        disabled={busy || !mixReady} onClick={confirmMixed}>
+                                    {busy ? 'Procesando…' : 'Confirmar cobro mixto'}
                                 </button>
                             </div>
                         )}

@@ -525,7 +525,11 @@ export default async function (fastify, opts) {
     fastify.post('/:id/pay', async (req, reply) => {
         const prisma = fastify.prisma;
         const orderId = Number(req.params.id);
-        const {method, receivedAmount} = req.body; // method: 'cash' | 'card'
+        // method: 'cash' | 'card' | 'mixed' (parte en efectivo y el resto con tarjeta).
+        // En 'mixed', cashAmount es la parte que se queda en caja y receivedAmount
+        // (opcional) lo que entrega el cliente en efectivo, para calcular la vuelta.
+        const {method, receivedAmount, cashAmount} = req.body || {};
+        const cent = (n) => Math.round(Number(n) * 100) / 100;
 
         try {
             const order = await prisma.order.findUnique({
@@ -539,11 +543,28 @@ export default async function (fastify, opts) {
             }
 
 
-            if (method !== 'cash' && method !== 'card') {
+            if (method !== 'cash' && method !== 'card' && method !== 'mixed') {
                 return reply.status(400).send({error: 'Método de pago inválido'});
             }
 
+            const total = cent(order.total);
             let change = 0;
+            // Partes del cobro: una por método. Suman siempre el total del pedido.
+            let partes = [{method: method === 'card' ? 'card_pos' : 'cash', amount: order.total}];
+            if (method === 'mixed') {
+                const efectivo = cent(parseFloat(cashAmount));
+                const tarjeta = cent(total - efectivo);
+                if (!Number.isFinite(efectivo) || efectivo <= 0 || tarjeta <= 0) {
+                    return reply.status(400).send({error: 'En un cobro mixto la parte en efectivo debe ser mayor que 0 y menor que el total'});
+                }
+                const entregado = receivedAmount === undefined || receivedAmount === null || receivedAmount === ''
+                    ? efectivo : cent(parseFloat(receivedAmount));
+                if (!Number.isFinite(entregado) || entregado < efectivo) {
+                    return reply.status(400).send({error: 'Cantidad recibida insuficiente para la parte en efectivo'});
+                }
+                change = cent(entregado - efectivo);
+                partes = [{method: 'cash', amount: efectivo}, {method: 'card_pos', amount: tarjeta}];
+            }
             if (method === 'cash') {
                 if (receivedAmount === undefined) {
                     return reply.status(400).send({error: 'Debe indicar cantidad recibida para efectivo'});
@@ -555,7 +576,8 @@ export default async function (fastify, opts) {
                 change = received - order.total;
             }
 
-            if (method === 'card') {
+            // Con parte en tarjeta se emite la factura simplificada, igual que al cobrar todo con tarjeta
+            if (method === 'card' || method === 'mixed') {
                 await crearFactura(prisma, {orderIds: [orderId], type: 's'});
             }
 
@@ -577,30 +599,34 @@ export default async function (fastify, opts) {
                     },
                 });
 
-                // Crear Payment unificado
-                await tx.payment.create({
-                    data: {
-                        amount: order.total,
-                        method: method === 'card' ? 'card_pos' : 'cash',
-                        status: 'completed',
-                        orderId: orderId,
-                        clientId: order.clientId,
-                        recordedBy: req.user?.userId || null,
-                        note: `Pago pedido #${updatedOrder.orderNum}`,
-                    }
-                });
-
-                // Si es efectivo, registrar movimiento de caja atómicamente
-                if (method === 'cash') {
-                    await tx.cashMovement.create({
+                // Crear Payment unificado: uno por cada parte del cobro
+                for (const parte of partes) {
+                    const sufijo = method !== 'mixed' ? ''
+                        : parte.method === 'cash' ? ' (parte en efectivo)' : ' (parte con tarjeta)';
+                    await tx.payment.create({
                         data: {
-                            type: 'sale_cash_in',
-                            amount: order.total,
-                            note: `Pago pedido #${updatedOrder.orderNum || orderId}`,
-                            orderid: orderId,
-                            userid: req.user?.userId,
+                            amount: parte.amount,
+                            method: parte.method,
+                            status: 'completed',
+                            orderId: orderId,
+                            clientId: order.clientId,
+                            recordedBy: req.user?.userId || null,
+                            note: `Pago pedido #${updatedOrder.orderNum}${sufijo}`,
                         }
                     });
+
+                    // La parte en efectivo entra en caja en la misma transacción
+                    if (parte.method === 'cash') {
+                        await tx.cashMovement.create({
+                            data: {
+                                type: 'sale_cash_in',
+                                amount: parte.amount,
+                                note: `Pago pedido #${updatedOrder.orderNum || orderId}${sufijo}`,
+                                orderid: orderId,
+                                userid: req.user?.userId,
+                            }
+                        });
+                    }
                 }
 
                 // Si el pedido ya tenía factura normal vinculada, marcarla como pagada
@@ -615,7 +641,7 @@ export default async function (fastify, opts) {
                 return updatedOrder;
             });
 
-            return reply.send({order: updated, change: method === 'cash' ? change : 0});
+            return reply.send({order: updated, change: method === 'card' ? 0 : change});
         } catch (err) {
             console.error('Error en /orders/:id/pay:', err);
             return reply
