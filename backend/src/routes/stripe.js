@@ -3,7 +3,7 @@ import {
     SEPA_EN_CURSO, crearEnlaceMandato, cancelarMandato, cobrarFacturaSepa, listarAdeudos,
     guardarMandato, adeudoCobrado, adeudoRechazado, adeudoDevuelto, mandatoActualizado,
 } from '../services/sepa.js';
-import { facturaDe } from '../utils/facturaDe.js';
+import { facturaDe, facturaPendienteDe, avisoFacturaPendiente } from '../utils/facturaDe.js';
 
 // Stripe da importes en céntimos y fechas en segundos Unix
 const aEuros = (centimos) => Number(((centimos || 0) / 100).toFixed(2));
@@ -205,10 +205,16 @@ export default async function (fastify) {
             if (type === 'order') {
                 const order = await prisma.order.findUnique({
                     where: { id: Number(id) },
-                    include: { client: { select: { email: true, firstName: true, lastName: true, id: true } } }
+                    include: {
+                        client: { select: { email: true, firstName: true, lastName: true, id: true } },
+                        invoiceTickets: { include: { invoices: true } },
+                    }
                 });
                 if (!order) return reply.code(404).send({ error: 'Pedido no encontrado' });
                 if (order.paid) return reply.code(400).send({ error: 'El pedido ya está pagado' });
+                // Incluido en una factura normal sin cobrar: se cobra la factura, no el pedido
+                const facturaPendiente = facturaPendienteDe(order);
+                if (facturaPendiente) return reply.code(400).send({ error: avisoFacturaPendiente(facturaPendiente) });
                 amount = order.total;
                 description = `Pedido ${order.orderNum}`;
                 customerEmail = order.client?.email;
@@ -278,10 +284,16 @@ export default async function (fastify) {
             if (type === 'order') {
                 const order = await prisma.order.findUnique({
                     where: { id: Number(id) },
-                    include: { client: { select: { email: true, id: true } } }
+                    include: {
+                        client: { select: { email: true, id: true } },
+                        invoiceTickets: { include: { invoices: true } },
+                    }
                 });
                 if (!order) return reply.code(404).send({ error: 'Pedido no encontrado' });
                 if (order.paid) return reply.code(400).send({ error: 'El pedido ya está pagado' });
+                // Incluido en una factura normal sin cobrar: se cobra la factura, no el pedido
+                const facturaPendiente = facturaPendienteDe(order);
+                if (facturaPendiente) return reply.code(400).send({ error: avisoFacturaPendiente(facturaPendiente) });
                 amount = order.total;
                 description = `Pedido ${order.orderNum}`;
                 customerEmail = order.client?.email;

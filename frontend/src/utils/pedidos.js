@@ -23,10 +23,27 @@ export function sePuedeRecoger(order) {
     return !!order.paid || Number(order.total) <= 0 || cobroAplazado(order);
 }
 
+/**
+ * Factura NORMAL del pedido que sigue sin cobrar. Mientras exista, lo pendiente es
+ * la factura y no el pedido: se cobra la factura y el pedido queda cobrado con ella.
+ * Las simplificadas (ticket de un pedido de mostrador) y las rectificativas no cuentan.
+ * Réplica de backend/src/utils/facturaDe.js (facturaPendienteDe), que es la que vale.
+ */
+export function facturaPendiente(order) {
+    const tickets = order?.invoiceTickets;
+    if (!tickets) return null;
+    const lista = Array.isArray(tickets) ? tickets : [tickets];
+    const t = lista.find((x) => x?.invoices && !x.invoices.isRectifying && x.invoices.type === 'n'
+        && !(x.invoices.paid === true || x.invoices.paymentStatus === 'paid'));
+    return t?.invoices || null;
+}
+
 /** Texto corto del estado de cobro para listas. */
 export function etiquetaCobro(order) {
     if (order?.paid) return 'Pagado';
     if (Number(order?.total) <= 0) return 'Sin cobro';
+    const factura = facturaPendiente(order);
+    if (factura) return `Facturado${factura.number ? ` en ${factura.number}` : ''} · factura pendiente de cobro`;
     if (pagaAFinDeMes(order)) return 'Factura a fin de mes';
     if (esGranCliente(order)) return 'Pendiente de pago · gran cliente';
     return 'Pendiente de pago';

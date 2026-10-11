@@ -6,6 +6,11 @@ import { cobrarFacturaSepa, mandatoActivo } from './sepa.js';
  * Factura los pedidos del mes anterior que no estén ya facturados y, si el
  * cliente tiene la domiciliación SEPA activa, lanza el adeudo de la factura.
  *
+ * Si en el mes hay pedidos cobrados y sin cobrar mezclados (el cliente pagó
+ * alguno en el mostrador), la factura mensual lleva sólo los pendientes de pago:
+ * es lo que se le reclama, y crearFactura() rechaza mezclar estados de pago.
+ * Los ya cobrados quedan fuera y se facturan aparte si hace falta.
+ *
  * @param {import('@prisma/client').PrismaClient} prisma
  * @returns {Promise<{processed: number, invoiced: number, sepaCharged: number, errors: Array}>}
  */
@@ -38,7 +43,7 @@ export async function generateMonthlyInvoices(prisma) {
         processed++;
         try {
             // Buscar pedidos del mes anterior sin facturar
-            const orders = await prisma.order.findMany({
+            const delMes = await prisma.order.findMany({
                 where: {
                     clientId: client.id,
                     createdAt: {
@@ -56,12 +61,20 @@ export async function generateMonthlyInvoices(prisma) {
                     // factura la emite el cierre de la proforma, no este proceso.
                     proformaOrders: { none: { proforma: { status: { in: ['issued', 'accepted'] } } } },
                 },
-                select: { id: true, orderNum: true, total: true }
+                select: { id: true, orderNum: true, total: true, paid: true }
             });
 
-            if (orders.length === 0) {
+            if (delMes.length === 0) {
                 console.log(`[MonthlyInvoicing] Cliente ${client.id} (${client.firstName} ${client.lastName}): sin pedidos para facturar`);
                 continue;
+            }
+
+            // Con cobrados y sin cobrar mezclados, sólo los pendientes de pago
+            const pendientes = delMes.filter(o => !o.paid);
+            const orders = pendientes.length > 0 ? pendientes : delMes;
+            if (orders.length < delMes.length) {
+                const fuera = delMes.filter(o => o.paid).map(o => o.orderNum).join(', ');
+                console.log(`[MonthlyInvoicing] Cliente ${client.id}: ${delMes.length - orders.length} pedidos ya cobrados quedan fuera de la factura mensual (${fuera})`);
             }
 
             const orderIds = orders.map(o => o.id);

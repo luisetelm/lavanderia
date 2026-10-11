@@ -603,7 +603,6 @@ export default async function (fastify, opts) {
             phone: normalizedPhone || null,
             isActive,
             isbigclient,
-            autoMonthlyInvoice: autoMonthlyInvoice || false,
             denominacionsocial,
             nif,
             tipopersona,
@@ -613,6 +612,10 @@ export default async function (fastify, opts) {
             codigopostal,
             pais,
         };
+        // La facturación mensual sólo cambia si la petición la trae. Antes, una edición
+        // parcial que no la mandaba (p. ej. guardar el canal de aviso desde el TPV) la
+        // desactivaba sin que nadie lo pidiera, y el cliente dejaba de facturarse.
+        if (autoMonthlyInvoice !== undefined) data.autoMonthlyInvoice = !!autoMonthlyInvoice;
         // Validación y asignación de discount (0-100) si viene
         if (discount !== undefined) {
             const d = parseFloat(discount);

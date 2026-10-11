@@ -1,7 +1,7 @@
 import React, {useState, useEffect, useCallback} from 'react';
 import {Link} from 'react-router-dom';
 import {rutaCliente, rutaPedido} from '../utils/rutas.js';
-import {etiquetaCobro, sePuedeRecoger} from '../utils/pedidos.js';
+import {etiquetaCobro, sePuedeRecoger, facturaPendiente} from '../utils/pedidos.js';
 import { confirmar, avisar } from '../utils/dialogo.js';
 import {
     createInvoice,
@@ -10,6 +10,7 @@ import {
     payWithCard,
     payWithCash,
     payMixed,
+    collectInvoice,
     updateOrder,
     updateOrder as apiUpdateOrder,
     retryNotification,
@@ -207,6 +208,30 @@ export default function PaymentSection({token, orderId, onPaid, initialOrder = n
             catch (e) { console.warn('Impresión automática al cobrar falló:', e); }
         }
         return change;
+    };
+
+    // Pedido incluido en una factura normal sin cobrar: lo pendiente es la factura.
+    // No se ofrece el cobro del pedido, sino el de la factura entera.
+    const [showCollectInvoice, setShowCollectInvoice] = useState(false);
+    const facturaPte = order && !order.paid ? facturaPendiente(order) : null;
+    const facturaPteSepa = facturaPte?.paymentStatus === 'sepa_processing';
+
+    const handleCollectInvoice = async (method) => {
+        if (!facturaPte) return;
+        setIsProcessing(true);
+        try {
+            await collectInvoice(token, facturaPte.id, {method});
+            setShowCollectInvoice(false);
+            await loadOrder();
+            setHistoryKey(k => k + 1);
+            onPaid?.();
+            notify(`Factura ${facturaPte.number || ''} cobrada`, 'success');
+        } catch (e) {
+            console.error(e);
+            notify(e?.error || 'Error al cobrar la factura', 'danger');
+        } finally {
+            setIsProcessing(false);
+        }
     };
 
     // Cobro mixto: parte en efectivo (a caja) y el resto con tarjeta en el TPV
@@ -603,6 +628,36 @@ export default function PaymentSection({token, orderId, onPaid, initialOrder = n
                 onPayMixed={handleMixedPay}
                 onStripeLink={handleStripePaymentLink}
             />
+        )}
+
+        {showCollectInvoice && facturaPte && (
+            <div className="uk-modal uk-open" style={{ display: 'block' }}>
+                <div className="uk-modal-dialog uk-modal-body" style={{ maxWidth: 440 }}>
+                    <button type="button" className="uk-modal-close-default" uk-icon="close"
+                            onClick={() => setShowCollectInvoice(false)} aria-label="Cerrar"></button>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 }}>
+                        <h2 className="uk-modal-title" style={{ fontSize: '1.05rem', margin: 0 }}>Cobrar factura {facturaPte.number}</h2>
+                        <span style={{ fontSize: '1.4rem', fontWeight: 700 }}>{formatEUR(facturaPte.totalGross)}</span>
+                    </div>
+                    <p style={{ fontSize: '0.85rem', color: '#64748b', margin: '0 0 12px' }}>
+                        Se cobra la factura completa. Si incluye más pedidos, quedan todos cobrados.
+                    </p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        <button className="uk-button uk-button-default uk-width-1-1" style={{ textAlign: 'left', minHeight: 48 }}
+                                disabled={isProcessing} onClick={() => handleCollectInvoice('transfer')}>
+                            🏦 Transferencia
+                        </button>
+                        <button className="uk-button uk-button-default uk-width-1-1" style={{ textAlign: 'left', minHeight: 48 }}
+                                disabled={isProcessing} onClick={() => handleCollectInvoice('card_pos')}>
+                            💳 Tarjeta (TPV)
+                        </button>
+                        <button className="uk-button uk-button-default uk-width-1-1" style={{ textAlign: 'left', minHeight: 48 }}
+                                disabled={isProcessing} onClick={() => handleCollectInvoice('cash')}>
+                            💵 Efectivo
+                        </button>
+                    </div>
+                </div>
+            </div>
         )}
 
         {/* Vuelta del último pago en efectivo (persiste tras el cobro) */}
@@ -1043,7 +1098,7 @@ export default function PaymentSection({token, orderId, onPaid, initialOrder = n
                 >
                     {/* Cobro: solo si el pedido tiene importe y está pendiente de pago.
                         Los pedidos de 0 € (p. ej. 100% descuento) no requieren cobro. */}
-                    {!order.paid && Number(order.total) > 0 && (
+                    {!order.paid && Number(order.total) > 0 && !facturaPte && (
                         <button
                             type="button"
                             className={'uk-button uk-button-primary uk-width-1-1@l'}
@@ -1052,6 +1107,24 @@ export default function PaymentSection({token, orderId, onPaid, initialOrder = n
                         >
                             💰 Cobrar {formatEUR(order.total)}
                         </button>
+                    )}
+
+                    {/* Incluido en una factura normal sin cobrar: se cobra la factura, no el pedido */}
+                    {!order.paid && Number(order.total) > 0 && facturaPte && (
+                        <div style={{ width: '100%' }}>
+                            <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>
+                                Facturado en <b>{facturaPte.number}</b>. Lo pendiente es la factura, no el pedido.
+                            </div>
+                            <button
+                                type="button"
+                                className={'uk-button uk-button-primary uk-width-1-1@l'}
+                                onClick={() => setShowCollectInvoice(true)}
+                                disabled={isProcessing || facturaPteSepa}
+                                title={facturaPteSepa ? 'Hay un adeudo SEPA en curso: espera a que Stripe lo confirme o lo rechace' : undefined}
+                            >
+                                {facturaPteSepa ? 'Adeudo SEPA en curso' : `💰 Cobrar factura ${formatEUR(facturaPte.totalGross)}`}
+                            </button>
+                        </div>
                     )}
 
                     <button

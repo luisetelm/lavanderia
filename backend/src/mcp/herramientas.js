@@ -644,7 +644,7 @@ export const HERRAMIENTAS = [
     {
         nombre: 'registrar_pago',
         titulo: 'Registrar el cobro de un pedido',
-        descripcion: 'Cobra un pedido completo en efectivo, con tarjeta (TPV físico) o mixto (una parte en efectivo y el resto con tarjeta). Con tarjeta o mixto se emite la factura simplificada; el efectivo se anota en caja y se devuelve el cambio. Siempre se cobra el total del pedido: no admite dejar una parte pendiente. Confirma siempre con la persona antes de cobrar.',
+        descripcion: 'Cobra un pedido completo en efectivo, con tarjeta (TPV físico) o mixto (una parte en efectivo y el resto con tarjeta). Con tarjeta o mixto se emite la factura simplificada; el efectivo se anota en caja y se devuelve el cambio. Siempre se cobra el total del pedido: no admite dejar una parte pendiente. Si el pedido está incluido en una factura normal sin cobrar, la API lo rechaza: lo pendiente es la factura y se cobra desde la aplicación (Ventas o ficha del pedido). Confirma siempre con la persona antes de cobrar.',
         soloLectura: false,
         esquema: {
             pedido: z.union([z.number().int(), z.string()]).describe('Id o número de pedido'),

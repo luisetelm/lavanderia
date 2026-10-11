@@ -3,7 +3,7 @@
 import {normalizePhone, isValidPhone, TELEFONO_AYUDA} from '../utils/validatePhone.js';
 import {crearFactura, crearRectificativa, convertBigIntToString} from "./invoices.js";
 import { sendCollectedNotification, sendReadyNotification } from '../services/notify.js';
-import { facturaDe } from '../utils/facturaDe.js';
+import { facturaDe, facturaPendienteDe, facturaCobrada, avisoFacturaPendiente } from '../utils/facturaDe.js';
 import { calcularLinea, preciosPactadosVigentes } from '../utils/precioLinea.js';
 import { calcularPresupuesto } from '../utils/presupuesto.js';
 import { getWorkCalendar, getDayInfo, nextWorkingDay, ymd, addDays, mondayOf } from '../utils/workCalendar.js';
@@ -542,6 +542,12 @@ export default async function (fastify, opts) {
                 return reply.status(400).send({error: 'Pedido ya está pagado'});
             }
 
+            // Incluido en una factura normal sin cobrar: lo pendiente es la factura
+            const facturaPendiente = facturaPendienteDe(order);
+            if (facturaPendiente) {
+                return reply.status(400).send({error: avisoFacturaPendiente(facturaPendiente)});
+            }
+
 
             if (method !== 'cash' && method !== 'card' && method !== 'mixed') {
                 return reply.status(400).send({error: 'Método de pago inválido'});
@@ -576,8 +582,10 @@ export default async function (fastify, opts) {
                 change = received - order.total;
             }
 
-            // Con parte en tarjeta se emite la factura simplificada, igual que al cobrar todo con tarjeta
-            if (method === 'card' || method === 'mixed') {
+            // Con parte en tarjeta se emite la factura simplificada, igual que al cobrar todo con tarjeta.
+            // Si el pedido ya tiene factura (una simplificada emitida a mano, o un ajuste
+            // posterior) no se emite otra: crearFactura lo rechazaría por estar ya facturado.
+            if ((method === 'card' || method === 'mixed') && !facturaDe(order)) {
                 await crearFactura(prisma, {orderIds: [orderId], type: 's'});
             }
 
@@ -629,13 +637,19 @@ export default async function (fastify, opts) {
                     }
                 }
 
-                // Si el pedido ya tenía factura normal vinculada, marcarla como pagada
-                const facturaVigente = facturaDe(order);
-                if (facturaVigente) {
-                    await tx.invoices.update({
-                        where: {id: facturaVigente.id},
-                        data: {paid: true, paymentStatus: 'paid'}
-                    });
+                // Las facturas que el pedido ya tuviera sin cobrar quedan cobradas con él.
+                // Aquí sólo llegan simplificadas (la del pedido y, si se ajustó después,
+                // la de lo añadido): con una normal pendiente el cobro se rechaza arriba.
+                const tickets = Array.isArray(order.invoiceTickets) ? order.invoiceTickets
+                    : (order.invoiceTickets ? [order.invoiceTickets] : []);
+                for (const t of tickets) {
+                    const inv = t?.invoices;
+                    if (inv && !inv.isRectifying && !facturaCobrada(inv)) {
+                        await tx.invoices.update({
+                            where: {id: inv.id},
+                            data: {paid: true, paymentStatus: 'paid'}
+                        });
+                    }
                 }
 
                 return updatedOrder;
