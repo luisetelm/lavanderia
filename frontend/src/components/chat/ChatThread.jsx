@@ -484,73 +484,83 @@ export default function ChatThread({ token, conv, onBack, onToggleInfo, infoOpen
                     <button onClick={() => setNotasAsistente(null)} title="Cerrar" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', padding: 0, fontSize: 14, lineHeight: 1 }}>×</button>
                 </div>
             )}
+            {/* Compositor en dos filas: el texto a todo el ancho y debajo las herramientas */}
             <div className="msg-composer">
-                <select className="uk-select uk-form-small msg-composer-channel" value={channel} onChange={e => setChannel(e.target.value)}>
-                    <option value="whatsapp">WA</option>
-                    <option value="sms">SMS</option>
-                </select>
+                <div className="msg-composer-main">
+                    {waWindowClosed ? (
+                        <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6, padding: '0 8px', minHeight: 34, fontSize: 12, color: '#94a3b8' }}>
+                            <span style={{ fontSize: 14 }}>🔒</span>
+                            <span>Ventana 24h cerrada — usa una <button
+                                onClick={loadTemplates}
+                                style={{ background: 'none', border: 'none', color: '#048ABF', cursor: 'pointer', fontWeight: 600, padding: 0, fontSize: 12, textDecoration: 'underline' }}
+                            >plantilla</button> o cambia a SMS</span>
+                        </div>
+                    ) : (
+                        <>
+                            <textarea
+                                ref={inputRef}
+                                rows={1}
+                                className="uk-textarea uk-form-small msg-composer-input"
+                                placeholder={attachedFile ? 'Añade un mensaje al archivo...' : 'Escribe un mensaje... (Mayús+Enter: salto de línea)'}
+                                value={composerText}
+                                onChange={e => setComposerText(e.target.value)}
+                                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+                                disabled={sending}
+                            />
+                            <button
+                                className="uk-button uk-button-primary uk-button-small msg-composer-send"
+                                onClick={handleSend}
+                                disabled={sending || (!(composerText || '').trim() && !attachedFile)}
+                            >
+                                {sending
+                                    ? <span key="sp" uk-spinner="ratio: 0.4"></span>
+                                    : <span key="ar" uk-icon="icon: arrow-right; ratio: 0.85"></span>}
+                            </button>
+                        </>
+                    )}
+                </div>
 
-                {channel === 'whatsapp' && (
-                    <button className="msg-composer-tpl-btn" onClick={loadTemplates} disabled={templatesLoading} title="Plantillas de WhatsApp">
-                        {templatesLoading ? '...' : '📄'}
+                <div className="msg-composer-tools">
+                    <select className="uk-select uk-form-small msg-composer-channel" value={channel} onChange={e => setChannel(e.target.value)}>
+                        <option value="whatsapp">WhatsApp</option>
+                        <option value="sms">SMS</option>
+                    </select>
+
+                    {channel === 'whatsapp' && (
+                        <button className="msg-composer-tpl-btn" onClick={loadTemplates} disabled={templatesLoading} title="Plantillas de WhatsApp">
+                            {templatesLoading ? '...' : '📄'}
+                        </button>
+                    )}
+
+                    <button
+                        className="msg-composer-tpl-btn"
+                        onClick={sugerirRespuesta}
+                        disabled={sugiriendo || sending}
+                        title={(composerText || '').trim() ? 'Redactar con el asistente lo que has escrito' : 'Proponer respuesta con el asistente'}
+                    >
+                        {sugiriendo ? <span uk-spinner="ratio: 0.4"></span> : '✨'}
                     </button>
-                )}
 
-                <button
-                    className="msg-composer-tpl-btn"
-                    onClick={sugerirRespuesta}
-                    disabled={sugiriendo || sending}
-                    title={(composerText || '').trim() ? 'Redactar con el asistente lo que has escrito' : 'Proponer respuesta con el asistente'}
-                >
-                    {sugiriendo ? <span uk-spinner="ratio: 0.4"></span> : '✨'}
-                </button>
-
-                {waWindowClosed ? (
-                    <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6, padding: '0 8px', fontSize: 12, color: '#94a3b8' }}>
-                        <span style={{ fontSize: 14 }}>🔒</span>
-                        <span>Ventana 24h cerrada — usa una <button
-                            onClick={loadTemplates}
-                            style={{ background: 'none', border: 'none', color: '#048ABF', cursor: 'pointer', fontWeight: 600, padding: 0, fontSize: 12, textDecoration: 'underline' }}
-                        >plantilla</button> o cambia a SMS</span>
-                    </div>
-                ) : (
-                    <>
-                        <button
-                            className="msg-attach-btn"
-                            onClick={() => fileInputRef.current?.click()}
-                            title="Adjuntar archivo"
-                            disabled={sending}
-                        >
-                            <span uk-icon="icon: plus-circle; ratio: 0.85"></span>
-                        </button>
-                        <input
-                            ref={fileInputRef}
-                            type="file"
-                            accept={ACCEPT_STRING}
-                            style={{ display: 'none' }}
-                            onChange={(e) => { handleFileSelect(e.target.files?.[0]); e.target.value = ''; }}
-                        />
-                        <textarea
-                            ref={inputRef}
-                            rows={1}
-                            className="uk-textarea uk-form-small msg-composer-input"
-                            placeholder={attachedFile ? 'Añade un mensaje al archivo...' : 'Escribe un mensaje... (Mayús+Enter: salto de línea)'}
-                            value={composerText}
-                            onChange={e => setComposerText(e.target.value)}
-                            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-                            disabled={sending}
-                        />
-                        <button
-                            className="uk-button uk-button-primary uk-button-small msg-composer-send"
-                            onClick={handleSend}
-                            disabled={sending || (!(composerText || '').trim() && !attachedFile)}
-                        >
-                            {sending
-                                ? <span key="sp" uk-spinner="ratio: 0.4"></span>
-                                : <span key="ar" uk-icon="icon: arrow-right; ratio: 0.85"></span>}
-                        </button>
-                    </>
-                )}
+                    {!waWindowClosed && (
+                        <>
+                            <button
+                                className="msg-attach-btn"
+                                onClick={() => fileInputRef.current?.click()}
+                                title="Adjuntar archivo"
+                                disabled={sending}
+                            >
+                                <span uk-icon="icon: plus-circle; ratio: 0.85"></span>
+                            </button>
+                            <input
+                                ref={fileInputRef}
+                                type="file"
+                                accept={ACCEPT_STRING}
+                                style={{ display: 'none' }}
+                                onChange={(e) => { handleFileSelect(e.target.files?.[0]); e.target.value = ''; }}
+                            />
+                        </>
+                    )}
+                </div>
             </div>
 
             {/* Lightbox */}

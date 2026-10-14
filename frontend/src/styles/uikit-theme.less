@@ -984,9 +984,11 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 /* Composer */
+/* Dos filas: arriba el texto a todo el ancho con el botón de enviar; debajo
+   las herramientas (canal, plantillas, asistente, adjuntar), más pequeñas. */
 .msg-composer {
   display: flex;
-  align-items: flex-end; /* el área de texto crece hacia arriba; los botones quedan abajo */
+  flex-direction: column;
   gap: 6px;
   padding: 8px 10px;
   border-top: 1px solid @color-border;
@@ -994,13 +996,30 @@ h1, h2, h3, h4, h5, h6 {
   flex-shrink: 0;
 }
 
+.msg-composer-main {
+  display: flex;
+  align-items: flex-end; /* el área de texto crece hacia arriba; enviar queda abajo */
+  gap: 6px;
+}
+
+.msg-composer-tools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+
+  .msg-composer-tpl-btn, .msg-attach-btn {
+    height: 28px;
+    min-width: 28px;
+    padding: 0 6px;
+    font-size: 14px;
+  }
+}
+
 .msg-composer-channel {
-  width: 60px !important;
-  min-width: 60px;
-  padding: 0 4px !important;
+  width: auto !important;
+  padding: 0 22px 0 8px !important;
   font-size: 12px !important;
-  height: 34px !important;
-  text-align: center;
+  height: 28px !important;
   flex-shrink: 0;
 }
 
@@ -1889,7 +1908,8 @@ h1, h2, h3, h4, h5, h6 {
   }
 
   .msg-composer-send { width: 36px; height: 36px; line-height: 36px !important; }
-  .msg-composer-tpl-btn, .msg-attach-btn { height: 36px; min-width: 36px; padding: 0 6px; }
+  .msg-composer-tools .msg-composer-tpl-btn, .msg-composer-tools .msg-attach-btn { height: 32px; min-width: 32px; }
+  .msg-composer-channel { height: 32px !important; }
   .msg-bubble { max-width: 85%; }
   .msg-media-img, .msg-media-video { max-width: 220px; }
 }
