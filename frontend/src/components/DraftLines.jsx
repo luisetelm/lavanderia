@@ -1,6 +1,7 @@
-import React, {useState} from 'react';
+import React, {useState, useEffect} from 'react';
 import {useDraftOrder} from '../hooks/useDraftOrder.js';
 import './DraftLines.css';
+import {confirmar} from '../utils/dialogo.js';
 
 // Líneas del pedido en curso (prendas) con toda su edición: color, cantidad,
 // nota y fotos, desglose en prendas individuales, pasos opcionales y borrado.
@@ -47,6 +48,44 @@ const compressPhoto = (file) => new Promise((resolve) => {
     };
     reader.readAsDataURL(file);
 });
+
+const MAX_CANTIDAD = 9999;
+
+/* Cantidad de la línea: con − y + para retocar, y escribible para las grandes
+   (50, 80, 100 servilletas). Se aplica al salir del campo o con Intro; vacío
+   o 0 vuelve al valor anterior (para quitar la línea está la ×). */
+function CantidadLinea({value, onChange}) {
+    const [texto, setTexto] = useState(String(value));
+    useEffect(() => { setTexto(String(value)); }, [value]);
+
+    const aplicar = () => {
+        const n = parseInt(texto, 10);
+        if (!Number.isFinite(n) || n < 1) { setTexto(String(value)); return; }
+        const q = Math.min(n, MAX_CANTIDAD);
+        if (q !== value) onChange(q);
+        setTexto(String(q));
+    };
+
+    return (
+        <input
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            className="dl-qty-input"
+            aria-label="Cantidad"
+            title="Escribe la cantidad"
+            value={texto}
+            size={Math.max(2, texto.length)}
+            onFocus={(e) => e.target.select()}
+            onChange={(e) => setTexto(e.target.value.replace(/\D/g, '').slice(0, 4))}
+            onBlur={aplicar}
+            onKeyDown={(e) => {
+                if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); }
+                if (e.key === 'Escape') { setTexto(String(value)); e.currentTarget.blur(); }
+            }}
+        />
+    );
+}
 
 export default function DraftLines({theme = 'light', emptyText = null}) {
     const {
@@ -120,7 +159,7 @@ export default function DraftLines({theme = 'light', emptyText = null}) {
                             <div className="dl-qty">
                                 <button type="button" className="dl-btn" aria-label="Una menos"
                                         onClick={() => updateQuantity(c.lineId, c.quantity - 1)}>−</button>
-                                <span className="dl-qty-num">{c.quantity}</span>
+                                <CantidadLinea value={c.quantity} onChange={(q) => updateQuantity(c.lineId, q)}/>
                                 <button type="button" className="dl-btn" aria-label="Una más"
                                         onClick={() => updateQuantity(c.lineId, c.quantity + 1)}>+</button>
                             </div>
@@ -143,7 +182,13 @@ export default function DraftLines({theme = 'light', emptyText = null}) {
                                 </button>
                                 {c.quantity > 1 && (
                                     <button type="button" className="dl-btn" title="Desglosar en prendas individuales"
-                                            onClick={() => splitLine(c.lineId)}>
+                                            onClick={async () => {
+                                                // Con muchas unidades saldrían decenas de líneas.
+                                                if (c.quantity > 20 && !(await confirmar(
+                                                    `Se crearán ${c.quantity} líneas, una por prenda. ¿Desglosar?`,
+                                                    {textoConfirmar: 'Desglosar'}))) return;
+                                                splitLine(c.lineId);
+                                            }}>
                                         <span uk-icon="icon: grid; ratio: 0.6"></span>
                                     </button>
                                 )}

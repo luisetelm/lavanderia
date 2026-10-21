@@ -22,6 +22,7 @@
 // Ver docs/factura-proforma.md.
 import puppeteer from 'puppeteer';
 import { aggregateOrderLines, convertBigIntToString, crearFactura } from './invoices.js';
+import { cuerpoError } from '../utils/datosFactura.js';
 
 // Mismos datos que la plantilla de factura (routes/invoices.js).
 const VENDEDOR = {
@@ -485,7 +486,7 @@ export default async function (fastify) {
     const fallo = (reply, e, porDefecto) => {
         const code = e.statusCode || 500;
         if (code >= 500) console.error('[proformas]', e);
-        return reply.code(code).send({ error: e.message || porDefecto });
+        return reply.code(code).send(cuerpoError(e, porDefecto));
     };
 
     // Emitir una proforma.

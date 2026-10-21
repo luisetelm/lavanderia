@@ -11,6 +11,7 @@ import {
 import ProformaModal from './ProformaModal.jsx';
 import { formatEUR } from '../utils/format.js';
 import { FACTURA_SEPA_EN_CURSO, FACTURA_SEPA_FALLIDA } from '../utils/sepa.js';
+import { conDatosFactura } from '../utils/datosFactura.js';
 
 export default function VentaRow({
                                      venta,
@@ -217,10 +218,10 @@ export default function VentaRow({
         setRowLoading(true);
 
         try {
-            const resp = await createInvoice(token, {
+            const resp = await conDatosFactura(token, () => createInvoice(token, {
                 orderIds: [venta.id],
                 type: 'n'
-            });
+            }));
 
             if (resp?.emailError) {
                 console.warn('Factura creada pero fallo envío de email:', resp.emailError);
@@ -250,10 +251,10 @@ export default function VentaRow({
         setRowLoading(true);
 
         try {
-            const resp = await createInvoice(token, {
+            const resp = await conDatosFactura(token, () => createInvoice(token, {
                 orderIds: [venta.id],
                 type: 'n'
-            });
+            }));
 
             if (resp?.emailError) {
                 console.warn('Factura convertida pero fallo envío de email:', resp.emailError);
@@ -362,7 +363,7 @@ export default function VentaRow({
         if (!proformaVigente) return;
         setRowLoading(true);
         try {
-            const resp = await invoiceProforma(token, proformaVigente.id);
+            const resp = await conDatosFactura(token, () => invoiceProforma(token, proformaVigente.id));
             const factura = resp?.invoice;
             if (factura?.emailError) {
                 avisar('Factura creada, pero no se pudo enviar el email: ' + factura.emailError, 'warning');
