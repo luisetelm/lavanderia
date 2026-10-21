@@ -31,6 +31,7 @@ import {formatEUR} from '../utils/format.js';
 import StatusChangeModal from './StatusChangeModal.jsx';
 import StepProgress from './StepProgress.jsx';
 import PaymentModal from './PaymentModal.jsx';
+import {conDatosFactura} from '../utils/datosFactura.js';
 
 const COLOR_HEX = {
     negro: '#1e1e1e', blanco: '#f5f5f5', gris: '#9ca3af', azul: '#3b82f6',
@@ -513,7 +514,7 @@ export default function PaymentSection({token, orderId, onPaid, initialOrder = n
         setInvoiceLoading(true);
         setLocalError('');
         try {
-            const res = await createInvoice(token, {orderIds: [order.id], type: 'n'});
+            const res = await conDatosFactura(token, () => createInvoice(token, {orderIds: [order.id], type: 'n'}));
             const invoice = res?.data ?? res;
             // Si la factura es tipo 'n' mostrar notificación de envío por email
             if (invoice && invoice.type === 'n') {

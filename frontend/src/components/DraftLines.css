@@ -120,6 +120,15 @@
 
 .dl-qty { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
 .dl-qty-num { min-width: 20px; text-align: center; font-weight: 600; }
+.dl-qty-input {
+    box-sizing: content-box;
+    min-width: 2ch; height: 22px; padding: 0 4px;
+    border: 1px solid var(--dl-btn-border); border-radius: 5px;
+    background: transparent; color: inherit;
+    font: inherit; font-weight: 600; text-align: center; font-variant-numeric: tabular-nums;
+}
+.dl-qty-input:hover { border-color: var(--dl-accent); }
+.dl-qty-input:focus { outline: none; border-color: var(--dl-accent); background: var(--dl-btn-bg); }
 
 .dl-btn {
     display: inline-flex; align-items: center; justify-content: center; gap: 2px;

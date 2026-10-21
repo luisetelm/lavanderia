@@ -4,6 +4,7 @@ import {hash} from 'bcrypt';
 import nodemailer from 'nodemailer';
 import { emailTemplate } from '../utils/emailTemplate.js';
 import { envioDesactivado } from '../utils/envioEmail.js';
+import { faltanDatosFactura } from '../utils/datosFactura.js';
 
 const emailTransporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST, port: process.env.SMTP_PORT, secure: false, requireTLS: true, auth: {
@@ -669,6 +670,51 @@ export default async function (fastify, opts) {
         } catch (e) {
             console.log(e);
             return reply.status(404).send({error: 'Usuario no encontrado'});
+        }
+    });
+
+    // Completar los datos fiscales de un cliente al emitirle una factura.
+    // PATCH /api/users/:id/datos-factura
+    // Sólo toca los campos que trae el cuerpo y que son de facturación: el PUT
+    // general exige el teléfono y reescribe el rol, y desde el aviso de "faltan
+    // datos" no se tiene la ficha entera. Devuelve el cliente y lo que aún falta.
+    fastify.patch('/:id/datos-factura', async (req, reply) => {
+        const id = Number(req.params.id);
+        const campos = ['firstName', 'lastName', 'denominacionsocial', 'nif', 'email',
+            'direccion', 'codigopostal', 'localidad', 'provincia'];
+        const data = {};
+        for (const c of campos) {
+            if (req.body?.[c] === undefined) continue;
+            const v = req.body[c] === null ? '' : String(req.body[c]).trim();
+            data[c] = v;
+        }
+        if (data.email !== undefined) {
+            if (data.email === '') {
+                data.email = null;
+            } else {
+                if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) {
+                    return reply.status(400).send({error: 'El email no es válido.'});
+                }
+                const otro = await prisma.user.findUnique({where: {email: data.email}, select: {id: true}});
+                if (otro && otro.id !== id) {
+                    return reply.status(400).send({error: `Ya existe otro usuario con el email ${data.email}.`});
+                }
+            }
+        }
+        if (data.nif) data.nif = data.nif.toUpperCase().replace(/[\s-]/g, '');
+
+        try {
+            const user = await prisma.user.update({
+                where: {id}, data, select: {
+                    id: true, firstName: true, lastName: true, denominacionsocial: true, nif: true,
+                    email: true, direccion: true, codigopostal: true, localidad: true, provincia: true,
+                },
+            });
+            return {user, missing: faltanDatosFactura(user)};
+        } catch (e) {
+            if (e.code === 'P2025') return reply.status(404).send({error: 'Usuario no encontrado'});
+            console.error('[datos-factura]', e);
+            return reply.status(500).send({error: 'No se pudieron guardar los datos del cliente.'});
         }
     });
 

@@ -19,6 +19,7 @@ import PageToolbar from '../components/PageToolbar.jsx';
 import DateRangeSelector from '../components/DateRangeSelector.jsx';
 import Pagination from '../components/Pagination.jsx';
 import { getPrimerDiaMes, getUltimoDiaMes } from '../utils/dates.js';
+import { conDatosFactura } from '../utils/datosFactura.js';
 
 export default function Ventas({token}) {
     const [fechaInicio, setFechaInicio] = useState(() => localStorage.getItem('ventas_fechaInicio') || getPrimerDiaMes());
@@ -460,7 +461,7 @@ export default function Ventas({token}) {
         if (selectedOrders.length === 0) return;
         setLoading(true);
         try {
-            await createInvoice(token, {orderIds: selectedOrders, type: 'n'});
+            await conDatosFactura(token, () => createInvoice(token, {orderIds: selectedOrders, type: 'n'}));
             await fetchVentas();
             setSelectedOrders([]);
             setSelectionCriteria(null);

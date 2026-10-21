@@ -266,6 +266,14 @@ export function createUser(token, data) {
     });
 }
 
+// Sólo los datos de facturación (nombre, NIF, email, dirección...). Responde
+// {user, missing}: lo que todavía falta para poder emitir una factura normal.
+export function updateDatosFactura(token, id, data) {
+    return request(`/users/${id}/datos-factura`, token, {
+        method: 'PATCH', body: JSON.stringify(data),
+    });
+}
+
 export function updateUser(token, id, data) {
     return request(`/users/${id}`, token, {
         method: 'PUT', body: JSON.stringify(data),

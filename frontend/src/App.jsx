@@ -33,6 +33,7 @@ import OrderLookup from './pages/OrderLookup.jsx';
 import PrintSettings from './pages/PrintSettings.jsx';
 import ScanCapture from './components/ScanCapture.jsx';
 import DialogHost from './components/DialogHost.jsx';
+import DatosFacturaHost from './components/DatosFacturaHost.jsx';
 import PrintQueueWatcher from './components/PrintQueueWatcher.jsx';
 
 // Wrapper for main content that adds padding when draft banner is visible
@@ -195,6 +196,7 @@ export default function App() {
         <div className="app-layout">
             <ScanCapture />
             <DialogHost />
+            <DatosFacturaHost />
             <PrintQueueWatcher token={token} />
             <nav className={`app-sidebar ${mobileMenuOpen ? 'sidebar-open' : ''}`}>
                 <div className="sidebar-inner">

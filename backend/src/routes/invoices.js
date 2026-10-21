@@ -8,6 +8,7 @@ import {SESClient, SendRawEmailCommand} from '@aws-sdk/client-ses';
 import nodemailer from 'nodemailer';
 import { emailTemplate } from '../utils/emailTemplate.js';
 import { envioDesactivado } from '../utils/envioEmail.js';
+import { exigirDatosFactura, cuerpoError } from '../utils/datosFactura.js';
 
 // Si no se define AWS_REGION en entorno, asumimos una región por defecto razonable.
 const DEFAULT_AWS_REGION = process.env.AWS_REGION || 'eu-west-1';
@@ -113,22 +114,7 @@ async function convertirSimplificadaANormal(prisma, invoiceId, orderIds) {
         throw httpError(404, 'Cliente no encontrado.');
     }
 
-    const isEmpty = (v) => v === null || v === undefined || (typeof v === 'string' && (v.trim() === '' || v.trim().toLowerCase() === 'null' || v.trim().toLowerCase() === 'undefined'));
-
-    const missing = [];
-    if (isEmpty(client.email)) missing.push('email');
-
-    const hasDenom = !isEmpty(client.denominacionsocial);
-    const hasName = !isEmpty(client.firstName) || !isEmpty(client.lastName);
-    if (!hasDenom && !hasName) missing.push('nombre o denominación social');
-
-    if (isEmpty(client.direccion)) missing.push('direccion');
-    if (isEmpty(client.codigopostal)) missing.push('codigopostal');
-    if (isEmpty(client.localidad)) missing.push('localidad');
-
-    if (missing.length > 0) {
-        throw httpError(400, `El cliente debe tener los campos obligatorios para la factura: ${missing.join(', ')}`);
-    }
+    exigirDatosFactura(clientId, client);
 
     // 3) Actualizar el tipo de factura de 's' a 'n'
     const updatedInvoice = await prisma.invoices.update({
@@ -321,32 +307,7 @@ export async function crearFactura(prisma, {orderIds, type, invoiceData}) {
             throw httpError(404, 'Cliente no encontrado.');
         }
 
-        // Log inmediato para depuración: muestra el objeto cliente tal como lo devuelve Prisma
-        console.log('[crearFactura] cliente recuperado:', JSON.stringify(client));
-
-        // Helper robusto para detectar valores vacíos o inválidos
-        const isEmpty = (v) => v === null || v === undefined || (typeof v === 'string' && (v.trim() === '' || v.trim().toLowerCase() === 'null' || v.trim().toLowerCase() === 'undefined'));
-
-        // Validación explícita: email obligatorio + (denominación social o nombre) + dirección completa
-        const missing = [];
-        if (isEmpty(client.email)) missing.push('email');
-
-        const hasDenom = !isEmpty(client.denominacionsocial);
-        const hasName = !isEmpty(client.firstName) || !isEmpty(client.lastName);
-        if (!hasDenom && !hasName) missing.push('nombre o denominación social');
-
-        if (isEmpty(client.direccion)) missing.push('direccion');
-        if (isEmpty(client.codigopostal)) missing.push('codigopostal');
-        if (isEmpty(client.localidad)) missing.push('localidad');
-
-        // Log de depuración: muestra el cliente y los campos detectados como vacíos
-        if (missing.length > 0) {
-            // Uso console.log para asegurar visibilidad en stdout
-            console.log('[crearFactura] Validación cliente - valores recibidos:', client);
-            console.log('[crearFactura] Validación cliente - campos faltantes detectados:', missing);
-            throw httpError(400, `El cliente debe tener los campos obligatorios para la factura: ${missing.join(', ')}`);
-        }
-
+        exigirDatosFactura(clientId, client);
     }
 
 
@@ -1022,7 +983,7 @@ export default async function (fastify) {
             return reply.send(factura);
         } catch (e) {
             const code = e.statusCode || 500;
-            return reply.code(code).send({error: e.message || 'Error creando la factura.'});
+            return reply.code(code).send(cuerpoError(e, 'Error creando la factura.'));
         }
     });
 
