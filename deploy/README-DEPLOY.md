@@ -50,7 +50,7 @@ Conectar por SSH (botón "Connect using SSH" en Lightsail).
 sudo apt update && sudo apt upgrade -y
 
 # Node.js 20
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
 sudo apt install -y nodejs
 
 # PostgreSQL 16
