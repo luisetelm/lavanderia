@@ -201,7 +201,7 @@ export default function App() {
             <nav className={`app-sidebar ${mobileMenuOpen ? 'sidebar-open' : ''}`}>
                 <div className="sidebar-inner">
                     <div className="sidebar-logo">
-                        <img src="/logo.png" alt="Tinte y Burbuja"/>
+                        <img src="/logo-negativo.svg" alt="Tinte y Burbuja"/>
                         <button
                             className="sidebar-hamburger"
                             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}

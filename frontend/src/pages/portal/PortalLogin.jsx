@@ -40,7 +40,7 @@ export default function PortalLogin() {
                 boxShadow: '0 2px 12px rgba(0,0,0,0.08)'
             }}>
                 <div style={{ textAlign: 'center', marginBottom: 24 }}>
-                    <img src="/logo.png" alt="Tinte y Burbuja" style={{ height: 48, marginBottom: 12 }} />
+                    <img src="/logo.svg" alt="Tinte y Burbuja" style={{ height: 48, marginBottom: 12 }} />
                     <h2 style={{ margin: 0, fontSize: 20 }}>Portal de cliente</h2>
                 </div>
 

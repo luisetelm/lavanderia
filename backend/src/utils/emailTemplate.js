@@ -9,7 +9,7 @@
 const BRAND_COLOR = '#048ABF';
 const BRAND_DARK  = '#1e293b';
 const BRAND_LIGHT = '#f8fafc';
-const LOGO_URL    = (process.env.APP_URL || 'https://app.tinteyburbuja.com') + '/logo.png';
+const LOGO_URL    = (process.env.APP_URL || 'https://app.tinteyburbuja.com') + '/logo-negativo.png';
 
 export function emailTemplate({ title, body, footer }) {
     return `
@@ -29,7 +29,7 @@ export function emailTemplate({ title, body, footer }) {
 
           <!-- Header con logo -->
           <tr>
-            <td style="background: ${BRAND_DARK}; padding: 24px 32px; text-align: center;">
+            <td style="background: #073243; padding: 24px 32px; text-align: center;">
               <img src="${LOGO_URL}" alt="Tinte y Burbuja" height="44"
                    style="height: 44px; display: inline-block;" />
             </td>

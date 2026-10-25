@@ -15,7 +15,7 @@ export default function PortalSepaResult() {
                 background: '#fff', borderRadius: 8, padding: 24, maxWidth: 420, width: '100%',
                 textAlign: 'center', boxShadow: '0 1px 4px rgba(0,0,0,0.06)'
             }}>
-                <img src="/logo.png" alt="Tinte y Burbuja" style={{ height: 40, marginBottom: 16 }} />
+                <img src="/logo.svg" alt="Tinte y Burbuja" style={{ height: 40, marginBottom: 16 }} />
                 <h2 style={{ fontSize: 20, margin: '0 0 8px' }}>
                     {ok ? 'Domiciliación registrada' : 'Domiciliación no completada'}
                 </h2>

@@ -148,7 +148,7 @@ export function MessagesProvider({ token, user, children }) {
             const isWa = conv.lastChannel === 'whatsapp';
             const n = new Notification(`${isWa ? '💬 WhatsApp' : '📩 SMS'} · ${convDisplayName(conv)}`, {
                 body: body.length > 140 ? body.slice(0, 137) + '…' : body,
-                icon: '/logo.png',
+                icon: '/icon-192.png',
                 tag: `conv-${conv.id}`,
                 requireInteraction: true,
                 renotify: true,

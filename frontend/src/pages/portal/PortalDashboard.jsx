@@ -68,7 +68,7 @@ export default function PortalDashboard({ token, user, onLogout }) {
                 justifyContent: 'space-between',
             }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <img src="/logo.png" alt="Logo" style={{ height: 32 }} />
+                    <img src="/logo.svg" alt="Logo" style={{ height: 32 }} />
                     <span style={{ fontWeight: 600, fontSize: 16 }}>Mi cuenta</span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>

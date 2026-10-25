@@ -41,7 +41,7 @@ export default function ForgotPassword() {
                 maxWidth: 400,
             }}>
                 <div style={{ textAlign: 'center', marginBottom: 32 }}>
-                    <img src="/logo.png" alt="Tinte y Burbuja" style={{ height: 56, marginBottom: 16 }} />
+                    <img src="/logo.svg" alt="Tinte y Burbuja" style={{ height: 56, marginBottom: 16 }} />
                     <h2 style={{ margin: 0, fontSize: '1.25rem', color: '#1e293b', fontWeight: 600 }}>
                         Recuperar contraseña
                     </h2>
