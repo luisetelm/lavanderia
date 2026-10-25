@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { confirmar } from '../utils/dialogo.js';
 import UIkit from 'uikit';
 import PageToolbar from '../components/PageToolbar.jsx';
+import { Link } from 'react-router-dom';
 import {
     fetchCampaignTemplates,
     previewCampaignAudience,
@@ -157,7 +158,10 @@ export default function Campaigns({ token }) {
 
     return (
         <div className="page-container" style={{ padding: '0 16px 40px' }}>
-            <PageToolbar title="Campañas de WhatsApp" />
+            <PageToolbar
+                title="Campañas de WhatsApp"
+                actions={<Link to="/campanas/plantillas" className="uk-button uk-button-default uk-button-small">Plantillas</Link>}
+            />
 
             {/* Aviso de cumplimiento */}
             <div className="uk-alert uk-alert-warning" style={{ fontSize: '0.85rem' }}>

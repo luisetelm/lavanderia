@@ -411,7 +411,7 @@ export async function createTemplate(name, category, languageCode, components) {
     const data = await res.json();
     if (!res.ok) {
         console.error('[WhatsApp] Error creando template:', data);
-        throw new Error(data.error?.message || 'Error creando plantilla');
+        throw new Error(data.error?.error_user_msg || data.error?.message || 'Error creando plantilla');
     }
 
     return data;
@@ -424,7 +424,8 @@ export async function fetchAllTemplates() {
     const wabaId = process.env.WHATSAPP_BUSINESS_ACCOUNT_ID;
     if (!wabaId) throw new Error('WHATSAPP_BUSINESS_ACCOUNT_ID no configurado');
 
-    const url = `https://graph.facebook.com/${API_VERSION}/${wabaId}/message_templates`;
+    const fields = 'id,name,language,category,status,components,rejected_reason';
+    const url = `https://graph.facebook.com/${API_VERSION}/${wabaId}/message_templates?fields=${fields}&limit=200`;
     const res = await fetch(url, { headers: getHeaders() });
     const data = await res.json();
 
@@ -439,7 +440,27 @@ export async function fetchAllTemplates() {
         category: t.category,
         status: t.status,
         components: t.components,
+        rejectedReason: t.rejected_reason && t.rejected_reason !== 'NONE' ? t.rejected_reason : null,
     }));
+}
+
+/**
+ * Editar una plantilla existente (por su id de Meta). Vuelve a revisión; Meta sólo
+ * deja editar una aprobada una vez al día y diez veces al mes.
+ */
+export async function editTemplate(templateId, components) {
+    const url = `https://graph.facebook.com/${API_VERSION}/${templateId}`;
+    const res = await fetch(url, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({ components }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+        console.error('[WhatsApp] Error editando plantilla:', data);
+        throw new Error(data.error?.error_user_msg || data.error?.message || 'Error editando plantilla');
+    }
+    return data;
 }
 
 /**

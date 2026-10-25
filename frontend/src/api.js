@@ -621,6 +621,29 @@ export function fetchWhatsAppTemplates(token) {
     return request('/whatsapp/templates', token);
 }
 
+// Gestión de plantillas (página Plantillas de WhatsApp, solo admin)
+export function fetchAllWhatsAppTemplates(token) {
+    return request('/whatsapp/templates/all', token);
+}
+
+export function createWhatsAppTemplate(token, { name, category, text }) {
+    return request('/whatsapp/templates', token, {
+        method: 'POST',
+        body: JSON.stringify({ name, category, text, language: 'es' }),
+    });
+}
+
+export function editWhatsAppTemplate(token, id, text) {
+    return request(`/whatsapp/templates/${id}`, token, {
+        method: 'PUT',
+        body: JSON.stringify({ text }),
+    });
+}
+
+export function deleteWhatsAppTemplate(token, name) {
+    return request(`/whatsapp/templates/${encodeURIComponent(name)}`, token, { method: 'DELETE' });
+}
+
 export function setupDefaultTemplates(token) {
     return request('/whatsapp/templates/setup-defaults', token, { method: 'POST', body: JSON.stringify({}) });
 }

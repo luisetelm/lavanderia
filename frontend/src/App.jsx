@@ -24,6 +24,7 @@ import Stats from './pages/Stats.jsx';
 import WorkerPerformance from './pages/WorkerPerformance.jsx';
 import LoginLogs from './pages/LoginLogs.jsx';
 import Campaigns from './pages/Campaigns.jsx';
+import WhatsAppTemplates from './pages/WhatsAppTemplates.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
 import DraftOrderBanner from './components/DraftOrderBanner.jsx';
 import { DraftOrderProvider } from './context/DraftOrderContext.jsx';
@@ -310,6 +311,7 @@ export default function App() {
                     <Route path="/rendimiento" element={soloAdmin(<WorkerPerformance token={token}/>)}/>
                     <Route path="/resenas" element={<Reviews token={token}/>}/>
                     <Route path="/campanas" element={soloAdmin(<Campaigns token={token}/>)}/>
+                    <Route path="/campanas/plantillas" element={soloAdmin(<WhatsAppTemplates token={token}/>)}/>
                     <Route path="/caja" element={soloAdmin(<CashAudit token={token}/>)}/>
                     <Route path="/stripe" element={soloAdmin(<StripeBalance token={token}/>)}/>
                     <Route path="/horario" element={soloAdmin(<WorkSchedule token={token}/>)}/>

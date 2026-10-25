@@ -5,6 +5,7 @@ import {
     fetchTemplates,
     fetchAllTemplates,
     createTemplate,
+    editTemplate,
     deleteTemplate,
     uploadMediaToWhatsApp,
     sendMediaMessage,
@@ -12,6 +13,7 @@ import {
 import { findOrCreateConversation, touchConversation, buildPhoneCandidates } from '../services/conversation.js';
 import { fromWhatsAppNumber } from '../utils/validatePhone.js';
 import { fallbackToSmsAfterWhatsAppFailure } from '../services/notify.js';
+import { PLANTILLAS_EN_USO, prepararNueva, prepararEdicion, variablesDe } from '../utils/plantillasWhatsApp.js';
 
 /**
  * Rutas autenticadas de WhatsApp (admin/cashier).
@@ -109,21 +111,59 @@ export default async function (fastify) {
         if (req.user?.role !== 'admin') return reply.code(403).send({ error: 'Solo admin' });
         try {
             const templates = await fetchAllTemplates();
-            return reply.send(templates);
+            return reply.send(templates.map(t => ({ ...t, usedBy: PLANTILLAS_EN_USO[t.name] || null })));
         } catch (e) {
             return reply.code(500).send({ error: e.message });
         }
     });
 
-    // Crear una plantilla
+    // Crear una plantilla. Desde la página de plantillas llega { name, category, text };
+    // también admite components ya montados (uso interno).
     fastify.post('/templates', async (req, reply) => {
         if (req.user?.role !== 'admin') return reply.code(403).send({ error: 'Solo admin' });
-        const { name, category, language, components } = req.body;
+        const { name, category, language, text } = req.body || {};
+        let { components } = req.body || {};
+        if (text !== undefined) {
+            const prep = prepararNueva({ name, category, text });
+            if (prep.error) return reply.code(400).send({ error: prep.error });
+            components = prep.componentes;
+        }
         if (!name || !category || !components) {
             return reply.code(400).send({ error: 'name, category y components son obligatorios' });
         }
         try {
+            const existentes = await fetchAllTemplates();
+            if (existentes.some(t => t.name === name)) {
+                return reply.code(409).send({ error: `Ya hay una plantilla que se llama ${name}.` });
+            }
             const result = await createTemplate(name, category, language || 'es', components);
+            return reply.send({ ok: true, ...result });
+        } catch (e) {
+            return reply.code(500).send({ error: e.message });
+        }
+    });
+
+    // Editar el texto de una plantilla (vuelve a revisión de Meta)
+    fastify.put('/templates/:id', async (req, reply) => {
+        if (req.user?.role !== 'admin') return reply.code(403).send({ error: 'Solo admin' });
+        try {
+            const plantilla = (await fetchAllTemplates()).find(t => t.id === req.params.id);
+            if (!plantilla) return reply.code(404).send({ error: 'Plantilla no encontrada' });
+
+            const text = req.body?.text;
+            // Las que manda la app tienen que conservar sus variables, o los avisos fallarían
+            if (PLANTILLAS_EN_USO[plantilla.name]) {
+                const antes = variablesDe(plantilla.components?.find(c => c.type === 'BODY')?.text).join(',');
+                if (variablesDe(text).join(',') !== antes) {
+                    return reply.code(400).send({
+                        error: `La app usa esta plantilla con estas variables: ${antes ? antes.split(',').map(n => `{{${n}}}`).join(', ') : 'ninguna'}. Mantenlas igual.`,
+                    });
+                }
+            }
+            const prep = prepararEdicion(plantilla, text);
+            if (prep.error) return reply.code(400).send({ error: prep.error });
+
+            const result = await editTemplate(plantilla.id, prep.componentes);
             return reply.send({ ok: true, ...result });
         } catch (e) {
             return reply.code(500).send({ error: e.message });
@@ -133,6 +173,9 @@ export default async function (fastify) {
     // Eliminar una plantilla
     fastify.delete('/templates/:name', async (req, reply) => {
         if (req.user?.role !== 'admin') return reply.code(403).send({ error: 'Solo admin' });
+        if (PLANTILLAS_EN_USO[req.params.name]) {
+            return reply.code(400).send({ error: 'La app usa esta plantilla para sus avisos; no se puede borrar.' });
+        }
         try {
             const result = await deleteTemplate(req.params.name);
             return reply.send({ ok: true, ...result });
