@@ -7,13 +7,14 @@ import { findOrCreateConversation, touchConversation } from './conversation.js';
 import { normalizePhone } from '../utils/validatePhone.js';
 
 // ── Datos del negocio (configurables por variables de entorno) ──
-// Si no se define STORE_HOURS se mantiene el enlace de Google para no mostrar
+// Si no se define STORE_HOURS se enlaza la página de horario de la web para no mostrar
 // un horario que pueda quedar desactualizado o incorrecto.
 const STORE_NAME = process.env.STORE_NAME || 'Tinte y Burbuja';
 const STORE_ADDRESS = process.env.STORE_ADDRESS || 'Cronista Cazabán, 7';
 const STORE_HOURS = process.env.STORE_HOURS || null;
 const STORE_PHONE = process.env.STORE_PHONE || null;
-const SCHEDULE_URL = 'https://share.google/d4uMKGaiCaBywfRt2';
+// Página de horario de la web pública (Lavanderaweb, /horario/).
+const SCHEDULE_URL = 'https://www.tinteyburbuja.com/horario/';
 // Imagen de la cabecera de la plantilla "pedido_listo" (header tipo IMAGE en Meta).
 // Debe ser una URL pública accesible. Configurable por ENV.
 const LISTO_HEADER_IMAGE = process.env.WHATSAPP_LISTO_HEADER_IMAGE || 'https://app.tinteyburbuja.com/fachada.jpg';
@@ -90,7 +91,7 @@ function buildOrderNotificationPayload(order, event) {
     // Teléfono de contacto (opcional)
     const phoneText = STORE_PHONE ? ` ¿Dudas? Llámanos al ${STORE_PHONE}.` : '';
 
-    const message = `Hola ${firstName}, tu pedido ${orderNum}${itemsText} ya está listo para recoger en ${STORE_NAME}.${paymentText} Te esperamos en ${STORE_ADDRESS}. ${scheduleText}${phoneText}`;
+    const message = `Hola ${firstName}, tu pedido ${orderNum}${itemsText} ya está listo para recoger en ${STORE_NAME}.${paymentText} Recuerda traer el ticket que te dimos al dejarlo: hay que enseñarlo para recogerlo. Te esperamos en ${STORE_ADDRESS}. ${scheduleText}${phoneText}`;
 
     // La plantilla "pedido_listo" tiene una cabecera de imagen: hay que enviar
     // el parámetro de imagen además de las variables del cuerpo {{1}} y {{2}}.

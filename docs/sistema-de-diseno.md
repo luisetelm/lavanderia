@@ -43,6 +43,20 @@ Escala (rem): 12 · 14 · 16 · 18 · 20 · 24 · 32 · 40 · 52 · 68 (esta úl
 - Radio: 4 (chips), 8 (botones e inputs), 12 (tarjetas y modales), 16 (bloques grandes de la web). Nada de `rounded-2xl` en todo.
 - Sombras: `--tyb-shadow-sm` en reposo, `--tyb-shadow-md` al elevar, `--tyb-shadow-lg` solo para modales. Fuera `shadow-2xl` y `hover:-translate-y-1`.
 - Espaciado en rejilla de 4 px (`--tyb-space-*`). Secciones de la web: `space-20` arriba y abajo.
+
+## Elementos de marca
+
+Salen del símbolo del logo (`logo.svg`, grupo `simbolo`): una cara dentro de un anillo. Se usan sueltos, nunca juntos para rehacer el símbolo, y con mesura: si todo lleva burbujas, nada las lleva.
+En la web están en `Lavanderaweb/src/components/Brand.tsx`.
+
+| Elemento | De dónde sale | Dónde va | Cómo |
+|---|---|---|---|
+| **Ola** (`<Wave>`) | La línea del agua (`agua-labios`) | Borde de las secciones oscuras: debajo de la cabecera, debajo del bloque del portal y encima del pie. Una por transición | Se pinta con el color de la sección oscura (`text-brand-950`), así vale sobre cualquier fondo vecino |
+| **Burbujas** (`<Bubbles>` y `.eyebrow`) | Los dos ojos: uno pequeño y otro grande, algo más alto | Delante de las etiquetas de sección (`.eyebrow`) y como viñeta de listas de ventajas | Siempre en cian (`--tyb-accent`). Es decoración, no texto, así que vale también sobre blanco |
+| **Anillo** (`<RingWatermark>`) | El anillo azul petróleo | Marca de agua en la cabecera y el pie oscuros, muy grande y recortado por el borde | `brand-900` al 60 % sobre `brand-950`: se intuye, no se lee. Nunca sobre fondo claro |
+| **«y» en cian** | La «y» del logotipo | Un titular por página, sobre fondo oscuro («Lavandería **y** tintorería en Úbeda») | Solo en fondos oscuros: el cian no llega a contraste AA sobre blanco |
+
+En la app quedan pendientes: la pantalla de acceso y el portal de cliente pueden llevar la ola y el anillo; la barra lateral oscura, el anillo.
 - Controles de 40 px de alto. Foco visible con `--tyb-focus-ring`.
 
 ## Cómo se conecta en cada repo

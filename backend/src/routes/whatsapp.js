@@ -197,7 +197,7 @@ export default async function (fastify) {
                 components: [
                     {
                         type: 'BODY',
-                        text: 'Hola {{1}}, tu pedido {{2}} está listo para recoger. 🧺\n\nConsulta nuestro horario de apertura: https://share.google/d4uMKGaiCaBywfRt2',
+                        text: 'Hola {{1}}, tu pedido {{2}} está listo para recoger. 🧺\n\nRecuerda traer el ticket que te dimos al dejarlo: hay que enseñarlo para recogerlo.\n\nConsulta nuestro horario de apertura: https://www.tinteyburbuja.com/horario/',
                         example: { body_text: [['Laura', 'TPV/2025/0001']] },
                     },
                 ],
