@@ -289,7 +289,7 @@ Meta Business > WhatsApp > Configuration:
 
 Un solo comando:
 ```bash
-/var/www/lavanderia/deploy.sh
+/var/www/lavanderia/deploy/deploy.sh
 ```
 
 Los cambios de base de datos (`backend/sql/NNN_*.sql`) se aplican solos: tras
@@ -299,11 +299,10 @@ reiniciar la app. La primera vez da por aplicados del 001 al 033 (se
 ejecutaron a mano) y sólo corre a partir del 034. Para ver cuáles hay:
 `SELECT * FROM sql_aplicado ORDER BY archivo;`
 
-`/var/www/lavanderia/deploy.sh` tiene que ser el del repositorio
-(`deploy/deploy.sh`) para recibir estos cambios. Si es una copia, cámbiala por
-un enlace una vez:
+Si un despliegue se corta a medias o un SQL falla, se pueden aplicar los
+pendientes a mano, sin reiniciar nada:
 ```bash
-ln -sf /var/www/lavanderia/deploy/deploy.sh /var/www/lavanderia/deploy.sh
+bash /var/www/lavanderia/deploy/aplicar-sql.sh
 ```
 
 ---
