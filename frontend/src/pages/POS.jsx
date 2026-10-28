@@ -30,6 +30,7 @@ import PosEntrega from '../components/pos/PosEntrega.jsx';
 import PosPrendas from '../components/pos/PosPrendas.jsx';
 import PosPasos from '../components/pos/PosPasos.jsx';
 import {leerVistaTPV, guardarVistaTPV} from '../utils/pasosTPV.js';
+import {esFueraDeCatalogo} from '../utils/fueraCatalogo.js';
 import './POS.css';
 
 const signed = (t, a) => (['withdrawal', 'refund_cash_out'].includes(t) ? -Math.abs(a) : Math.abs(a));
@@ -40,6 +41,8 @@ export default function POS({token, user}) {
 
     const [products, setProducts] = useState([]);
     const [itineraries, setItineraries] = useState([]);
+    // Productos genéricos de las prendas fuera de catálogo (archivados: no salen en la rejilla)
+    const [genericos, setGenericos] = useState([]);
     const [error, setError] = useState('');
     // Vista por pasos o la clásica (todo a la vez). Las dos trabajan sobre el
     // mismo pedido en curso: cambiar a mitad de pedido no pierde nada.
@@ -84,6 +87,9 @@ export default function POS({token, user}) {
             setProducts(actividad ? [...prods].sort((a, b) => pedidos(b) - pedidos(a)) : prods);
             setItineraries(itins);
         }).catch(() => setError('No se pudieron cargar productos'));
+        fetchProducts(token, {archived: 'only'})
+            .then(archivados => setGenericos((archivados || []).filter(p => esFueraDeCatalogo(p.sku))))
+            .catch(() => setGenericos([]));
     }, [token]);
 
     // Cargar contexto de caja
@@ -328,7 +334,7 @@ export default function POS({token, user}) {
 
         <div className="section-content">
             {vista === 'pasos' ? (
-                <PosPasos token={token} products={products} itineraries={itineraries} error={error}/>
+                <PosPasos token={token} products={products} itineraries={itineraries} genericos={genericos} error={error}/>
             ) : (
                 <div className="pos-layout">
                     {/* Columna del pedido: cliente y entrega */}
@@ -339,7 +345,7 @@ export default function POS({token, user}) {
 
                     {/* Columna del catálogo: productos y prendas */}
                     <div className="pos-col pos-col-catalog">
-                        <PosPrendas products={products} itineraries={itineraries} error={error}/>
+                        <PosPrendas products={products} itineraries={itineraries} genericos={genericos} error={error}/>
                     </div>
                 </div>
             )}

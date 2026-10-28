@@ -10,7 +10,7 @@ import PosRevisar from './PosRevisar.jsx';
 // TPV por pasos: cliente, prendas, entrega y revisar, de uno en uno. El paso
 // se guarda con el pedido en curso, así que un pedido a medias vuelve a él.
 // La barra de pasos deja ir a cualquiera: nada obliga a completar uno para pasar.
-export default function PosPasos({token, products, itineraries, error}) {
+export default function PosPasos({token, products, itineraries, genericos, error}) {
     const draft = useDraftOrder();
     const paso = esPaso(draft.paso) ? draft.paso : 'cliente';
     const i = PASOS.findIndex(p => p.key === paso);
@@ -88,7 +88,7 @@ export default function PosPasos({token, products, itineraries, error}) {
 
             <div ref={bodyRef} className={`pos-wizard-body pos-step-${paso}`}>
                 {paso === 'cliente' && <PosCliente token={token}/>}
-                {paso === 'prendas' && <PosPrendas products={products} itineraries={itineraries} error={error}/>}
+                {paso === 'prendas' && <PosPrendas products={products} itineraries={itineraries} genericos={genericos} error={error}/>}
                 {paso === 'entrega' && <PosEntrega token={token} weeks={4}/>}
                 {paso === 'revisar' && <PosRevisar onIrA={irA}/>}
             </div>

@@ -151,6 +151,11 @@ export default function DraftOrderBanner({ token, worker }) {
             photos: (c.photos || []),
             optionalStepIds: (c.optionalStepIds || []),
             color: c.color || null,
+            // Precio ajustado con su motivo, y nombre de la prenda fuera de catálogo
+            // (el backend valida y guarda las dos cosas, utils/presupuesto.js)
+            ...(c.precioManual !== null && c.precioManual !== undefined
+                ? { precioManual: Number(c.precioManual), motivoPrecio: c.motivoPrecio || null } : {}),
+            ...(c.nombreLibre ? { nombreLibre: c.nombreLibre } : {}),
         }));
 
         const payload = {

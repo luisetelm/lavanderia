@@ -46,7 +46,8 @@ const zEstado = z.enum(['pending', 'in_progress', 'ready', 'collected', 'cancell
 function lineaCompacta(l) {
     return {
         id: l.id,
-        producto: l.productName || l.product?.name || `producto ${l.productId}`,
+        producto: l.productName || l.customName || l.product?.name || `producto ${l.productId}`,
+        ...(l.priceNote ? {precioAjustado: {tarifa: l.priceOriginal, motivo: l.priceNote}} : {}),
         productoId: l.productId,
         varianteId: l.variantId || null,
         cantidad: l.quantity,
@@ -162,7 +163,7 @@ export const HERRAMIENTAS = [
             }
             const ordenes = (u.orders || []).slice(0, pedidos).map(o => ({
                 ...pedidoCompacto(o),
-                lineas: (o.lines || []).filter(l => !l.voidedAt).map(l => `${l.quantity}x ${l.product?.name || ''}`.trim()),
+                lineas: (o.lines || []).filter(l => !l.voidedAt).map(l => `${l.quantity}x ${l.customName || l.product?.name || ''}`.trim()),
             }));
             let preciosPactados = [];
             if (ROLES_EMPLEADO.includes(usuario?.role)) {
@@ -283,7 +284,7 @@ export const HERRAMIENTAS = [
                     total, pagina: pag, paginas: Math.ceil(total / tam),
                     pedidos: pagina.map(o => ({
                         ...pedidoCompacto(o),
-                        lineas: (o.lines || []).filter(l => !l.voidedAt).map(l => `${l.quantity}x ${l.product?.name || ''}`.trim()),
+                        lineas: (o.lines || []).filter(l => !l.voidedAt).map(l => `${l.quantity}x ${l.customName || l.product?.name || ''}`.trim()),
                     })),
                 };
             }
@@ -300,7 +301,7 @@ export const HERRAMIENTAS = [
                 total: r.meta?.total ?? 0, pagina: pag, paginas: r.meta?.totalPages ?? 1,
                 pedidos: (r.data || []).map(o => ({
                     ...pedidoCompacto(o),
-                    lineas: (o.lines || []).filter(l => !l.voidedAt).map(l => `${l.quantity}x ${l.product?.name || ''}`.trim()),
+                    lineas: (o.lines || []).filter(l => !l.voidedAt).map(l => `${l.quantity}x ${l.customName || l.product?.name || ''}`.trim()),
                 })),
             };
         },
@@ -369,7 +370,7 @@ export const HERRAMIENTAS = [
             ]);
             const resumen = (o) => ({
                 ...pedidoCompacto(o),
-                lineas: (o.lines || []).filter(l => !l.voidedAt).map(l => `${l.quantity}x ${l.product?.name || ''}`.trim()),
+                lineas: (o.lines || []).filter(l => !l.voidedAt).map(l => `${l.quantity}x ${l.customName || l.product?.name || ''}`.trim()),
             });
             return {
                 fecha: dia,

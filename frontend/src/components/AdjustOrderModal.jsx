@@ -128,7 +128,7 @@ export default function AdjustOrderModal({token, order, onDone, onClose}) {
                                 flex: 1,
                                 textDecoration: aAnular.has(l.id) ? 'line-through' : 'none',
                             }}>
-                                {l.quantity} × {l.product?.name || `Producto ${l.productId}`}
+                                {l.quantity} × {l.customName || l.product?.name || `Producto ${l.productId}`}
                             </span>
                             <span>{formatEUR(Number(l.totalPrice) || 0)}</span>
                         </label>

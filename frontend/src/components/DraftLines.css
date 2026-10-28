@@ -209,3 +209,15 @@
     background: rgba(16, 185, 129, 0.2);
     color: #a7f3d0;
 }
+
+/* Ajuste de precio de una prenda (y nombre y precio de las de fuera de catálogo) */
+.dl-price-edit { display: flex; flex-direction: column; gap: 6px; }
+.dl-price-tarifa { font-size: 0.75rem; color: var(--dl-chip-color); }
+.dl-price-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.dl-price-field { display: inline-flex; align-items: center; gap: 6px; font-size: 0.75rem; color: var(--dl-chip-color); }
+.dl-price-field .dl-input { width: 80px; text-align: right; }
+.dl-price-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.dl-chip.is-primary { background: var(--tyb-primary); border-color: var(--tyb-primary); color: var(--tyb-primary-foreground); font-weight: 600; }
+.dl-chip:disabled { opacity: .45; cursor: not-allowed; }
+.dl-agreed.is-adjusted { color: var(--tyb-warning); }
+.dl-price-note { padding: 0 4px 4px; font-size: 0.7rem; color: var(--tyb-warning); }

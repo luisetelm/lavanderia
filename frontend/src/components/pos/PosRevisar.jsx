@@ -64,6 +64,8 @@ export default function PosRevisar({onIrA}) {
                                         <strong>{c.quantity}×</strong> {c.name}
                                         {c.color && <span className="pos-rev-meta"> · {capitalizar(c.color)}</span>}
                                         {c.notes && <span className="pos-rev-meta"> · «{c.notes}»</span>}
+                                        {c.motivoPrecio && <span className="pos-rev-warn"> · precio ajustado: {c.motivoPrecio}</span>}
+                                        {c.fueraCatalogo && <span className="pos-rev-meta"> · fuera de catálogo</span>}
                                     </span>
                                     <span className="pos-rev-price">{formatEUR(draft.getPriceForItem(c) * c.quantity)}</span>
                                 </li>

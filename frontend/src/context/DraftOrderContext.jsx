@@ -140,6 +140,53 @@ export function DraftOrderProvider({ children, token }) {
         setState(prev => ({ ...prev, cart: prev.cart.filter(c => c.lineId !== lineId) }));
     }, []);
 
+    // Prenda fuera de catálogo: nombre y precio libres sobre un producto genérico
+    // (utils/fueraCatalogo.js). El precio va como precio manual de la línea.
+    const addCustomToCart = useCallback((product, { nombre, precio }) => {
+        const optionalSteps = product.itinerary?.steps?.filter(s => s.isOptional) || [];
+        setState(prev => ({
+            ...prev,
+            cart: [...prev.cart, {
+                lineId: `${product.id}_${Date.now()}`,
+                productId: product.id,
+                quantity: 1,
+                name: nombre,
+                nombreLibre: nombre,
+                fueraCatalogo: product.sku,
+                precioManual: Number(precio),
+                motivoPrecio: null,
+                type: product.type || 'service',
+                basePrice: Number(precio),
+                bigClientPrice: 0,
+                countsForLoad: true,
+                notes: '',
+                photos: [],
+                color: null,
+                optionalStepIds: [],
+                availableOptionalSteps: optionalSteps,
+            }],
+        }));
+    }, []);
+
+    // Precio ajustado de una prenda (un traje muy sucio): precio por unidad y
+    // motivo. null quita el ajuste. En una prenda fuera de catálogo cambia su
+    // precio (y, con nombre, su nombre); ahí el motivo no hace falta.
+    const setLinePrice = useCallback((lineId, precio, motivo = null, nombre = null) => {
+        setState(prev => ({
+            ...prev,
+            cart: prev.cart.map(c => {
+                if (c.lineId !== lineId) return c;
+                if (c.fueraCatalogo) {
+                    const n = (nombre ?? c.nombreLibre ?? '').trim() || c.nombreLibre;
+                    return { ...c, precioManual: Number(precio), basePrice: Number(precio), nombreLibre: n, name: n };
+                }
+                return precio === null
+                    ? { ...c, precioManual: null, motivoPrecio: null }
+                    : { ...c, precioManual: Number(precio), motivoPrecio: motivo };
+            }),
+        }));
+    }, []);
+
     /* ── Acciones del cliente ── */
 
     const setSelectedUser = useCallback((user) => {
@@ -305,6 +352,8 @@ export function DraftOrderProvider({ children, token }) {
     // Replica la regla del backend (utils/precioLinea.js) sólo para mostrar
     // importes; el precio que se guarda lo calcula siempre el backend.
     const getPriceForItem = useCallback((item) => {
+        // Precio puesto a mano (ajustado o fuera de catálogo): es el final.
+        if (item.precioManual !== null && item.precioManual !== undefined) return Number(item.precioManual);
         // El precio pactado es el precio final: sin descuento del cliente.
         const pactado = agreedPriceFor(item.productId);
         if (pactado !== null) return pactado;
@@ -395,7 +444,7 @@ export function DraftOrderProvider({ children, token }) {
         observaciones: state.observaciones,
         sinSuplemento: state.sinSuplemento,
         paso: state.paso,
-        addToCart, updateQuantity, removeFromCart,
+        addToCart, updateQuantity, removeFromCart, addCustomToCart, setLinePrice,
         setSelectedUser, setQuickClient,
         setFechaLimite, setObservaciones, setSinSuplemento, setPaso,
         clearDraft,
@@ -405,7 +454,7 @@ export function DraftOrderProvider({ children, token }) {
         total, itemCount, clientName, discount, isActive,
         calendarInfo, setCalendarInfo, suplementoUrgencia, totalConSuplemento,
         bannerHeight, setBannerHeight,
-    }), [state, addToCart, updateQuantity, removeFromCart, setSelectedUser, setQuickClient,
+    }), [state, addToCart, updateQuantity, removeFromCart, addCustomToCart, setLinePrice, setSelectedUser, setQuickClient,
         setFechaLimite, setObservaciones, setSinSuplemento, setPaso, clearDraft,
         updateLineNotes, addLinePhoto, removeLinePhoto, splitLine,
         toggleOptionalStep, setLineColor,

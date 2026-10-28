@@ -170,7 +170,7 @@ export default async function (fastify) {
                 lines: {
                     select: {
                         id: true, quantity: true, unitPrice: true,
-                        totalPrice: true, discount: true,
+                        totalPrice: true, discount: true, customName: true,
                         product: { select: { id: true, name: true } }
                     }
                 },
@@ -193,7 +193,7 @@ export default async function (fastify) {
                 lines: {
                     select: {
                         id: true, quantity: true, unitPrice: true,
-                        totalPrice: true, discount: true, annotations: true,
+                        totalPrice: true, discount: true, annotations: true, customName: true,
                         product: { select: { id: true, name: true } }
                     }
                 },

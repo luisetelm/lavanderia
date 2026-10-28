@@ -464,6 +464,7 @@ export default async function (fastify, opts) {
                 take: size,
                 select: {
                     id: true, quantity: true, unitPrice: true, discount: true, totalPrice: true, voidedAt: true, voidReason: true,
+                    customName: true,
                     order: {
                         select: {
                             id: true, orderNum: true, createdAt: true, status: true, paid: true,

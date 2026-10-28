@@ -135,6 +135,7 @@ export async function calcularLinea(prisma, {productId, variantId, quantity}, cl
         discount: discountPct,
         totalPrice: redondear ? +total.toFixed(2) : total,
         productName: product.name,
+        sku: product.sku,
         origenPrecio: precio.origen,
     };
 }

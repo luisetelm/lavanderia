@@ -12,6 +12,7 @@ import {calcularLinea, preciosPactadosVigentes} from './precioLinea.js';
 import {getDayInfo, nextWorkingDay, ymd, addDays} from './workCalendar.js';
 import {
     calcularFechaSugerida, cargaDeLineas, leerSuplementoUrgencia, productoSuplementoUrgencia,
+    esFueraDeCatalogo, cargaPorPrecio,
     importeSuplementoUrgencia, diasLaborablesAdelantados, porcentajeUrgencia,
 } from './cargaTrabajo.js';
 
@@ -48,7 +49,38 @@ export async function calcularPresupuesto(prisma, {client, lines, fechaLimiteRaw
             client,
             {pactados, redondear: false},
         );
-        const {unitPrice, quantity, discount: discountPct, totalPrice, productName, origenPrecio} = calculada;
+        let {unitPrice, discount: discountPct, totalPrice, origenPrecio} = calculada;
+        const {quantity, productName, sku} = calculada;
+
+        // Prenda fuera de catálogo: nombre y precio los pone quien pica el pedido
+        // sobre un producto genérico (sql/035); su carga sale del precio.
+        const fueraCatalogo = esFueraDeCatalogo(sku);
+        const customName = fueraCatalogo ? String(l.nombreLibre || '').trim().slice(0, 120) : null;
+        if (fueraCatalogo && !customName) throw error400('Falta el nombre de la prenda fuera de catálogo.');
+
+        // Precio ajustado: cualquiera que pique pedidos puede cambiar el precio de
+        // una prenda (un traje muy sucio), siempre con motivo. Es el precio final
+        // de la línea: el descuento del cliente no se aplica encima.
+        let priceOriginal = null;
+        let priceNote = null;
+        const hayPrecioManual = l.precioManual !== undefined && l.precioManual !== null && l.precioManual !== '';
+        if (fueraCatalogo && !hayPrecioManual) throw error400(`Falta el precio de «${customName}».`);
+        if (hayPrecioManual) {
+            const precio = Number(l.precioManual);
+            if (!Number.isFinite(precio) || precio < 0 || precio > 10000) {
+                throw error400(`El precio de «${customName || productName}» no es válido.`);
+            }
+            priceNote = String(l.motivoPrecio || '').trim().slice(0, 200) || null;
+            if (!fueraCatalogo && !priceNote) {
+                throw error400(`Indica el motivo del cambio de precio de «${productName}».`);
+            }
+            if (!fueraCatalogo) priceOriginal = unitPrice;
+            unitPrice = Math.round(precio * 100) / 100;
+            discountPct = 0;
+            totalPrice = unitPrice * quantity;
+            origenPrecio = 'manual';
+        }
+
         total += totalPrice;
         lineCreates.push({
             productId: l.productId,
@@ -58,16 +90,22 @@ export async function calcularPresupuesto(prisma, {client, lines, fechaLimiteRaw
             discount: discountPct,
             totalPrice,
             color: l.color || null,
+            customName,
+            priceOriginal,
+            priceNote,
+            workloadWeight: fueraCatalogo ? cargaPorPrecio(unitPrice, sku) : null,
         });
         lineas.push({
             productId: Number(l.productId),
             variantId: l.variantId || null,
-            productName,
+            productName: customName || productName,
             quantity,
             unitPrice,
             discount: discountPct,
             totalPrice,
             origenPrecio,
+            ...(priceOriginal != null ? {precioTarifa: priceOriginal} : {}),
+            ...(priceNote ? {motivoPrecio: priceNote} : {}),
         });
     }
 
@@ -107,7 +145,7 @@ export async function calcularPresupuesto(prisma, {client, lines, fechaLimiteRaw
     if (fechaElegida && !eximido) {
         // La sugerida cuenta lo que pesa este pedido: si no cabe en un día, se
         // sugiere otro, y entregarlo antes lleva suplemento (igual que en el TPV).
-        const carga = await cargaDeLineas(prisma, lines);
+        const carga = await cargaDeLineas(prisma, lineCreates); // con la carga propia de las prendas fuera de catálogo
         const [{sugerida, calendar}, tramos, producto] = await Promise.all([
             calcularFechaSugerida(prisma, {carga}),
             leerSuplementoUrgencia(prisma),

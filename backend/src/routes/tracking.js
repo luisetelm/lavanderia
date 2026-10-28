@@ -323,7 +323,7 @@ export default async function (fastify, opts) {
                     stepDurationMin: info.durationMin,
                     orderLineId: step.orderLineId,
                     quantity: step.orderLine.quantity,
-                    productName: step.orderLine.product?.name || '?',
+                    productName: step.orderLine.customName || step.orderLine.product?.name || '?',
                     productWeight: step.orderLine.product?.weight || 0,
                     color: step.orderLine.color || null,
                     orderId: step.orderLine.order.id,
@@ -514,6 +514,7 @@ export default async function (fastify, opts) {
                         select: {
                             id: true,
                             quantity: true,
+                            customName: true,
                             product: { select: { id: true, name: true,
                                 itinerary: {
                                     include: {
@@ -947,7 +948,7 @@ export default async function (fastify, opts) {
                     id: true, orderNum: true, fechaLimite: true, status: true,
                     lines: {
                         select: {
-                            id: true, quantity: true,
+                            id: true, quantity: true, customName: true,
                             product: { select: { id: true, name: true, weight: true } },
                             steps: {
                                 include: { itineraryStep: true, stepConfig: true },
@@ -1010,7 +1011,7 @@ export default async function (fastify, opts) {
 
                 return {
                     lineId: line.id,
-                    productName: line.product?.name || '?',
+                    productName: line.customName || line.product?.name || '?',
                     quantity: qty,
                     weight,
                     totalMin: Math.round(lineTotal),

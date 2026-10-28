@@ -108,8 +108,8 @@ export function diasLaborablesAdelantados(calendar, elegida, sugerida) {
 }
 
 /**
- * Carga de un pedido que aún no existe, a partir de sus líneas ({productId, quantity}):
- * con los mismos pesos que cargaPonderada.
+ * Carga de un pedido que aún no existe, a partir de sus líneas ({productId,
+ * quantity, workloadWeight?}): con los mismos pesos que cargaPonderada.
  */
 export async function cargaDeLineas(prisma, lineas) {
     const validas = (lineas || []).filter(l => Number(l?.productId) > 0 && Number(l?.quantity) > 0);
@@ -120,17 +120,34 @@ export async function cargaDeLineas(prisma, lineas) {
         select: { id: true, countsForLoad: true, workloadWeight: true },
     });
     const porId = new Map(productos.map(p => [p.id, p]));
-    return cargaPonderada(validas.map(l => ({ quantity: Number(l.quantity), product: porId.get(Number(l.productId)) })));
+    return cargaPonderada(validas.map(l => ({
+        quantity: Number(l.quantity),
+        workloadWeight: l.workloadWeight != null && Number(l.workloadWeight) >= 0 ? Number(l.workloadWeight) : null,
+        product: porId.get(Number(l.productId)),
+    })));
 }
 
-// Carga ponderada de un pedido: ignora productos que no computan.
+// Carga ponderada de un pedido: ignora productos que no computan. Una línea
+// con carga propia (prenda fuera de catálogo, sql/035) usa la suya.
 export function cargaPonderada(lines) {
     return (lines || []).reduce((s, l) => {
         const p = l.product || {};
         if (p.countsForLoad === false) return s;
-        const w = (p.workloadWeight != null) ? Number(p.workloadWeight) : 1;
+        const w = l.workloadWeight != null ? Number(l.workloadWeight)
+            : (p.workloadWeight != null) ? Number(p.workloadWeight) : 1;
         return s + (l.quantity || 0) * w;
     }, 0);
+}
+
+// ── Prendas fuera de catálogo (sql/035) ──
+// Se pican sobre uno de estos productos genéricos, según el servicio, con nombre
+// y precio libres. Su carga sale del precio con la regla de la calibración de
+// sql/025: precio / 7 (sólo plancha, / 6), en tramos de media camisa, mínimo 0,5.
+export const SKUS_FUERA_CATALOGO = ['FUERA-SECO', 'FUERA-LAVADO', 'FUERA-PLANCHA'];
+export const esFueraDeCatalogo = (sku) => SKUS_FUERA_CATALOGO.includes(sku);
+export function cargaPorPrecio(precio, sku) {
+    const divisor = sku === 'FUERA-PLANCHA' ? 6 : 7;
+    return Math.max(0.5, Math.round((Number(precio) || 0) / divisor * 2) / 2);
 }
 
 /**
@@ -360,7 +377,7 @@ export async function estadisticaCargaHistorica(prisma, meses = 12) {
     const filas = await prisma.$queryRaw`
         WITH dias AS (
             SELECT (o."fechaLimite" AT TIME ZONE 'Europe/Madrid')::date AS dia,
-                   SUM(l.quantity * CASE WHEN p.counts_for_load THEN p.workload_weight ELSE 0 END) AS carga
+                   SUM(l.quantity * CASE WHEN p.counts_for_load THEN COALESCE(l.workload_weight, p.workload_weight) ELSE 0 END) AS carga
             FROM "OrderLine" l
             JOIN "Order" o ON o.id = l."orderId"
             JOIN "Product" p ON p.id = l."productId"

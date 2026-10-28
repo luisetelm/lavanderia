@@ -162,7 +162,7 @@ export default async function dashboardRoutes(fastify) {
                         createdAt: o.createdAt,
                         status: o.status,
                         client: o.client,
-                        linesSummary: o.lines.map(l => `${l.quantity}x ${l.product.name}`).join(', '),
+                        linesSummary: o.lines.map(l => `${l.quantity}x ${l.customName || l.product.name}`).join(', '),
                         linesCount: o.lines.reduce((sum, l) => sum + l.quantity, 0),
                         hasTracking,
                         allStepsDone,

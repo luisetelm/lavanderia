@@ -2,6 +2,7 @@ import React, {useState, useEffect} from 'react';
 import {useDraftOrder} from '../hooks/useDraftOrder.js';
 import './DraftLines.css';
 import {confirmar} from '../utils/dialogo.js';
+import {MOTIVOS_PRECIO} from '../utils/fueraCatalogo.js';
 
 // Líneas del pedido en curso (prendas) con toda su edición: color, cantidad,
 // nota y fotos, desglose en prendas individuales, pasos opcionales y borrado.
@@ -87,13 +88,77 @@ function CantidadLinea({value, onChange}) {
     );
 }
 
+const precioTexto = (n) => (Math.round(Number(n) * 100) / 100).toString().replace('.', ',');
+const leerPrecio = (t) => {
+    const n = Number(String(t).replace(',', '.').trim());
+    return Number.isFinite(n) && n >= 0 && n <= 10000 ? Math.round(n * 100) / 100 : null;
+};
+
+/* Ajustar el precio de una prenda (un traje muy sucio): precio por unidad y
+   motivo, que es obligatorio y queda en la ficha del pedido. En una prenda
+   fuera de catálogo se cambian su nombre y su precio. */
+function PrecioLinea({c, tarifa, onApply, onClear, onClose}) {
+    const fuera = Boolean(c.fueraCatalogo);
+    const [precio, setPrecio] = useState(precioTexto(c.precioManual ?? tarifa));
+    const [motivo, setMotivo] = useState(c.motivoPrecio || '');
+    const [nombre, setNombre] = useState(c.nombreLibre || '');
+    const valor = leerPrecio(precio);
+    const puede = valor !== null && (fuera ? nombre.trim() && valor > 0 : motivo.trim());
+
+    return (
+        <div className="dl-detail dl-price-edit">
+            {fuera ? (
+                <input type="text" className="dl-input" value={nombre} maxLength={120}
+                       onChange={(e) => setNombre(e.target.value)} placeholder="Nombre de la prenda"/>
+            ) : (
+                <div className="dl-price-tarifa">Tarifa: <strong>{precioTexto(tarifa)} €</strong> por unidad</div>
+            )}
+            <div className="dl-price-row">
+                <label className="dl-price-field">
+                    <span>Precio por unidad</span>
+                    <input type="text" inputMode="decimal" className="dl-input" value={precio} autoFocus
+                           onFocus={(e) => e.target.select()}
+                           onChange={(e) => setPrecio(e.target.value.replace(/[^0-9.,]/g, ''))}/>
+                    <span>€</span>
+                </label>
+                {!fuera && [['+20 %', 1.2], ['+50 %', 1.5], ['×2', 2]].map(([t, f]) => (
+                    <button key={t} type="button" className="dl-chip" onClick={() => setPrecio(precioTexto(tarifa * f))}>{t}</button>
+                ))}
+            </div>
+            {!fuera && (
+                <>
+                    <div className="dl-chips">
+                        {MOTIVOS_PRECIO.map(m => (
+                            <button key={m} type="button" className={`dl-chip ${motivo === m ? 'is-selected' : ''}`}
+                                    onClick={() => setMotivo(m)}>{m}</button>
+                        ))}
+                    </div>
+                    <input type="text" className="dl-input" value={motivo} maxLength={200}
+                           onChange={(e) => setMotivo(e.target.value)} placeholder="Motivo del cambio de precio (obligatorio)"/>
+                </>
+            )}
+            <div className="dl-price-actions">
+                <button type="button" className="dl-chip is-primary" disabled={!puede}
+                        onClick={() => { onApply(valor, motivo.trim(), nombre.trim()); onClose(); }}>
+                    Aplicar
+                </button>
+                {!fuera && c.precioManual != null && (
+                    <button type="button" className="dl-chip" onClick={() => { onClear(); onClose(); }}>Volver a la tarifa</button>
+                )}
+                <button type="button" className="dl-chip" onClick={onClose}>Cancelar</button>
+            </div>
+        </div>
+    );
+}
+
 export default function DraftLines({theme = 'light', emptyText = null}) {
     const {
         cart, discount, getPriceForItem, agreedPriceFor,
         updateQuantity, removeFromCart, updateLineNotes, addLinePhoto, removeLinePhoto,
-        splitLine, toggleOptionalStep, setLineColor,
+        splitLine, toggleOptionalStep, setLineColor, setLinePrice,
     } = useDraftOrder();
     const [openLineId, setOpenLineId] = useState(null);
+    const [precioLineId, setPrecioLineId] = useState(null); // prenda con el ajuste de precio abierto
     const hasDiscount = Number(discount) > 0;
 
     const handlePhotoCapture = async (lineId, e) => {
@@ -114,6 +179,8 @@ export default function DraftLines({theme = 'light', emptyText = null}) {
             {cart.map(c => {
                 const unitPrice = getPriceForItem(c);
                 const lineTotal = unitPrice * c.quantity;
+                const tarifa = getPriceForItem({...c, precioManual: null});
+                const ajustado = !c.fueraCatalogo && c.precioManual !== null && c.precioManual !== undefined;
                 const baseTotal = Number(c.basePrice) * c.quantity;
                 const pactado = agreedPriceFor(c.productId) !== null;
                 const hasDetail = c.notes || (c.photos && c.photos.length > 0);
@@ -131,6 +198,7 @@ export default function DraftLines({theme = 'light', emptyText = null}) {
                                           style={{background: color.hex}} title={color.label}/>
                                 )}
                                 <span className="dl-name-text">{c.name}</span>
+                                {c.fueraCatalogo && <em className="dl-agreed" title="Prenda fuera de catálogo">fuera de catálogo</em>}
                                 {hasDetail && (
                                     <span className="dl-flags">
                                         {c.notes && <span uk-icon="icon: file-edit; ratio: 0.5" title={c.notes}></span>}
@@ -166,13 +234,29 @@ export default function DraftLines({theme = 'light', emptyText = null}) {
 
                             {/* Precio */}
                             <div className="dl-price">
-                                {hasDiscount && !pactado && <s>{baseTotal.toFixed(2)}</s>}
-                                {pactado && <em className="dl-agreed" title="Precio pactado con este cliente">pactado</em>}
+                                {ajustado ? (
+                                    <>
+                                        <s>{(tarifa * c.quantity).toFixed(2)}</s>
+                                        <em className="dl-agreed is-adjusted" title={c.motivoPrecio || 'Precio ajustado'}>ajustado</em>
+                                    </>
+                                ) : (
+                                    <>
+                                        {hasDiscount && !pactado && !c.fueraCatalogo && <s>{baseTotal.toFixed(2)}</s>}
+                                        {pactado && !c.fueraCatalogo && <em className="dl-agreed" title="Precio pactado con este cliente">pactado</em>}
+                                    </>
+                                )}
                                 <span>{lineTotal.toFixed(2)} €</span>
                             </div>
 
                             {/* Acciones */}
                             <div className="dl-actions">
+                                <button type="button"
+                                        className={`dl-btn ${precioLineId === c.lineId ? 'is-active' : ''}`}
+                                        title={c.fueraCatalogo ? 'Nombre y precio de la prenda' : 'Ajustar el precio de esta prenda'}
+                                        aria-label="Ajustar precio"
+                                        onClick={() => setPrecioLineId(precioLineId === c.lineId ? null : c.lineId)}>
+                                    €
+                                </button>
                                 <button type="button"
                                         className={`dl-btn ${isOpen ? 'is-active' : ''}`}
                                         title="Nota o foto de la prenda"
@@ -197,6 +281,16 @@ export default function DraftLines({theme = 'light', emptyText = null}) {
                                         onClick={() => removeFromCart(c.lineId)}>×</button>
                             </div>
                         </div>
+
+                        {precioLineId === c.lineId && (
+                            <PrecioLinea c={c} tarifa={tarifa}
+                                         onApply={(precio, motivo, nombre) => setLinePrice(c.lineId, precio, motivo, nombre)}
+                                         onClear={() => setLinePrice(c.lineId, null)}
+                                         onClose={() => setPrecioLineId(null)}/>
+                        )}
+                        {ajustado && precioLineId !== c.lineId && c.motivoPrecio && (
+                            <div className="dl-price-note">Precio ajustado: {c.motivoPrecio}</div>
+                        )}
 
                         {/* Pasos opcionales del itinerario */}
                         {optionalSteps.length > 0 && (

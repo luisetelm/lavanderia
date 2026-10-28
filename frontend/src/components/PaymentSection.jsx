@@ -313,7 +313,7 @@ export default function PaymentSection({token, orderId, onPaid, initialOrder = n
                 salioEtiquetaPrenda = await printGarmentFinishedLabel({
                     orderNum: order.orderNum,
                     clientName,
-                    productName: line.product?.name || line.productName || 'Prenda',
+                    productName: line.customName || line.product?.name || line.productName || 'Prenda',
                     quantity: line.quantity,
                     fechaLimite: order.fechaLimite,
                 }, token);
@@ -787,7 +787,7 @@ export default function PaymentSection({token, orderId, onPaid, initialOrder = n
             <div>
                 <div style={{fontWeight: 'bold', marginBottom: 8}}>Líneas:</div>
                 {(order.lines || []).map((l) => {
-                    const name = l.productName || l.product?.name || `#${l.productId}`;
+                    const name = l.customName || l.productName || l.product?.name || `#${l.productId}`;
                     const subtotal = Number(l.unitPrice || 0) * Number(l.quantity || 0);
                     const discountAmount = (subtotal * (l.discount || 0)) / 100;
                     const lineTotal = subtotal - discountAmount;
@@ -828,6 +828,12 @@ export default function PaymentSection({token, orderId, onPaid, initialOrder = n
                             </div>
                             <div>{formatEUR(lineTotal)}</div>
                         </div>
+                        {/* Precio cambiado al picar el pedido (sql/035): tarifa y motivo */}
+                        {l.priceNote && (
+                            <div style={{fontSize: 11, color: '#92400e', marginBottom: 4}}>
+                                Precio ajustado{l.priceOriginal != null ? ` (tarifa ${formatEUR(l.priceOriginal)})` : ''}: {l.priceNote}
+                            </div>
+                        )}
 
                         {/* Descuento por línea */}
                         {canEdit ? (

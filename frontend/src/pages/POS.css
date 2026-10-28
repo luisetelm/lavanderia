@@ -281,3 +281,34 @@
     .pos-step { min-width: 0; padding: 8px; }
     .pos-step-label { font-size: 0.8rem; }
 }
+
+/* ── Prenda fuera de catálogo (components/pos/PosPrendas.jsx) ── */
+.pos-fuera-btn { margin-left: 8px; text-transform: none; white-space: nowrap; }
+.pos-fuera {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 10px;
+    padding: 10px;
+    border: 1px dashed var(--tyb-border-strong);
+    border-radius: 8px;
+    background: var(--tyb-surface-muted);
+}
+.pos-fuera-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.pos-fuera-row > .uk-input { flex: 1 1 220px; min-width: 0; }
+.pos-fuera-precio { display: inline-flex; align-items: center; gap: 4px; }
+.pos-fuera-precio .uk-input { width: 90px; text-align: right; }
+.pos-fuera-tipos { display: inline-flex; flex-wrap: wrap; gap: 4px; flex: 1 1 auto; }
+.pos-fuera-tipo {
+    padding: 4px 12px;
+    border: 1px solid var(--tyb-border);
+    border-radius: 999px;
+    background: var(--tyb-surface);
+    color: var(--tyb-text);
+    font: inherit;
+    font-size: 0.8rem;
+    cursor: pointer;
+}
+.pos-fuera-tipo.is-active { background: var(--tyb-primary); border-color: var(--tyb-primary); color: var(--tyb-primary-foreground); }
+.pos-fuera-acciones { display: inline-flex; gap: 6px; margin-left: auto; }
+.pos-fuera-aviso { color: var(--tyb-warning); font-size: 0.85rem; flex: 1; }

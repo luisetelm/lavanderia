@@ -28,7 +28,10 @@ export function aggregateOrderLines(orders) {
     for (const o of orders) {
         const lines = o.lines || [];
         for (const item of lines) {
-            const key = item.productId != null ? `p:${item.productId}` : `d:${(item.description || item.product?.name || '').trim()}`;
+            // Las prendas fuera de catálogo (sql/035) comparten producto genérico:
+            // se agrupan por el nombre que se les puso, que es el que sale en la factura.
+            const key = item.customName ? `c:${item.productId}:${item.customName.trim().toLowerCase()}`
+                : item.productId != null ? `p:${item.productId}` : `d:${(item.description || item.product?.name || '').trim()}`;
             const unit = Number(item.unitPrice || 0);
             const qty = Number(item.quantity || 0);
             // intenta leer tax del propio item, si no, 21%
@@ -36,7 +39,7 @@ export function aggregateOrderLines(orders) {
 
             const existing = map.get(key) || {
                 productId: item.productId ?? null,
-                description: item.description ?? item.product?.name ?? `Pedido ${o.id}`,
+                description: item.customName || (item.description ?? item.product?.name ?? `Pedido ${o.id}`),
                 quantity: 0,
                 gross: 0,
                 taxPct,
@@ -699,7 +702,7 @@ function buildInvoiceHtml({invoice, cliente}) {
                 const qty = Number(item.quantity || 0);
                 const taxPct = (item.taxPercent ?? item.taxRate ?? invoice.taxPercent ?? invoice.taxRate ?? 21);
                 const lineTotal = unit * qty;
-                const desc = item.description ?? item.product?.name ?? ('Pedido ' + (order.id ?? ''));
+                const desc = item.customName || (item.description ?? item.product?.name ?? ('Pedido ' + (order.id ?? '')));
                 return `
         <tr>
           <td>${desc}</td>

@@ -212,7 +212,7 @@ function OrderCard({ order: o, compact = false, onOpen, onCompose }) {
     const st = ORDER_STATUS[o.status] || { text: o.status, cls: '' };
     const lines = lineasActivas(o.lines);
     const items = lines.reduce((sum, l) => sum + (Number(l.quantity) || 0), 0);
-    const summary = lines.slice(0, 3).map(l => `${l.quantity}× ${l.product?.name || 'Artículo'}`).join(', ')
+    const summary = lines.slice(0, 3).map(l => `${l.quantity}× ${l.customName || l.product?.name || 'Artículo'}`).join(', ')
         + (lines.length > 3 ? ` +${lines.length - 3}` : '');
     const fecha = (d) => d ? new Date(d).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' }) : null;
     const isLate = o.status === 'pending' && o.fechaLimite && new Date(o.fechaLimite) < new Date();

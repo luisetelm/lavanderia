@@ -84,7 +84,7 @@ export default function PortalOrderDetail({ token }) {
                             }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                                     <div>
-                                        <div style={{ fontWeight: 500 }}>{l.product?.name || `Producto #${l.productId}`}</div>
+                                        <div style={{ fontWeight: 500 }}>{l.customName || l.product?.name || `Producto #${l.productId}`}</div>
                                         <div style={{ fontSize: 12, color: '#888' }}>
                                             {l.quantity} x {formatEUR(l.unitPrice)}
                                             {l.discount > 0 && (

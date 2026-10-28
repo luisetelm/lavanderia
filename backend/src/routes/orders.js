@@ -354,7 +354,7 @@ export default async function (fastify, opts) {
                 totalPrice: l.totalPrice,
                 color: l.color || null,
                 annotations: l.annotations ? (typeof l.annotations === 'string' ? JSON.parse(l.annotations) : l.annotations) : [],
-                productName: l.product?.name || '',
+                productName: l.customName || l.product?.name || '',
                 // Igual que en GET /:id: el TPV recibe estos pedidos como
                 // initialOrder, así que sin estos campos las líneas anuladas
                 // parecerían activas (se podrían volver a anular, y no saldrían
@@ -756,6 +756,8 @@ export default async function (fastify, opts) {
                     invoicedInId: true,
                     voidedAt: true,
                     voidReason: true,
+                    // Prenda fuera de catálogo y precio ajustado (sql/035)
+                    customName: true, priceOriginal: true, priceNote: true,
                     product: {
                         select: {id: true, name: true, basePrice: true, serviceOptions: true, labelCount: true, printWashLabel: true}
                     },
@@ -942,7 +944,7 @@ export default async function (fastify, opts) {
                     tipo: 'anulacion',
                     fecha: l.voidedAt,
                     importe: -Number(l.totalPrice || 0),
-                    concepto: `${l.quantity}× ${l.product?.name || `Producto ${l.productId}`}`,
+                    concepto: `${l.quantity}× ${l.customName || l.product?.name || `Producto ${l.productId}`}`,
                     nota: l.voidReason || null,
                     usuario: autor?.firstName || null,
                 });
@@ -1086,7 +1088,7 @@ export default async function (fastify, opts) {
                     invoiceId: Number(invoiceId),
                     reason: `Ajuste pedido ${order.orderNum}: ${String(reason).trim()}`,
                     conceptos: lineasDeEsaFactura.map((l) => ({
-                        description: l.product?.name || `Producto ${l.productId}`,
+                        description: l.customName || l.product?.name || `Producto ${l.productId}`,
                         quantity: l.quantity,
                         grossAmount: l.totalPrice,
                     })),
@@ -1294,6 +1296,7 @@ export default async function (fastify, opts) {
                             invoicedInId: true,
                             voidedAt: true,
                             voidReason: true,
+                            customName: true, priceOriginal: true, priceNote: true,
                             product: {
                                 select: {id: true, name: true, basePrice: true, serviceOptions: true, labelCount: true, printWashLabel: true,
                                     itinerary: {
@@ -1379,7 +1382,7 @@ export default async function (fastify, opts) {
             // Normalizar/cocinar la línea para que tenga todo lo que el frontend espera:
             const serializedLines = order.lines.map((l) => {
                 // fallback name desde product si no viene explícito
-                const productName = l.product?.name || `#${l.productId}`;
+                const productName = l.customName || l.product?.name || `#${l.productId}`;
                 // basePrice + posible modificador de variante
                 let unitPrice = l.unitPrice;
                 // Si no se guardó en unitPrice y quieres reconstruir:
@@ -1396,7 +1399,7 @@ export default async function (fastify, opts) {
                     totalPrice: l.totalPrice,
                     color: l.color || null,
                     annotations: l.annotations ? (typeof l.annotations === 'string' ? JSON.parse(l.annotations) : l.annotations) : [],
-                    productName: l.product?.name || '',
+                    productName: l.customName || l.product?.name || '',
                     // Estado de facturación y anulación, para el modal de ajuste.
                     invoicedInId: l.invoicedInId != null ? String(l.invoicedInId) : null,
                     voidedAt: l.voidedAt || null,
@@ -1764,12 +1767,14 @@ export default async function (fastify, opts) {
             const suggestTo = addDays(todayStr, 42);
             const calFrom = start < todayStr ? start : todayStr;
             const calTo = end > suggestTo ? end : suggestTo;
-            // Prendas del pedido en curso (?lineas=12x2,7x1: producto x cantidad): la
+            // Prendas del pedido en curso (?lineas=12x2,7x1: producto x cantidad, y
+            // @carga por unidad en las prendas fuera de catálogo: 150x1@3.5): la
             // sugerida busca un día en el que quepan, como hace el servidor al crear
             // el pedido (utils/presupuesto.js), para que el suplemento coincida.
             const lineas = String(req.query.lineas || '').split(',').slice(0, 500).map(par => {
-                const [productId, quantity] = par.split('x').map(Number);
-                return { productId, quantity };
+                const [linea, carga] = par.split('@');
+                const [productId, quantity] = linea.split('x').map(Number);
+                return { productId, quantity, workloadWeight: carga !== undefined ? Number(carga) : null };
             });
             const [calendar, byDay, loadMax, tramosUrgencia, carga] = await Promise.all([
                 getWorkCalendar(prisma, calFrom, calTo),

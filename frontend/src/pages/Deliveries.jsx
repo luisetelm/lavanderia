@@ -126,7 +126,7 @@ export default function Deliveries({token}) {
         const sinCobro = Number(o.total) <= 0;
         const lineas = lineasActivas(o.lines);
         const prendas = lineas.reduce((a, l) => a + (Number(l.quantity) || 0), 0);
-        const resumen = lineas.map(l => `${l.quantity}× ${l.product?.name || l.productName || `#${l.productId}`}`).join(', ');
+        const resumen = lineas.map(l => `${l.quantity}× ${l.customName || l.product?.name || l.productName || `#${l.productId}`}`).join(', ');
         const nombre = o.client ? `${o.client.firstName || ''} ${o.client.lastName || ''}`.trim() : '';
         const trabajando = ocupado === o.id;
         const puedeListo = o.status !== 'ready' && o.status !== 'collected' && todosHechos;

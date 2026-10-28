@@ -2,6 +2,7 @@
 // prendas para que el calendario pueda decir cuántas piezas iguales hay ya ese día.
 // La vista clásica (todo a la vez) sigue disponible con el interruptor del TPV.
 import { esTelefonoValido } from './telefono.js';
+import { cargaPorPrecio } from './fueraCatalogo.js';
 
 export const PASOS = [
     { key: 'cliente', titulo: 'Cliente', icono: 'user' },
@@ -65,12 +66,20 @@ export function infoCalendario(data, lineas = '') {
 // Prendas del pedido en curso para /orders/delivery-dates: «producto x cantidad»
 // juntando las líneas del mismo producto («12x2,7x1»). La sugerida busca un día en
 // el que quepan; sirve también de clave para saber si hay que volver a pedirla.
+// Las prendas fuera de catálogo van aparte con su carga por unidad («178x1@5»).
 export function lineasDelPedido(cart) {
     const porProducto = {};
-    (cart || []).forEach(c => { porProducto[c.productId] = (porProducto[c.productId] || 0) + (Number(c.quantity) || 0); });
-    return Object.keys(porProducto).sort((a, b) => a - b)
-        .filter(id => porProducto[id] > 0)
-        .map(id => `${id}x${porProducto[id]}`).join(',');
+    const sueltas = [];
+    (cart || []).forEach(c => {
+        const q = Number(c.quantity) || 0;
+        if (q <= 0) return;
+        if (c.fueraCatalogo) sueltas.push(`${c.productId}x${q}@${cargaPorPrecio(c.precioManual, c.fueraCatalogo)}`);
+        else porProducto[c.productId] = (porProducto[c.productId] || 0) + q;
+    });
+    return [
+        ...Object.keys(porProducto).sort((a, b) => a - b).map(id => `${id}x${porProducto[id]}`),
+        ...sueltas.sort(),
+    ].join(',');
 }
 
 // Pedir desde el TPV la misma validación que hace la barra del pedido en curso

@@ -121,9 +121,13 @@ export default function DateCarousel({fechaLimite, setFechaLimite, token, weeks 
         (data?.loadByDay?.[fechaLimite] || []).forEach(o => lineasActivas(o.lines).forEach(l => {
             const p = l.product || {};
             if (p.sku === 'SUPL-URGENCIA') return;
-            const g = (enDia[l.productId] ||= {
-                id: l.productId, name: p.name || `#${l.productId}`, qty: 0, orders: new Set(),
-                weight: p.countsForLoad === false ? 0 : (p.workloadWeight != null ? Number(p.workloadWeight) : 1),
+            // Las prendas fuera de catálogo comparten producto genérico: van por su nombre
+            const clave = l.customName ? `${l.productId}|${l.customName.trim().toLowerCase()}` : String(l.productId);
+            const g = (enDia[clave] ||= {
+                id: clave, name: l.customName || p.name || `#${l.productId}`, qty: 0, orders: new Set(),
+                weight: p.countsForLoad === false ? 0
+                    : l.workloadWeight != null ? Number(l.workloadWeight)
+                        : (p.workloadWeight != null ? Number(p.workloadWeight) : 1),
             });
             g.qty += Number(l.quantity) || 0;
             g.orders.add(o.id);
@@ -131,7 +135,8 @@ export default function DateCarousel({fechaLimite, setFechaLimite, token, weeks 
         // En el pedido en curso cada prenda es una línea: se juntan por producto
         const enPedido = {};
         (cart || []).forEach(c => {
-            const g = (enPedido[c.productId] ||= {id: c.productId, name: c.name, qty: 0});
+            const clave = c.nombreLibre ? `${c.productId}|${c.nombreLibre.trim().toLowerCase()}` : String(c.productId);
+            const g = (enPedido[clave] ||= {id: clave, name: c.name, qty: 0});
             g.qty += Number(c.quantity) || 0;
         });
         const coinciden = Object.values(enPedido)

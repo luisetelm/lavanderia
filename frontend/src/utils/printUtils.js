@@ -259,7 +259,8 @@ export async function printSaleTicket(order, products = [], options = {}) {
         .map((l) => {
             // El nombre viene en l.product.name (detalle del pedido). Como respaldo,
             // se usa l.productName o la lista `products`, y por último el id.
-            let name = l.product?.name || l.productName;
+            // Prenda fuera de catálogo: el nombre que se le puso en el TPV (sql/035)
+            let name = l.customName || l.product?.name || l.productName;
             if (!name) {
                 const prod = products.find((p) => p.id === l.productId);
                 name = prod ? prod.name : `#${l.productId}`;

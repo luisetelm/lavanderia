@@ -220,7 +220,7 @@ export default async function (fastify, opts) {
                            date_trunc('week', o."fechaLimite" AT TIME ZONE 'Europe/Madrid')::date AS semana,
                            EXTRACT(dow FROM o."fechaLimite" AT TIME ZONE 'Europe/Madrid')::int AS dow_entrega,
                            EXTRACT(dow FROM o."createdAt" AT TIME ZONE 'Europe/Madrid')::int AS dow_recogida,
-                           SUM(l.quantity * CASE WHEN p.counts_for_load THEN p.workload_weight ELSE 0 END) AS carga
+                           SUM(l.quantity * CASE WHEN p.counts_for_load THEN COALESCE(l.workload_weight, p.workload_weight) ELSE 0 END) AS carga
                     FROM "Order" o
                     JOIN "OrderLine" l ON l."orderId" = o.id
                     JOIN "Product" p ON p.id = l."productId"
@@ -305,6 +305,7 @@ export default async function (fastify, opts) {
                         totalPrice: true,
                         discount: true,
                         voidedAt: true,
+                        customName: true,
                         product: {select: {id: true, name: true}},
                     }
                 }
