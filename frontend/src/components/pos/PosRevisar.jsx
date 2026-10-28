@@ -12,13 +12,15 @@ const fechaLarga = (s) => {
 };
 const capitalizar = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
-// Un bloque del resumen con su «Cambiar»
+// Un bloque del resumen con su «Cambiar», que lleva al paso (sin paso, no lo lleva)
 function Bloque({titulo, paso, falta, onIrA, children}) {
     return (
         <div className={`pos-rev-block ${falta ? 'is-missing' : ''}`}>
             <div className="pos-rev-head">
                 <span className="pos-rev-title">{titulo}</span>
-                <button type="button" className="uk-button uk-button-link pos-rev-edit" onClick={() => onIrA(paso)}>Cambiar</button>
+                {paso && (
+                    <button type="button" className="uk-button uk-button-link pos-rev-edit" onClick={() => onIrA(paso)}>Cambiar</button>
+                )}
             </div>
             <div className="pos-rev-body">{children}</div>
         </div>
@@ -81,8 +83,18 @@ export default function PosRevisar({onIrA}) {
                     )}
                 </Bloque>
 
-                <Bloque onIrA={onIrA} titulo="Observaciones" paso="entrega">
-                    {observaciones ? observaciones : <span className="pos-rev-meta">Sin observaciones</span>}
+                {/* Se escriben aquí mismo: es cuando se suele caer en «recoge su madre».
+                    Es el mismo campo que en Entrega. */}
+                <Bloque titulo="Observaciones">
+                    <textarea
+                        id="pos-rev-observaciones"
+                        className="uk-textarea"
+                        rows="2"
+                        aria-label="Observaciones del pedido"
+                        placeholder="Instrucciones generales del pedido (ej: cliente recoge el sábado)..."
+                        value={observaciones}
+                        onChange={(e) => draft.setObservaciones(e.target.value)}
+                    />
                 </Bloque>
             </div>
 

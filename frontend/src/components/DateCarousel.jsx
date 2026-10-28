@@ -1,12 +1,11 @@
-import React, {useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo} from 'react';
-import {createPortal} from 'react-dom';
+import React, {useState, useEffect, useCallback, useRef, useMemo} from 'react';
 import {Link} from 'react-router-dom';
 import UIkit from 'uikit';
 import {lineasActivas} from '../utils/lineas.js';
 import {fetchDates} from '../api';
 import {infoCalendario, lineasDelPedido} from '../utils/pasosTPV.js';
 import {useDraftOrder} from '../hooks/useDraftOrder.js';
-import {rutaPedido, rutaEntregas} from '../utils/rutas.js';
+import {rutaEntregas} from '../utils/rutas.js';
 import './DateCarousel.css';
 
 /* ── Utilidades de fecha (todo en 'YYYY-MM-DD', hora local) ── */
@@ -42,67 +41,6 @@ const WEEKS = 2; // semanas visibles por defecto (vista clásica); el TPV por pa
 
 const loadLevel = (load, max) => (load >= max ? 'high' : load >= max / 2 ? 'mid' : 'low');
 
-const ESTADOS = {
-    pending: ['Pendiente', 'warning'], in_progress: ['En proceso', 'primary'], ready: ['Listo', 'success'],
-    collected: ['Recogido', 'default'], cancelled: ['Cancelado', 'default'],
-};
-
-/*
- * Desplegable con los pedidos de un día. Se pinta con un portal en <body> para
- * que no lo recorte la columna del TPV (overflow), pero sigue dentro del árbol
- * de React: antes era un uk-dropdown con "container: true", que UIkit movía
- * fuera del árbol y los enlaces de dentro hacían una recarga completa en vez
- * de navegar (se perdía el pedido al llegar a la lista).
- */
-function DayPopover({anchorEl, open, onClose, onMouseEnter, onMouseLeave, children}) {
-    const ref = useRef(null);
-    const [style, setStyle] = useState({top: 0, left: 0, visibility: 'hidden'});
-
-    useLayoutEffect(() => {
-        if (!open) return;
-        const place = () => {
-            const a = anchorEl?.getBoundingClientRect();
-            const el = ref.current;
-            if (!a || !el) return;
-            const w = el.offsetWidth, h = el.offsetHeight, margin = 8, gap = 6;
-            let left = a.left + a.width / 2 - w / 2;
-            left = Math.max(margin, Math.min(left, window.innerWidth - w - margin));
-            let top = a.bottom + gap;
-            if (top + h > window.innerHeight - margin && a.top - gap - h >= margin) top = a.top - gap - h;
-            setStyle({top, left, visibility: 'visible'});
-        };
-        place();
-        window.addEventListener('resize', place);
-        return () => window.removeEventListener('resize', place);
-    }, [open, anchorEl]);
-
-    useEffect(() => {
-        if (!open) return;
-        const dentro = (t) => ref.current?.contains(t) || anchorEl?.contains(t);
-        const onKey = (e) => { if (e.key === 'Escape') onClose(); };
-        const onDown = (e) => { if (!dentro(e.target)) onClose(); };
-        // Si se desplaza la página (o la columna del TPV) el ancla se mueve: se cierra.
-        const onScroll = (e) => { if (!ref.current?.contains(e.target)) onClose(); };
-        document.addEventListener('keydown', onKey);
-        document.addEventListener('pointerdown', onDown);
-        window.addEventListener('scroll', onScroll, true);
-        return () => {
-            document.removeEventListener('keydown', onKey);
-            document.removeEventListener('pointerdown', onDown);
-            window.removeEventListener('scroll', onScroll, true);
-        };
-    }, [open, onClose, anchorEl]);
-
-    if (!open) return null;
-    return createPortal(
-        <div ref={ref} className="dc-popover" style={style} role="dialog"
-             onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave}>
-            {children}
-        </div>,
-        document.body,
-    );
-}
-
 // `lateral`: lo que va al final de la columna del día elegido (las observaciones del pedido)
 export default function DateCarousel({fechaLimite, setFechaLimite, token, weeks = WEEKS, lateral = null}) {
     const todayStr = ymd(new Date());
@@ -116,36 +54,6 @@ export default function DateCarousel({fechaLimite, setFechaLimite, token, weeks 
     // Fecha elegida en el calendario nativo que aún no está cargada en la rejilla
     const [pendingPick, setPendingPick] = useState(null);
     const pickerRef = useRef(null);
-
-    // Desplegable de pedidos del día: con ratón se abre al pasar por encima;
-    // en pantallas táctiles (la tablet del taller no tiene hover) con el botón
-    // de la esquina de cada día, que también sirve para dejarlo fijo con un clic.
-    const canHover = useMemo(() => !window.matchMedia || window.matchMedia('(hover: hover)').matches, []);
-    const cellRefs = useRef({});
-    const [popDay, setPopDay] = useState(null);     // fecha cuyo desplegable está abierto
-    const [popPinned, setPopPinned] = useState(false); // abierto con clic: no se cierra al salir con el ratón
-    const popTimer = useRef(null);
-    const clearPopTimer = () => { if (popTimer.current) { clearTimeout(popTimer.current); popTimer.current = null; } };
-    const closePop = useCallback(() => { clearPopTimer(); setPopDay(null); setPopPinned(false); }, []);
-    const hoverIn = (date) => {
-        if (!canHover || popPinned) return;
-        clearPopTimer();
-        popTimer.current = setTimeout(() => setPopDay(date), 350);
-    };
-    const hoverOut = () => {
-        if (!canHover || popPinned) return;
-        clearPopTimer();
-        popTimer.current = setTimeout(() => setPopDay(null), 200);
-    };
-    const togglePop = (date) => {
-        clearPopTimer();
-        if (popDay === date && popPinned) { closePop(); return; }
-        setPopDay(date);
-        setPopPinned(true);
-    };
-    useEffect(() => () => clearPopTimer(), []);
-    // Al cambiar de semana el ancla desaparece: se cierra lo que hubiera abierto.
-    useEffect(() => { closePop(); }, [weekStart, closePop]);
 
     // Prendas del pedido en curso: la sugerida busca un día en el que quepan.
     // Se espera un momento tras el último cambio para no pedir el calendario
@@ -272,14 +180,6 @@ export default function DateCarousel({fechaLimite, setFechaLimite, token, weeks 
         setPendingPick(null);
     }, [pendingPick, data, setFechaLimite]);
 
-    // Carga ponderada de un pedido (para el desplegable de detalle)
-    const orderWeighted = (o) => lineasActivas(o.lines).reduce((s, l) => {
-        const p = l.product || {};
-        if (p.countsForLoad === false) return s;
-        const w = (p.workloadWeight != null) ? Number(p.workloadWeight) : 1;
-        return s + (l.quantity || 0) * w;
-    }, 0);
-
     const rangeLabel = (() => {
         const a = fromYmd(weekStart), b = fromYmd(weekEnd);
         const sameMonth = a.getMonth() === b.getMonth();
@@ -347,15 +247,11 @@ export default function DateCarousel({fechaLimite, setFechaLimite, token, weeks 
                         const title = closed
                             ? `Cerrado${day.label ? ` · ${day.label}` : ''}`
                             : day.isPast ? 'Fecha pasada'
-                                : `${orders.length} pedido${orders.length !== 1 ? 's' : ''} · carga ${fmtLoad(day.load)}`;
+                                : `${orders.length} pedido${orders.length !== 1 ? 's' : ''} · carga ${fmtLoad(day.load)} de ${fmtLoad(dayMax)}`
+                                    + (cargaPedido > 0 ? ` · con este pedido, ${fmtLoad(day.load + cargaPedido)}` : '');
 
-                        const hasPop = orders.length > 0 && !closed;
                         return (
-                            <div key={day.date} className={`dc-cell ${disabled ? 'is-disabled' : ''} ${hasPop ? 'has-pop' : ''}`}
-                                 ref={el => { cellRefs.current[day.date] = el; }}
-                                 title={title}
-                                 onMouseEnter={hasPop ? () => hoverIn(day.date) : undefined}
-                                 onMouseLeave={hasPop ? hoverOut : undefined}>
+                            <div key={day.date} className={`dc-cell ${disabled ? 'is-disabled' : ''}`} title={title}>
                                 <button
                                     type="button"
                                     className={cls}
@@ -393,66 +289,6 @@ export default function DateCarousel({fechaLimite, setFechaLimite, token, weeks 
                                     {isSuggested && !closed && !day.isPast && <span className="dc-badge">Sugerida</span>}
                                     {isSelected && <span className="dc-check" uk-icon="icon: check; ratio: 0.7"></span>}
                                 </button>
-
-                                {hasPop && (
-                                    <>
-                                        <button type="button" className="dc-pop-btn"
-                                                aria-label={`Ver los ${orders.length} pedidos del día`}
-                                                aria-expanded={popDay === day.date}
-                                                onClick={(e) => { e.stopPropagation(); togglePop(day.date); }}>
-                                            <span uk-icon="icon: list; ratio: 0.55"></span>
-                                        </button>
-                                        <DayPopover anchorEl={cellRefs.current[day.date]}
-                                                    open={popDay === day.date}
-                                                    onClose={closePop}
-                                                    onMouseEnter={clearPopTimer}
-                                                    onMouseLeave={hoverOut}>
-                                            <div className="dc-pop">
-                                                <div className="dc-pop-head uk-flex uk-flex-between uk-flex-middle">
-                                                    <strong>{cap(fmt(day.date, {weekday: 'long', day: 'numeric', month: 'short'}))}</strong>
-                                                    <button type="button" className="dc-pop-close" aria-label="Cerrar" onClick={closePop}>
-                                                        <span uk-icon="icon: close; ratio: 0.7"></span>
-                                                    </button>
-                                                </div>
-                                                <div className="dc-pop-list">
-                                                    {orders.map(order => {
-                                                        const [stLabel, stClass] = ESTADOS[order.status] || [order.status, 'default'];
-                                                        return (
-                                                            <div key={order.id} className="dc-pop-item">
-                                                                <div className="uk-flex uk-flex-between uk-flex-middle" style={{gap: 6}}>
-                                                                    <Link to={rutaPedido(order)} className="uk-text-bold" style={{fontSize: '0.82rem'}}
-                                                                          title="Abrir el pedido">
-                                                                        {order.orderNum}
-                                                                    </Link>
-                                                                    <span className={`uk-label uk-label-${stClass}`} style={{fontSize: '0.6rem'}}>{stLabel}</span>
-                                                                </div>
-                                                                {/* Sin el nombre del cliente: la pantalla del mostrador la puede ver
-                                                                    quien está pidiendo. Para saber de quién es, se abre el pedido. */}
-                                                                <div className="uk-text-muted" style={{fontSize: '0.72rem'}}>
-                                                                    Carga {fmtLoad(orderWeighted(order))}
-                                                                </div>
-                                                                <div style={{fontSize: '0.72rem', marginTop: 2, lineHeight: 1.35}}>
-                                                                    {lineasActivas(order.lines).map((l, i) => {
-                                                                        const noLoad = l.product?.countsForLoad === false;
-                                                                        return (
-                                                                            <span key={l.id} style={{color: noLoad ? '#9ca3af' : '#475569'}}>
-                                                                                {i > 0 ? ', ' : ''}{l.quantity}× {l.product?.name || `#${l.productId}`}{noLoad ? ' (no computa)' : ''}
-                                                                            </span>
-                                                                        );
-                                                                    })}
-                                                                </div>
-                                                            </div>
-                                                        );
-                                                    })}
-                                                </div>
-                                                <div className="dc-pop-foot uk-flex uk-flex-between uk-flex-middle">
-                                                    <span>{orders.length} pedido{orders.length !== 1 ? 's' : ''} · Carga {fmtLoad(day.load)}</span>
-                                                    <Link to={rutaEntregas(day.date)} title="Vista de Entregas de ese día">Ver el día completo</Link>
-                                                </div>
-                                            </div>
-                                        </DayPopover>
-                                    </>
-                                )}
                             </div>
                         );
                     })}
@@ -506,6 +342,11 @@ export default function DateCarousel({fechaLimite, setFechaLimite, token, weeks 
                                     </span>
                                 );
                             })()}
+                            {selected && selected.isWorking && selected.orders > 0 && (
+                                <Link to={rutaEntregas(fechaLimite)} className="dc-link" title="Entregas de ese día, pedido a pedido">
+                                    Ver los pedidos de ese día
+                                </Link>
+                            )}
                             {!selected && (
                                 <button type="button" className="dc-link" onClick={() => goToDate(fechaLimite)}>Ver en calendario</button>
                             )}
