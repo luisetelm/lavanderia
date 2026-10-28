@@ -12,7 +12,7 @@ export default function PosEntrega({token, weeks}) {
         <section id="pos-entrega" className="uk-card uk-card-default pos-card pos-sec-entrega">
             <DateCarousel
                 fechaLimite={draft.fechaLimite}
-                setFechaLimite={(d) => draft.setFechaLimite(d)}
+                setFechaLimite={(d, opciones) => draft.setFechaLimite(d, opciones)}
                 token={token}
                 weeks={weeks}
                 lateral={

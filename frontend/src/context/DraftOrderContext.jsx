@@ -13,6 +13,7 @@ const defaultState = {
     clientPricesFor: null, // id del cliente al que pertenecen, para no aplicar los de otro
     quickClient: { firstName: '', lastName: '', phone: '', email: '' },
     fechaLimite: null,
+    fechaManual: false,    // la fecha la eligió alguien; si no, sigue a la sugerida cuando esta cambia
     observaciones: '',
     sinSuplemento: false,  // quien pica el pedido exime el suplemento de urgencia
     paso: 'cliente',       // paso del TPV por pasos en el que va el pedido (utils/pasosTPV.js)
@@ -64,6 +65,8 @@ function loadFromStorage() {
             optionalStepIds: c.optionalStepIds || [],
         }));
         result.quickClient = qc;
+        // Borradores de antes de fechaManual: una fecha ya puesta se respeta
+        result.fechaManual = parsed.fechaManual ?? Boolean(parsed.fechaLimite);
         return result;
     } catch {
         storage.remove();
@@ -190,8 +193,11 @@ export function DraftOrderProvider({ children, token }) {
 
     /* ── Acciones del pedido ── */
 
-    const setFechaLimite = useCallback((date) => {
-        setState(prev => ({ ...prev, fechaLimite: date }));
+    // { manual: false } cuando la pone el calendario (la sugerida): así puede
+    // seguir a la sugerida si esta cambia al añadir prendas. Cualquier otra
+    // fecha se da por elegida y ya no se mueve sola.
+    const setFechaLimite = useCallback((date, { manual = true } = {}) => {
+        setState(prev => ({ ...prev, fechaLimite: date, fechaManual: date ? manual : false }));
     }, []);
 
     const setObservaciones = useCallback((text) => {
@@ -385,6 +391,7 @@ export function DraftOrderProvider({ children, token }) {
         selectedUser: state.selectedUser,
         quickClient: state.quickClient,
         fechaLimite: state.fechaLimite,
+        fechaManual: state.fechaManual,
         observaciones: state.observaciones,
         sinSuplemento: state.sinSuplemento,
         paso: state.paso,

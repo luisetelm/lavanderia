@@ -4,7 +4,7 @@ import {Link} from 'react-router-dom';
 import UIkit from 'uikit';
 import {lineasActivas} from '../utils/lineas.js';
 import {fetchDates} from '../api';
-import {infoCalendario} from '../utils/pasosTPV.js';
+import {infoCalendario, lineasDelPedido} from '../utils/pasosTPV.js';
 import {useDraftOrder} from '../hooks/useDraftOrder.js';
 import {rutaPedido, rutaEntregas} from '../utils/rutas.js';
 import './DateCarousel.css';
@@ -147,31 +147,46 @@ export default function DateCarousel({fechaLimite, setFechaLimite, token, weeks 
     // Al cambiar de semana el ancla desaparece: se cierra lo que hubiera abierto.
     useEffect(() => { closePop(); }, [weekStart, closePop]);
 
+    // Prendas del pedido en curso: la sugerida busca un día en el que quepan.
+    // Se espera un momento tras el último cambio para no pedir el calendario
+    // con cada clic en el catálogo.
+    const lineas = useMemo(() => lineasDelPedido(draft.cart), [draft.cart]);
+    const [lineasPedidas, setLineasPedidas] = useState(lineas);
+    useEffect(() => {
+        const t = setTimeout(() => setLineasPedidas(lineas), 400);
+        return () => clearTimeout(t);
+    }, [lineas]);
+
+    const ultimaPeticion = useRef(0);
     const load = useCallback(async (start) => {
+        const n = ++ultimaPeticion.current; // sólo vale la respuesta de la última petición
         setLoading(true);
         setError('');
         try {
-            const res = await fetchDates(token, {start, weeks});
-            setData(res);
+            const res = await fetchDates(token, {start, weeks, lineas: lineasPedidas});
+            if (n === ultimaPeticion.current) setData({...res, lineas: lineasPedidas});
         } catch (e) {
             console.error('Error cargando fechas de entrega:', e);
-            setError('No se pudieron cargar las fechas de entrega');
+            if (n === ultimaPeticion.current) setError('No se pudieron cargar las fechas de entrega');
         } finally {
-            setLoading(false);
+            if (n === ultimaPeticion.current) setLoading(false);
         }
-    }, [token, weeks]);
+    }, [token, weeks, lineasPedidas]);
 
     useEffect(() => {
         if (token) load(weekStart);
     }, [token, weekStart, load]);
 
-    // Si el pedido aún no tiene fecha (pedido nuevo o borrador vaciado),
-    // se propone la fecha sugerida por el servidor.
+    // Sin fecha, se pone la sugerida. Y mientras nadie haya elegido otra, la
+    // fecha sigue a la sugerida cuando esta cambia (al añadir prendas que no
+    // caben ese día): si no, el pedido quedaría «adelantado» y con suplemento
+    // sin que nadie lo haya pedido.
+    const {fechaManual} = draft;
     useEffect(() => {
-        if (!fechaLimite && data?.suggestedDate) {
-            setFechaLimite(data.suggestedDate);
-        }
-    }, [fechaLimite, data?.suggestedDate, setFechaLimite]);
+        const sugerida = data?.suggestedDate;
+        if (!sugerida || sugerida === fechaLimite) return;
+        if (!fechaLimite || !fechaManual) setFechaLimite(sugerida, {manual: false});
+    }, [fechaLimite, fechaManual, data?.suggestedDate, setFechaLimite]);
 
     const days = data?.days || [];
     const loadByDay = data?.loadByDay || {};
@@ -179,8 +194,10 @@ export default function DateCarousel({fechaLimite, setFechaLimite, token, weeks 
     const loadMax = Number(data?.loadMax) > 0 ? Number(data.loadMax) : LOAD_MAX_FALLBACK;
     const {setCalendarInfo, suplementoUrgencia, sinSuplemento, setSinSuplemento} = draft;
     useEffect(() => {
-        if (data) setCalendarInfo(infoCalendario(data));
+        if (data) setCalendarInfo(infoCalendario(data, data.lineas));
     }, [data, setCalendarInfo]);
+    // Lo que pesa el pedido en curso, para avisar si con él el día pasa del tope
+    const cargaPedido = Number(data?.orderLoad) || 0;
     const weekEnd = addDays(weekStart, weeks * 7 - 1);
     const canGoBack = weekStart > mondayOf(todayStr);
 
@@ -479,11 +496,21 @@ export default function DateCarousel({fechaLimite, setFechaLimite, token, weeks 
                                     )}
                                 </span>
                             )}
+                            {selected && selected.isWorking && cargaPedido > 0 && (() => {
+                                const tope = Number(selected.loadMax) > 0 ? Number(selected.loadMax) : loadMax;
+                                const conEste = selected.load + cargaPedido;
+                                return (
+                                    <span className={conEste > tope ? 'dc-summary-warn' : 'dc-summary-load'}>
+                                        con este pedido ({fmtLoad(cargaPedido)}), {fmtLoad(conEste)} de {fmtLoad(tope)}
+                                        {conEste > tope ? ': se pasa del tope' : ''}
+                                    </span>
+                                );
+                            })()}
                             {!selected && (
                                 <button type="button" className="dc-link" onClick={() => goToDate(fechaLimite)}>Ver en calendario</button>
                             )}
                             {suggestedDate && suggestedDate !== fechaLimite && (
-                                <button type="button" className="dc-link" onClick={() => { setFechaLimite(suggestedDate); goToDate(suggestedDate); }}>
+                                <button type="button" className="dc-link" onClick={() => { setFechaLimite(suggestedDate, {manual: false}); goToDate(suggestedDate); }}>
                                     Usar sugerida ({fmt(suggestedDate, {weekday: 'short', day: 'numeric', month: 'short'})})
                                 </button>
                             )}

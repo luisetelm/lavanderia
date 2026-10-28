@@ -8,7 +8,7 @@ import { calcularLinea, preciosPactadosVigentes } from '../utils/precioLinea.js'
 import { calcularPresupuesto } from '../utils/presupuesto.js';
 import { getWorkCalendar, getDayInfo, nextWorkingDay, ymd, addDays, mondayOf } from '../utils/workCalendar.js';
 import {
-    cargaDelDia, reservasPorDia, leerCargaMaxima, sugerirFecha, pedidosPorDia, calcularFechaSugerida,
+    cargaDelDia, reservasPorDia, leerCargaMaxima, sugerirFecha, pedidosPorDia, calcularFechaSugerida, cargaDeLineas,
     leerSuplementoUrgencia, productoSuplementoUrgencia, importeSuplementoUrgencia,
     diasLaborablesAdelantados, porcentajeUrgencia, topeDelDia,
 } from '../utils/cargaTrabajo.js';
@@ -1755,19 +1755,27 @@ export default async function (fastify, opts) {
             const suggestTo = addDays(todayStr, 42);
             const calFrom = start < todayStr ? start : todayStr;
             const calTo = end > suggestTo ? end : suggestTo;
-            const [calendar, byDay, loadMax, tramosUrgencia] = await Promise.all([
+            // Prendas del pedido en curso (?lineas=12x2,7x1: producto x cantidad): la
+            // sugerida busca un día en el que quepan, como hace el servidor al crear
+            // el pedido (utils/presupuesto.js), para que el suplemento coincida.
+            const lineas = String(req.query.lineas || '').split(',').slice(0, 500).map(par => {
+                const [productId, quantity] = par.split('x').map(Number);
+                return { productId, quantity };
+            });
+            const [calendar, byDay, loadMax, tramosUrgencia, carga] = await Promise.all([
                 getWorkCalendar(prisma, calFrom, calTo),
                 pedidosPorDia(prisma, calFrom, calTo),
                 leerCargaMaxima(prisma),
                 leerSuplementoUrgencia(prisma),
+                cargaDeLineas(prisma, lineas),
             ]);
             // Carga del día = pedidos reales + reserva para grandes clientes con días fijos de entrega.
             const reservas = await reservasPorDia(prisma, calendar, byDay);
             const dayLoad = (k) => cargaDelDia(byDay, reservas, k).total;
 
-            // Fecha sugerida: primer día abierto, a 2+ días vista, que no esté lleno.
-            // Entregar antes de esa fecha lleva suplemento de urgencia.
-            const suggestedDate = sugerirFecha({ calendar, dayLoad, todayStr, loadMax });
+            // Fecha sugerida: primer día abierto, a 2+ días vista, en el que quepa el
+            // pedido. Entregar antes de esa fecha lleva suplemento de urgencia.
+            const suggestedDate = sugerirFecha({ calendar, dayLoad, todayStr, loadMax, carga });
 
             const days = [];
             const loadByDay = {};
@@ -1796,6 +1804,7 @@ export default async function (fastify, opts) {
 
             return {
                 today: todayStr, start, end, days, loadByDay, suggestedDate, loadMax,
+                orderLoad: Math.round(carga * 10) / 10, // lo que pesa el pedido en curso
                 urgency: { pctPerDay: tramosUrgencia.pctPorDia, maxPct: tramosUrgencia.pctMax },
             };
         } catch (error) {

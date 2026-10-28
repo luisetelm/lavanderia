@@ -11,7 +11,7 @@
 import {calcularLinea, preciosPactadosVigentes} from './precioLinea.js';
 import {getDayInfo, nextWorkingDay, ymd, addDays} from './workCalendar.js';
 import {
-    calcularFechaSugerida, leerSuplementoUrgencia, productoSuplementoUrgencia,
+    calcularFechaSugerida, cargaDeLineas, leerSuplementoUrgencia, productoSuplementoUrgencia,
     importeSuplementoUrgencia, diasLaborablesAdelantados, porcentajeUrgencia,
 } from './cargaTrabajo.js';
 
@@ -105,8 +105,11 @@ export async function calcularPresupuesto(prisma, {client, lines, fechaLimiteRaw
     const fechaElegida = fechaLimiteRaw ? String(fechaLimiteRaw).slice(0, 10) : null;
     const eximido = client?.isbigclient === true || sinSuplemento === true;
     if (fechaElegida && !eximido) {
+        // La sugerida cuenta lo que pesa este pedido: si no cabe en un día, se
+        // sugiere otro, y entregarlo antes lleva suplemento (igual que en el TPV).
+        const carga = await cargaDeLineas(prisma, lines);
         const [{sugerida, calendar}, tramos, producto] = await Promise.all([
-            calcularFechaSugerida(prisma),
+            calcularFechaSugerida(prisma, {carga}),
             leerSuplementoUrgencia(prisma),
             productoSuplementoUrgencia(prisma),
         ]);

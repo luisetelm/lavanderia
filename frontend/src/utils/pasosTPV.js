@@ -51,14 +51,26 @@ export function guardarVistaTPV(vista) {
 // Lo que el pedido en curso necesita saber del calendario de entregas (fecha
 // sugerida y días que adelanta cada fecha) para calcular el suplemento de urgencia,
 // a partir de la respuesta de /orders/delivery-dates
-export function infoCalendario(data) {
+export function infoCalendario(data, lineas = '') {
     const daysAheadByDate = {};
     (data?.days || []).forEach(d => { daysAheadByDate[d.date] = d.daysAhead || 0; });
     return {
         suggestedDate: data?.suggestedDate || null,
         urgency: { pctPerDay: Number(data?.urgency?.pctPerDay) || 0, maxPct: Number(data?.urgency?.maxPct) || 0 },
         daysAheadByDate,
+        lineas, // prendas con las que se calculó la sugerida (lineasDelPedido)
     };
+}
+
+// Prendas del pedido en curso para /orders/delivery-dates: «producto x cantidad»
+// juntando las líneas del mismo producto («12x2,7x1»). La sugerida busca un día en
+// el que quepan; sirve también de clave para saber si hay que volver a pedirla.
+export function lineasDelPedido(cart) {
+    const porProducto = {};
+    (cart || []).forEach(c => { porProducto[c.productId] = (porProducto[c.productId] || 0) + (Number(c.quantity) || 0); });
+    return Object.keys(porProducto).sort((a, b) => a - b)
+        .filter(id => porProducto[id] > 0)
+        .map(id => `${id}x${porProducto[id]}`).join(',');
 }
 
 // Pedir desde el TPV la misma validación que hace la barra del pedido en curso

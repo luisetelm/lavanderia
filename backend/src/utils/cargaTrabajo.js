@@ -5,7 +5,8 @@
 // Ver sql/025 para la calibración inicial con el histórico.
 //
 // Entregas adelantadas: la fecha sugerida es el primer día abierto, a 2+ días
-// vista, que no esté lleno. Si el pedido se entrega antes de esa fecha, se
+// vista, en el que quepa el pedido (lo que ya hay más lo que pesa el pedido no
+// pasa del tope); sin pedido, el primero que no esté lleno. Si el pedido se entrega antes de esa fecha, se
 // cobra un suplemento de urgencia por tramos: un % por cada día laborable que
 // se adelanta (`urgency_pct_per_day`, AppSettings) hasta un tope
 // (`urgency_pct_max`), sobre las líneas que computan en la carga, como una
@@ -104,6 +105,22 @@ export function diasLaborablesAdelantados(calendar, elegida, sugerida) {
         if (esLaborable(calendar, k)) n++;
     }
     return n;
+}
+
+/**
+ * Carga de un pedido que aún no existe, a partir de sus líneas ({productId, quantity}):
+ * con los mismos pesos que cargaPonderada.
+ */
+export async function cargaDeLineas(prisma, lineas) {
+    const validas = (lineas || []).filter(l => Number(l?.productId) > 0 && Number(l?.quantity) > 0);
+    if (!validas.length) return 0;
+    const ids = [...new Set(validas.map(l => Number(l.productId)))];
+    const productos = await prisma.product.findMany({
+        where: { id: { in: ids } },
+        select: { id: true, countsForLoad: true, workloadWeight: true },
+    });
+    const porId = new Map(productos.map(p => [p.id, p]));
+    return cargaPonderada(validas.map(l => ({ quantity: Number(l.quantity), product: porId.get(Number(l.productId)) })));
 }
 
 // Carga ponderada de un pedido: ignora productos que no computan.
@@ -242,20 +259,27 @@ export function topeDelDia(calendar, k, loadMax) {
  * Fecha sugerida a partir de un calendario y una función de carga por día:
  * primer día abierto, con MARGEN_MINIMO_DIAS días laborables de margen (un
  * festivo o un fin de semana por medio no cuentan como tiempo de taller),
- * cuya carga no llegue a su tope. Si todos están llenos, el primer día abierto.
+ * en el que quepa el pedido: lo que ya hay más `carga` (lo que pesa el pedido
+ * que se está tomando) no pasa del tope. Sin carga, el primero que no esté lleno.
+ * Si el pedido no cabe en ningún día (uno enorme), el primero que no esté lleno;
+ * y si todos están llenos, el primer día abierto.
  */
-export function sugerirFecha({ calendar, dayLoad, todayStr, loadMax }) {
+export function sugerirFecha({ calendar, dayLoad, todayStr, loadMax, carga = 0 }) {
     const hasta = addDays(todayStr, HORIZONTE_DIAS);
     let laborables = 0;
     let firstOpen = null;
+    let firstNotFull = null;
     for (let k = addDays(todayStr, 1); k <= hasta; k = addDays(k, 1)) {
         if (!calendar[k]?.isWorking) continue;
         laborables++;
         if (laborables < MARGEN_MINIMO_DIAS) continue;
         firstOpen ||= k;
-        if (dayLoad(k) < topeDelDia(calendar, k, loadMax)) return k;
+        const tope = topeDelDia(calendar, k, loadMax);
+        const ya = dayLoad(k);
+        if (ya < tope) firstNotFull ||= k;
+        if (carga > 0 ? ya + carga <= tope : ya < tope) return k;
     }
-    return firstOpen;
+    return firstNotFull || firstOpen;
 }
 
 /** Pedidos vivos con fecha de entrega en [from, to], agrupados por día 'YYYY-MM-DD'. */
@@ -286,7 +310,7 @@ export async function pedidosPorDia(prisma, from, to) {
  * Devuelve también el calendario (desde hoy) para contar los días que se adelanta.
  * @returns {Promise<{sugerida: string|null, calendar: Object}>}
  */
-export async function calcularFechaSugerida(prisma) {
+export async function calcularFechaSugerida(prisma, { carga = 0 } = {}) {
     const todayStr = ymd(new Date());
     const from = addDays(todayStr, MARGEN_MINIMO_DIAS);
     const to = addDays(todayStr, HORIZONTE_DIAS);
@@ -297,7 +321,7 @@ export async function calcularFechaSugerida(prisma) {
     ]);
     const reservas = await reservasPorDia(prisma, calendar, byDay);
     const dayLoad = (k) => cargaDelDia(byDay, reservas, k).total;
-    return { sugerida: sugerirFecha({ calendar, dayLoad, todayStr, loadMax }), calendar };
+    return { sugerida: sugerirFecha({ calendar, dayLoad, todayStr, loadMax, carga }), calendar };
 }
 
 /** Producto con el que se factura el suplemento de urgencia, o null si no está creado (sql/027). */

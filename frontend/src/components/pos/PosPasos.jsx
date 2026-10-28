@@ -1,7 +1,7 @@
-import React, {useEffect, useRef} from 'react';
+import React, {useEffect, useMemo, useRef} from 'react';
 import {useDraftOrder} from '../../hooks/useDraftOrder.js';
 import {fetchDates} from '../../api.js';
-import {PASOS, esPaso, pasosCompletos, pedirValidacion, infoCalendario} from '../../utils/pasosTPV.js';
+import {PASOS, esPaso, pasosCompletos, pedirValidacion, infoCalendario, lineasDelPedido} from '../../utils/pasosTPV.js';
 import PosCliente from './PosCliente.jsx';
 import PosPrendas from './PosPrendas.jsx';
 import PosEntrega from './PosEntrega.jsx';
@@ -38,19 +38,30 @@ export default function PosPasos({token, products, itineraries, error}) {
         return () => clearTimeout(t);
     }, [paso]);
 
-    // El suplemento de urgencia sale de la fecha sugerida, que trae el calendario
-    // al mostrarse. Fuera del paso de entrega (por ejemplo, al recargar estando en
-    // Revisar) se pide aquí, para que el total no salga sin el suplemento.
-    const {setCalendarInfo, fechaLimite} = draft;
-    const tieneCalendario = Boolean(draft.calendarInfo?.suggestedDate);
+    // El suplemento de urgencia sale de la fecha sugerida, que depende de las
+    // prendas (se busca un día en el que quepan) y que trae el calendario al
+    // mostrarse. Fuera del paso de entrega (al recargar estando en Revisar, o al
+    // volver a Prendas y añadir más) se pide aquí si falta o si cambiaron las
+    // prendas; y si la fecha no se eligió a mano, sigue a la nueva sugerida.
+    const {setCalendarInfo, setFechaLimite, fechaLimite, fechaManual} = draft;
+    const lineas = useMemo(() => lineasDelPedido(draft.cart), [draft.cart]);
+    const calendarioAlDia = Boolean(draft.calendarInfo?.suggestedDate) && draft.calendarInfo?.lineas === lineas;
     useEffect(() => {
-        if (paso === 'entrega' || tieneCalendario || !token) return undefined;
+        if (paso === 'entrega' || calendarioAlDia || !token) return undefined;
         let vigente = true;
-        fetchDates(token, {start: fechaLimite || undefined, weeks: 2})
-            .then(res => { if (vigente) setCalendarInfo(infoCalendario(res)); })
-            .catch(e => console.warn('No se pudo cargar el calendario de entregas', e));
-        return () => { vigente = false; };
-    }, [paso, tieneCalendario, token, fechaLimite, setCalendarInfo]);
+        const t = setTimeout(() => {
+            fetchDates(token, {start: fechaLimite || undefined, weeks: 2, lineas})
+                .then(res => {
+                    if (!vigente) return;
+                    setCalendarInfo(infoCalendario(res, lineas));
+                    if (fechaLimite && !fechaManual && res.suggestedDate && res.suggestedDate !== fechaLimite) {
+                        setFechaLimite(res.suggestedDate, {manual: false});
+                    }
+                })
+                .catch(e => console.warn('No se pudo cargar el calendario de entregas', e));
+        }, 400);
+        return () => { vigente = false; clearTimeout(t); };
+    }, [paso, calendarioAlDia, token, fechaLimite, fechaManual, lineas, setCalendarInfo, setFechaLimite]);
 
     const irA = (key) => draft.setPaso(key);
     const anterior = PASOS[i - 1];

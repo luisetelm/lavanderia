@@ -159,9 +159,11 @@ export function createOrder(token, order) {
 
 // Calendario de entrega del POS: semanas completas desde `start` (lunes de
 // esa semana) con días abiertos/cerrados, carga por día y fecha sugerida.
-export function fetchDates(token, {start, weeks = 2} = {}) {
+// lineas: prendas del pedido en curso («12x2,7x1»), para que la sugerida busque un día en que quepan
+export function fetchDates(token, {start, weeks = 2, lineas} = {}) {
     const params = new URLSearchParams();
     if (start) params.set('start', start);
+    if (lineas) params.set('lineas', lineas);
     params.set('weeks', String(weeks));
     return request(`/orders/delivery-dates?${params}`, token);
 }
