@@ -127,12 +127,12 @@ export async function cargaDeLineas(prisma, lineas) {
     })));
 }
 
-// Carga ponderada de un pedido: ignora productos que no computan. Una línea
+// Carga ponderada de un pedido: ignora productos que no computan y prendas anuladas. Una línea
 // con carga propia (prenda fuera de catálogo, sql/035) usa la suya.
 export function cargaPonderada(lines) {
     return (lines || []).reduce((s, l) => {
         const p = l.product || {};
-        if (p.countsForLoad === false) return s;
+        if (p.countsForLoad === false || l.voidedAt) return s; // las anuladas no se hacen
         const w = l.workloadWeight != null ? Number(l.workloadWeight)
             : (p.workloadWeight != null) ? Number(p.workloadWeight) : 1;
         return s + (l.quantity || 0) * w;

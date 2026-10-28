@@ -10,16 +10,18 @@ import {
 // Si es así, marca el pedido como "ready" automáticamente y notifica al cliente.
 // Devuelve true si en esta llamada el pedido ha pasado a "ready".
 async function autoMarkOrderReady(prisma, orderId) {
+    // Las prendas anuladas en un ajuste conservan sus pasos sin hacer: no cuentan
+    // (si no, un pedido con una prenda anulada no pasaría nunca a «listo»).
     const pendingSteps = await prisma.orderLineStep.count({
         where: {
             status: { not: 'done' },
-            orderLine: { orderId: orderId }
+            orderLine: { orderId: orderId, voidedAt: null }
         }
     });
 
     if (pendingSteps === 0) {
         const totalSteps = await prisma.orderLineStep.count({
-            where: { orderLine: { orderId: orderId } }
+            where: { orderLine: { orderId: orderId, voidedAt: null } }
         });
 
         if (totalSteps > 0) {
@@ -217,6 +219,7 @@ export default async function (fastify, opts) {
                 where: {
                     status: { in: ['pending', 'in_progress'] },
                     orderLine: {
+                        voidedAt: null, // una prenda anulada en un ajuste ya no se hace
                         order: { status: { in: ['pending', 'ready'] } }
                     }
                 },
@@ -511,6 +514,7 @@ export default async function (fastify, opts) {
                     orderNum: true,
                     status: true,
                     lines: {
+                        where: { voidedAt: null }, // las prendas anuladas no se hacen
                         select: {
                             id: true,
                             quantity: true,
@@ -947,6 +951,7 @@ export default async function (fastify, opts) {
                 select: {
                     id: true, orderNum: true, fechaLimite: true, status: true,
                     lines: {
+                        where: { voidedAt: null },
                         select: {
                             id: true, quantity: true, customName: true,
                             product: { select: { id: true, name: true, weight: true } },
