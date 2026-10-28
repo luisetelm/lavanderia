@@ -4,6 +4,7 @@ import {
     fetchProducts,
     fetchUsers,
     fetchItineraries,
+    fetchProductsSummary,
     // Caja API:
     fetchUnclosedCashMovements,
     fetchUnclosedCashSummary,
@@ -71,13 +72,16 @@ export default function POS({token, user}) {
     // Conciliación TPV en el cierre
     const [tpvPayments, setTpvPayments] = useState([]);   // cobros con tarjeta TPV del periodo
 
-    // Carga de catálogo
+    // Carga de catálogo. Los productos salen primero los que aparecen en más
+    // pedidos de las últimas 12 semanas; si no llega la actividad, en el orden de siempre.
     useEffect(() => {
         Promise.all([
             fetchProducts(token),
             fetchItineraries(token),
-        ]).then(([prods, itins]) => {
-            setProducts(prods);
+            fetchProductsSummary(token).catch(() => null),
+        ]).then(([prods, itins, actividad]) => {
+            const pedidos = (p) => actividad?.productos?.[p.id]?.pedidos12 || 0;
+            setProducts(actividad ? [...prods].sort((a, b) => pedidos(b) - pedidos(a)) : prods);
             setItineraries(itins);
         }).catch(() => setError('No se pudieron cargar productos'));
     }, [token]);

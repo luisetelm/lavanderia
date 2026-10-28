@@ -28,6 +28,7 @@ export default function ProductList({products, searchProduct, setSearchProduct, 
                 <div className="uk-search uk-search-default pl-search">
                     <span uk-search-icon="true"></span>
                     <input
+                        id="pos-producto-buscar"
                         className="uk-search-input"
                         placeholder="Buscar producto…"
                         value={searchProduct}

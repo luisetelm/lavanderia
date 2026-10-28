@@ -173,7 +173,9 @@ export default async function (fastify, opts) {
 
     // Actividad reciente de cada producto para el catálogo: unidades de los
     // últimos 30 días, unidades de las últimas 12 semanas (de lunes a domingo,
-    // la actual incluida) y fecha del último pedido. Mismo criterio que la
+    // la actual incluida), en cuántos pedidos salió en esas 12 semanas (el TPV
+    // ordena el catálogo por eso: por unidades, las servilletas de hostelería
+    // taparían todo) y fecha del último pedido. Mismo criterio que la
     // ficha: sin pedidos cancelados ni líneas anuladas.
     fastify.get('/summary', conErrores(async (req) => {
         if (!esEmpleado(req)) throw errorHttp(403, 'No autorizado.');
@@ -186,6 +188,7 @@ export default async function (fastify, opts) {
                 SELECT l."productId" AS "productId",
                        to_char(date_trunc('week', ${fechaLocalSql}), 'YYYY-MM-DD') AS semana,
                        sum(l.quantity)::int AS unidades,
+                       count(DISTINCT o.id)::int AS pedidos,
                        coalesce(sum(l.quantity) FILTER (WHERE o."createdAt" >= ${inicioUtc(desde30)}::timestamp), 0)::int AS "unidades30"
                 FROM "OrderLine" l
                 JOIN "Order" o ON o.id = l."orderId"
@@ -200,10 +203,11 @@ export default async function (fastify, opts) {
         ]);
 
         const productos = {};
-        const de = (id) => (productos[id] ??= { unidades30: 0, semanas: semanas.map(() => 0), ultimoPedido: null });
+        const de = (id) => (productos[id] ??= { unidades30: 0, pedidos12: 0, semanas: semanas.map(() => 0), ultimoPedido: null });
         for (const f of porSemana) {
             const p = de(f.productId);
             p.unidades30 += f.unidades30;
+            p.pedidos12 += f.pedidos; // un pedido cae en una sola semana: la suma no repite pedidos
             const i = semanas.indexOf(f.semana);
             if (i >= 0) p.semanas[i] += f.unidades;
         }

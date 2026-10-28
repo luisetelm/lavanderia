@@ -2,7 +2,9 @@
 .pl { display: flex; flex-direction: column; gap: 10px; }
 
 .pl-tools { display: flex; flex-direction: column; gap: 8px; }
-.pl-search { width: 100%; position: relative; }
+.pl-search { position: relative; }
+/* UIkit fija .uk-search-default a 240px: el buscador ocupa todo el ancho del catálogo */
+.uk-search.pl-search { width: 100%; }
 .pl-search .uk-search-input { height: 38px; font-size: 0.9rem; }
 .pl-search-clear {
     position: absolute; right: 6px; top: 50%; transform: translateY(-50%);

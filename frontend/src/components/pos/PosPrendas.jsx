@@ -19,6 +19,18 @@ export default function PosPrendas({products, itineraries, error}) {
 
     const hasDiscount = Number(draft.discount || 0) > 0;
 
+    // Tras añadir una prenda el cursor vuelve al buscador con el texto
+    // seleccionado: lo que se escriba lo sustituye, y la misma tarjeta sigue a
+    // la vista para pulsarla otra vez (tres camisas, tres clics).
+    const anadir = (p) => {
+        draft.addToCart(p);
+        const buscador = document.getElementById('pos-producto-buscar');
+        if (buscador) {
+            buscador.focus({preventScroll: true});
+            buscador.select();
+        }
+    };
+
     return (
         <>
             {/* ── Catálogo ── */}
@@ -34,7 +46,7 @@ export default function PosPrendas({products, itineraries, error}) {
                     </div>
                 )}
                 <ProductList products={products} searchProduct={searchProduct}
-                             setSearchProduct={setSearchProduct} onAdd={(p) => draft.addToCart(p)}
+                             setSearchProduct={setSearchProduct} onAdd={anadir}
                              itineraries={itineraries} cartCounts={cartCounts}
                              agreedPriceFor={draft.agreedPriceFor}/>
             </section>

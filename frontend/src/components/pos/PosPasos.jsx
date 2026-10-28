@@ -16,9 +16,27 @@ export default function PosPasos({token, products, itineraries, error}) {
     const i = PASOS.findIndex(p => p.key === paso);
     const completos = pasosCompletos(draft);
     const bodyRef = useRef(null);
+    const siguienteRef = useRef(null);
+    const validarRef = useRef(null);
 
-    // Cada paso empieza arriba
-    useEffect(() => { bodyRef.current?.scrollTo?.(0, 0); }, [paso]);
+    // Cada paso empieza arriba y con el cursor en lo siguiente que hay que hacer:
+    // el buscador de clientes (o el nombre del cliente nuevo), el de productos,
+    // «Siguiente» en la entrega (la fecha sugerida ya viene puesta) y «Validar».
+    useEffect(() => {
+        bodyRef.current?.scrollTo?.(0, 0);
+        const t = setTimeout(() => {
+            const body = bodyRef.current;
+            if (!body) return;
+            const objetivo = {
+                cliente: () => body.querySelector('#pos-cliente-buscar, #pos-cliente-nombre') || siguienteRef.current,
+                prendas: () => body.querySelector('#pos-producto-buscar'),
+                entrega: () => siguienteRef.current,
+                revisar: () => validarRef.current,
+            }[paso]?.();
+            objetivo?.focus?.({preventScroll: true});
+        }, 0);
+        return () => clearTimeout(t);
+    }, [paso]);
 
     // El suplemento de urgencia sale de la fecha sugerida, que trae el calendario
     // al mostrarse. Fuera del paso de entrega (por ejemplo, al recargar estando en
@@ -71,14 +89,14 @@ export default function PosPasos({token, products, itineraries, error}) {
                     </button>
                 ) : <span/>}
                 {siguiente ? (
-                    <button type="button" className="uk-button uk-button-primary pos-nav-btn" onClick={() => irA(siguiente.key)}>
+                    <button ref={siguienteRef} type="button" className="uk-button uk-button-primary pos-nav-btn" onClick={() => irA(siguiente.key)}>
                         Siguiente: {siguiente.titulo} <span uk-icon="icon: chevron-right; ratio: 0.9"></span>
                     </button>
                 ) : (
                     <span className="pos-nav-end">
                         {sinPrendas && <span className="pos-nav-hint">Añade al menos una prenda para validar</span>}
                         {/* La validación es la de la barra del pedido en curso, que sólo existe con prendas */}
-                        <button type="button" className="uk-button uk-button-primary pos-nav-btn"
+                        <button ref={validarRef} type="button" className="uk-button uk-button-primary pos-nav-btn"
                                 disabled={sinPrendas} onClick={pedirValidacion}>
                             <span uk-icon="icon: check; ratio: 0.9"></span> Validar pedido
                         </button>
