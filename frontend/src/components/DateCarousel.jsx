@@ -192,6 +192,37 @@ export default function DateCarousel({fechaLimite, setFechaLimite, token}) {
     const dayByDate = Object.fromEntries(days.map(d => [d.date, d]));
     const selected = fechaLimite ? dayByDate[fechaLimite] : null;
 
+    // Lo que ya se entrega el día elegido, sumado por producto y no por pedido:
+    // primero lo que coincide con las prendas del pedido en curso (¿cuántos
+    // vestidos de novia hay ya ese día?), luego el resto, lo más pesado antes.
+    const cart = draft.cart;
+    const resumenDia = useMemo(() => {
+        const enDia = {};
+        (data?.loadByDay?.[fechaLimite] || []).forEach(o => lineasActivas(o.lines).forEach(l => {
+            const p = l.product || {};
+            if (p.sku === 'SUPL-URGENCIA') return;
+            const g = (enDia[l.productId] ||= {
+                id: l.productId, name: p.name || `#${l.productId}`, qty: 0, orders: new Set(),
+                weight: p.countsForLoad === false ? 0 : (p.workloadWeight != null ? Number(p.workloadWeight) : 1),
+            });
+            g.qty += Number(l.quantity) || 0;
+            g.orders.add(o.id);
+        }));
+        // En el pedido en curso cada prenda es una línea: se juntan por producto
+        const enPedido = {};
+        (cart || []).forEach(c => {
+            const g = (enPedido[c.productId] ||= {id: c.productId, name: c.name, qty: 0});
+            g.qty += Number(c.quantity) || 0;
+        });
+        const coinciden = Object.values(enPedido)
+            .map(c => ({...c, yaHay: enDia[c.id]?.qty || 0, pedidos: enDia[c.id]?.orders.size || 0}))
+            .sort((a, b) => b.yaHay - a.yaHay);
+        const resto = Object.values(enDia)
+            .filter(g => !enPedido[g.id])
+            .sort((a, b) => (b.qty * b.weight - a.qty * a.weight) || (b.qty - a.qty));
+        return {coinciden, resto};
+    }, [data, fechaLimite, cart]);
+
     const selectDay = (day) => {
         if (day.isPast || !day.isWorking) return;
         setFechaLimite(day.date);
@@ -456,6 +487,42 @@ export default function DateCarousel({fechaLimite, setFechaLimite, token}) {
                     <span className="uk-text-muted">Selecciona un día de entrega</span>
                 )}
             </div>
+
+            {/* Lo que ya se entrega ese día, por producto: para no juntar trabajos de mucha dedicación */}
+            {selected && selected.isWorking && (resumenDia.coinciden.length > 0 || resumenDia.resto.length > 0) && (
+                <div className="dc-dia">
+                    {resumenDia.coinciden.length > 0 && (
+                        <div className="dc-dia-group">
+                            <div className="dc-dia-title">Lo de este pedido, ese día</div>
+                            <ul className="dc-dia-list">
+                                {resumenDia.coinciden.map(c => (
+                                    <li key={c.id} className={c.yaHay > 0 ? 'is-busy' : ''}>
+                                        <span className="dc-dia-name">{c.name}</span>
+                                        <span className="dc-dia-count">
+                                            {c.yaHay > 0 ? (
+                                                <>ya hay <strong>{fmtLoad(c.yaHay)}</strong> en {c.pedidos} pedido{c.pedidos !== 1 ? 's' : ''} · con este, {fmtLoad(c.yaHay + c.qty)}</>
+                                            ) : 'ninguno más ese día'}
+                                        </span>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
+                    {resumenDia.resto.length > 0 && (
+                        <div className="dc-dia-group">
+                            <div className="dc-dia-title">{resumenDia.coinciden.length > 0 ? 'Además, ese día se entregan' : 'Ese día se entregan'}</div>
+                            <div className="dc-dia-chips">
+                                {resumenDia.resto.map(g => (
+                                    <span key={g.id} className="dc-dia-chip"
+                                          title={`${g.orders.size} pedido${g.orders.size !== 1 ? 's' : ''}`}>
+                                        <strong>{fmtLoad(g.qty)}</strong> {g.name}
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* Entrega anterior a la sugerida: suplemento de urgencia */}
             {fechaLimite && suplementoUrgencia.adelantada && (
