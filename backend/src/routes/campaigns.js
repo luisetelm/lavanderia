@@ -5,6 +5,7 @@ import {
     sendTemplateMessage,
     fetchTemplates,
     formatWhatsAppPhone,
+    uploadMediaBuffer,
 } from '../services/whatsapp.js';
 import { findOrCreateConversation, touchConversation } from '../services/conversation.js';
 import { normalizePhone } from '../utils/validatePhone.js';
@@ -22,6 +23,67 @@ function countBodyVariables(template) {
     if (!body?.text) return 0;
     const matches = body.text.match(/\{\{\s*\d+\s*\}\}/g);
     return matches ? new Set(matches).size : 0;
+}
+
+// Partes de la plantilla que no son el cuerpo y que Meta pide rellenar en cada
+// envío. Si falta alguna, Meta rechaza todos los mensajes con el error #132012.
+const ARCHIVO_CABECERA = {
+    IMAGE: { type: 'image', nombre: 'una imagen', mime: 'image/jpeg', ext: 'jpg' },
+    VIDEO: { type: 'video', nombre: 'un vídeo', mime: 'video/mp4', ext: 'mp4' },
+    DOCUMENT: { type: 'document', nombre: 'un documento', mime: 'application/pdf', ext: 'pdf' },
+};
+const tieneVariables = (texto) => /\{\{[^}]+\}\}/.test(texto || '');
+
+/**
+ * Componentes fijos (iguales para todos los destinatarios) que necesita la
+ * plantilla además del cuerpo. La imagen, vídeo o documento de la cabecera es el
+ * mismo con el que Meta aprobó la plantilla: se descarga y se sube una vez a
+ * WhatsApp para adjuntarlo a cada mensaje.
+ * Lanza un Error con el motivo, en castellano, si hay algo que no sabemos rellenar.
+ */
+async function componentesFijos(template) {
+    const comps = template?.components || [];
+    const resultado = [];
+
+    const cabecera = comps.find(c => (c.type || '').toUpperCase() === 'HEADER');
+    const formato = (cabecera?.format || '').toUpperCase();
+    if (formato === 'TEXT' && tieneVariables(cabecera.text)) {
+        throw new Error('La plantilla tiene una variable en el título y las campañas aún no saben rellenarla. Usa una plantilla con el título fijo.');
+    }
+    const archivo = ARCHIVO_CABECERA[formato];
+    if (archivo) {
+        const url = cabecera.example?.header_handle?.[0];
+        if (!url) {
+            throw new Error(`La plantilla lleva ${archivo.nombre} en la cabecera y Meta no devuelve el archivo con el que se aprobó.`);
+        }
+        let mediaId;
+        try {
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const mime = (res.headers.get('content-type') || archivo.mime).split(';')[0];
+            const buffer = Buffer.from(await res.arrayBuffer());
+            mediaId = await uploadMediaBuffer(buffer, mime, `cabecera-${template.name}.${archivo.ext}`);
+        } catch (e) {
+            throw new Error(`No se pudo preparar ${archivo.nombre} de la cabecera de la plantilla (${e.message}). Prueba otra vez en unos minutos.`);
+        }
+        resultado.push({ type: 'header', parameters: [{ type: archivo.type, [archivo.type]: { id: mediaId } }] });
+    } else if (formato === 'LOCATION') {
+        throw new Error('La plantilla lleva una ubicación en la cabecera y las campañas aún no saben enviarla.');
+    }
+
+    const botones = comps.find(c => (c.type || '').toUpperCase() === 'BUTTONS')?.buttons || [];
+    if (botones.some(b => (b.type || '').toUpperCase() === 'URL' && tieneVariables(b.url))) {
+        throw new Error('La plantilla tiene un botón con un enlace variable y las campañas aún no saben rellenarlo. Usa un enlace fijo.');
+    }
+
+    const cuerpo = comps.find(c => (c.type || '').toUpperCase() === 'BODY');
+    if (tieneVariables(cuerpo?.text) && countBodyVariables(template) === 0) {
+        throw new Error('La plantilla usa variables con nombre (como {{nombre}}) y las campañas sólo rellenan {{1}} con el nombre del cliente.');
+    }
+    if (countBodyVariables(template) > 1) {
+        throw new Error('La plantilla tiene más de una variable y las campañas sólo rellenan {{1}} con el nombre del cliente.');
+    }
+    return resultado;
 }
 
 // Construye el filtro Prisma de audiencia a partir de los filtros del cliente
@@ -189,14 +251,29 @@ export default async function (fastify) {
             return reply.code(409).send({ error: 'La campaña ya se envió' });
         }
 
-        // Determinar nº de variables de la plantilla para pasar el nombre en {{1}}
-        let bodyVariables = 0;
+        // Antes de empezar se mira la plantilla: nº de variables del cuerpo ({{1}} es
+        // el nombre) y lo que haya que adjuntar siempre (imagen de cabecera). Si algo
+        // no se puede rellenar, la campaña no empieza: antes fallaba con cada cliente.
+        let templates;
         try {
-            const templates = await fetchTemplates();
-            const tpl = templates.find(t => t.name === campaign.templateName);
-            bodyVariables = countBodyVariables(tpl);
+            templates = await fetchTemplates();
         } catch (e) {
-            console.warn('[Campaigns] No se pudieron leer las plantillas:', e.message);
+            return reply.code(502).send({ error: `No se pudieron leer las plantillas de WhatsApp: ${e.message}` });
+        }
+        const tpl = templates.find(t => t.name === campaign.templateName && t.language === campaign.language)
+            || templates.find(t => t.name === campaign.templateName);
+        if (!tpl) {
+            return reply.code(400).send({ error: `No se encuentra la plantilla «${campaign.templateName}» en WhatsApp. Puede que se haya borrado.` });
+        }
+        if (tpl.status !== 'APPROVED') {
+            return reply.code(400).send({ error: `La plantilla «${campaign.templateName}» no está aprobada por Meta (estado: ${tpl.status}).` });
+        }
+        const bodyVariables = countBodyVariables(tpl);
+        let fijos;
+        try {
+            fijos = await componentesFijos(tpl);
+        } catch (e) {
+            return reply.code(400).send({ error: e.message });
         }
 
         await prisma.campaign.update({ where: { id }, data: { status: 'sending' } });
@@ -219,8 +296,8 @@ export default async function (fastify) {
                     if (!normalized) throw new Error('Teléfono inválido');
 
                     const components = bodyVariables >= 1
-                        ? [{ type: 'body', parameters: [{ type: 'text', text: toTitleCase(rec.firstName) || 'cliente' }] }]
-                        : [];
+                        ? [...fijos, { type: 'body', parameters: [{ type: 'text', text: toTitleCase(rec.firstName) || 'cliente' }] }]
+                        : fijos;
 
                     const response = await sendTemplateMessage(
                         normalized,
@@ -269,15 +346,40 @@ export default async function (fastify) {
                 await sleep(DELAY_MS);
             }
 
+            // Totales de toda la campaña (también de envíos anteriores si se
+            // reintentaron los fallidos), no sólo de esta pasada
+            const [totalEnviados, totalFallidos] = await Promise.all([
+                prisma.campaignRecipient.count({ where: { campaignId: id, status: 'sent' } }),
+                prisma.campaignRecipient.count({ where: { campaignId: id, status: 'failed' } }),
+            ]);
             await prisma.campaign.update({
                 where: { id },
-                data: { status: 'completed', sentCount: sent, failedCount: failed },
+                data: { status: 'completed', sentCount: totalEnviados, failedCount: totalFallidos },
             });
             console.log(`[Campaigns] Campaña #${id} completada: ${sent} enviados, ${failed} fallidos`);
         })().catch(err => {
             console.error(`[Campaigns] Error enviando campaña #${id}:`, err);
             prisma.campaign.update({ where: { id }, data: { status: 'completed' } }).catch(() => {});
         });
+    });
+
+    // Reintentar los destinatarios que fallaron: vuelven a pendientes y la campaña
+    // a borrador, para enviarla otra vez sólo a ellos (los ya enviados no se repiten)
+    fastify.post('/:id/retry-failed', async (req, reply) => {
+        if (!requireAdmin(req, reply)) return;
+        const id = Number(req.params.id);
+        const campaign = await prisma.campaign.findUnique({ where: { id } });
+        if (!campaign) return reply.code(404).send({ error: 'Campaña no encontrada' });
+        if (campaign.status !== 'completed') {
+            return reply.code(409).send({ error: 'Sólo se pueden reintentar los fallidos de una campaña ya terminada' });
+        }
+        const { count } = await prisma.campaignRecipient.updateMany({
+            where: { campaignId: id, status: 'failed' },
+            data: { status: 'pending', error: null },
+        });
+        if (!count) return reply.code(409).send({ error: 'La campaña no tiene destinatarios fallidos' });
+        await prisma.campaign.update({ where: { id }, data: { status: 'draft', failedCount: 0 } });
+        return reply.send({ ok: true, retried: count });
     });
 
     // Eliminar campaña (solo si es borrador)

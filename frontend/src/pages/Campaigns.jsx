@@ -10,6 +10,7 @@ import {
     fetchCampaign,
     createCampaign,
     sendCampaign,
+    retryFailedCampaign,
     deleteCampaign,
 } from '../api.js';
 
@@ -127,6 +128,31 @@ export default function Campaigns({ token }) {
         } catch (err) {
             UIkit.notification({ message: err.error || 'Error enviando campaña', status: 'danger', pos: 'top-right' });
         }
+    };
+
+    // Reenvía sólo a los que fallaron: los pasa a pendientes y lanza el envío
+    const handleRetry = async (campaign) => {
+        const ok = await confirmar(
+            `Vas a reenviar la campaña "${campaign.name}" a los ${campaign.failedCount} destinatarios que fallaron. A los que ya les llegó no se les vuelve a enviar.
+
+¿Continuar?`,
+            {titulo: 'Reintentar fallidos', textoConfirmar: 'Reenviar'}
+        );
+        if (!ok) return;
+        try {
+            await retryFailedCampaign(token, campaign.id);
+        } catch (err) {
+            UIkit.notification({ message: err.error || 'Error preparando el reenvío', status: 'danger', pos: 'top-right' });
+            return;
+        }
+        try {
+            await sendCampaign(token, campaign.id);
+            UIkit.notification({ message: 'Reenvío iniciado', status: 'success', pos: 'top-right' });
+        } catch (err) {
+            // Queda en borrador con los fallidos como pendientes: se puede corregir y pulsar Enviar
+            UIkit.notification({ message: err.error || 'Error enviando campaña', status: 'danger', pos: 'top-right', timeout: 10000 });
+        }
+        await loadAll();
     };
 
     const handleDelete = async (campaign) => {
@@ -256,6 +282,11 @@ export default function Campaigns({ token }) {
                                         {c.status === 'draft' && (
                                             <button className="uk-button uk-button-primary uk-button-small" onClick={() => handleSend(c)}>
                                                 Enviar
+                                            </button>
+                                        )}
+                                        {c.status === 'completed' && c.failedCount > 0 && (
+                                            <button className="uk-button uk-button-primary uk-button-small" onClick={() => handleRetry(c)}>
+                                                Reintentar fallidos
                                             </button>
                                         )}
                                         <button className="uk-button uk-button-default uk-button-small" onClick={() => openDetail(c.id)}>

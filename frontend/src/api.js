@@ -688,6 +688,14 @@ export function sendCampaign(token, id) {
     });
 }
 
+// Los fallidos vuelven a pendientes y la campaña a borrador, lista para enviarse otra vez
+export function retryFailedCampaign(token, id) {
+    return request(`/campaigns/${id}/retry-failed`, token, {
+        method: 'POST',
+        body: JSON.stringify({}),
+    });
+}
+
 export function deleteCampaign(token, id) {
     return request(`/campaigns/${id}`, token, { method: 'DELETE' });
 }

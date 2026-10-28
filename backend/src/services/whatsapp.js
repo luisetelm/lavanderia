@@ -146,8 +146,15 @@ export async function sendTextMessage(phone, text) {
  * Subir un fichero a WhatsApp Cloud API y obtener un media_id.
  */
 export async function uploadMediaToWhatsApp(filePath, mimeType) {
+    return uploadMediaBuffer(fs.readFileSync(filePath), mimeType, path.basename(filePath));
+}
+
+/**
+ * Subir a WhatsApp Cloud API un archivo que ya está en memoria y obtener un media_id
+ * (vale 30 días). Lo usan las campañas para la imagen de cabecera de la plantilla.
+ */
+export async function uploadMediaBuffer(fileBuffer, mimeType, fileName) {
     const url = `${getBaseUrl()}/media`;
-    const fileName = path.basename(filePath);
 
     // WhatsApp Cloud API expects multipart/form-data. FormData, Blob y fetch
     // son globales desde Node 18; `undici` no es dependencia del proyecto y
@@ -157,7 +164,6 @@ export async function uploadMediaToWhatsApp(filePath, mimeType) {
     }
     const formData = new FormData();
 
-    const fileBuffer = fs.readFileSync(filePath);
     const blob = new Blob([fileBuffer], { type: mimeType });
     formData.append('file', blob, fileName);
     formData.append('messaging_product', 'whatsapp');
@@ -493,7 +499,8 @@ export async function fetchTemplates() {
         throw new Error('WHATSAPP_BUSINESS_ACCOUNT_ID no configurado');
     }
 
-    const url = `https://graph.facebook.com/${API_VERSION}/${wabaId}/message_templates`;
+    // Sin limit Meta devuelve sólo las 25 primeras y una campaña podía no encontrar la suya
+    const url = `https://graph.facebook.com/${API_VERSION}/${wabaId}/message_templates?limit=200`;
     const res = await fetch(url, { headers: getHeaders() });
     const data = await res.json();
 
