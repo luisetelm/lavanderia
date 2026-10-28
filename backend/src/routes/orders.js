@@ -708,15 +708,21 @@ export default async function (fastify, opts) {
 
         if (q && String(q).trim()) {
             const term = String(q).trim();
-            where.OR = [{orderNum: {contains: term, mode: 'insensitive'}}, {
-                client: {
-                    OR: [{firstName: {contains: term, mode: 'insensitive'}}, {
-                        lastName: {
-                            contains: term, mode: 'insensitive'
-                        }
-                    }, {email: {contains: term, mode: 'insensitive'}}, {phone: {contains: term}},],
-                },
-            },];
+            // Las cifras buscan el número de pedido (TPV/2026/0123), nunca el
+            // teléfono: con él, buscar "123" sacaba los pedidos de cualquier
+            // cliente cuyo móvil tuviera esas cifras. El texto busca además el cliente.
+            const esNumero = /^[\d\s/]+$/.test(term) || /^tpv\//i.test(term);
+            where.OR = esNumero
+                ? [{orderNum: {contains: term.replace(/\s/g, ''), mode: 'insensitive'}}]
+                : [{orderNum: {contains: term, mode: 'insensitive'}}, {
+                    client: {
+                        OR: [
+                            {firstName: {contains: term, mode: 'insensitive'}},
+                            {lastName: {contains: term, mode: 'insensitive'}},
+                            {email: {contains: term, mode: 'insensitive'}},
+                        ],
+                    },
+                }];
         }
 
         // Configurar ordenación

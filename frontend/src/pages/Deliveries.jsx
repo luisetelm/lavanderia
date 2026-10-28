@@ -85,7 +85,9 @@ export default function Deliveries({token}) {
         const q = filtro.trim().toLowerCase();
         if (!q) return true;
         const nombre = o.client ? `${o.client.firstName || ''} ${o.client.lastName || ''}` : 'cliente rápido';
-        return (o.orderNum || '').toLowerCase().includes(q) || nombre.toLowerCase().includes(q) || (o.client?.phone || '').includes(q);
+        // Las cifras buscan sólo el número de pedido, nunca el teléfono
+        if (/^[\d\s/]+$/.test(q)) return (o.orderNum || '').includes(q.replace(/\s/g, ''));
+        return (o.orderNum || '').toLowerCase().includes(q) || nombre.toLowerCase().includes(q);
     };
 
     const porGrupo = useMemo(() => {
@@ -226,7 +228,7 @@ export default function Deliveries({token}) {
                            style={{position: 'absolute', opacity: 0, width: 0, height: 0}} tabIndex={-1} aria-hidden="true"/>
                 </div>
                 <form className="uk-search uk-search-default ent-buscar" onSubmit={e => e.preventDefault()}>
-                    <input type="search" className="uk-search-input" placeholder="Cliente, pedido o teléfono…" value={filtro} onChange={e => setFiltro(e.target.value)}/>
+                    <input type="search" className="uk-search-input" placeholder="Nº de pedido o cliente…" value={filtro} onChange={e => setFiltro(e.target.value)}/>
                 </form>
             </div>
 
