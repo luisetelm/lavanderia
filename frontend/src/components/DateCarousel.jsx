@@ -38,7 +38,7 @@ const fmtLoad = (n) => (Math.round(n * 10) / 10).toString().replace('.', ',');
 
 const WEEKDAYS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
 const LOAD_MAX_FALLBACK = 45; // el tope real lo manda la API (Administración > Horario laboral)
-const WEEKS = 2;
+const WEEKS = 2; // semanas visibles por defecto (vista clásica); el TPV por pasos pide más
 
 const loadLevel = (load, max) => (load >= max ? 'high' : load >= max / 2 ? 'mid' : 'low');
 
@@ -103,7 +103,7 @@ function DayPopover({anchorEl, open, onClose, onMouseEnter, onMouseLeave, childr
     );
 }
 
-export default function DateCarousel({fechaLimite, setFechaLimite, token}) {
+export default function DateCarousel({fechaLimite, setFechaLimite, token, weeks = WEEKS}) {
     const todayStr = ymd(new Date());
     // Suplemento de urgencia (entrega anterior a la sugerida): la previsión la
     // lleva el pedido en curso; aquí sólo se avisa y se le pasa lo que dice el servidor.
@@ -150,7 +150,7 @@ export default function DateCarousel({fechaLimite, setFechaLimite, token}) {
         setLoading(true);
         setError('');
         try {
-            const res = await fetchDates(token, {start, weeks: WEEKS});
+            const res = await fetchDates(token, {start, weeks});
             setData(res);
         } catch (e) {
             console.error('Error cargando fechas de entrega:', e);
@@ -158,7 +158,7 @@ export default function DateCarousel({fechaLimite, setFechaLimite, token}) {
         } finally {
             setLoading(false);
         }
-    }, [token]);
+    }, [token, weeks]);
 
     useEffect(() => {
         if (token) load(weekStart);
@@ -180,7 +180,7 @@ export default function DateCarousel({fechaLimite, setFechaLimite, token}) {
     useEffect(() => {
         if (data) setCalendarInfo(infoCalendario(data));
     }, [data, setCalendarInfo]);
-    const weekEnd = addDays(weekStart, WEEKS * 7 - 1);
+    const weekEnd = addDays(weekStart, weeks * 7 - 1);
     const canGoBack = weekStart > mondayOf(todayStr);
 
     const dayByDate = Object.fromEntries(days.map(d => [d.date, d]));

@@ -4,7 +4,8 @@ import {useDraftOrder} from '../../hooks/useDraftOrder.js';
 
 // Bloque «Entrega» del TPV: fecha de entrega (con la carga de cada día) y
 // observaciones del pedido.
-export default function PosEntrega({token}) {
+// `weeks`: semanas que enseña el calendario (más en la vista por pasos, que tiene la pantalla para él)
+export default function PosEntrega({token, weeks}) {
     const draft = useDraftOrder();
 
     return (
@@ -13,6 +14,7 @@ export default function PosEntrega({token}) {
                 fechaLimite={draft.fechaLimite}
                 setFechaLimite={(d) => draft.setFechaLimite(d)}
                 token={token}
+                weeks={weeks}
             />
             <div className="pos-field">
                 <label htmlFor="pos-observaciones">Observaciones del pedido</label>

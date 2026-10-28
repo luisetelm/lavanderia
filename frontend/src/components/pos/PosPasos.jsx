@@ -78,7 +78,7 @@ export default function PosPasos({token, products, itineraries, error}) {
             <div ref={bodyRef} className={`pos-wizard-body pos-step-${paso}`}>
                 {paso === 'cliente' && <PosCliente token={token}/>}
                 {paso === 'prendas' && <PosPrendas products={products} itineraries={itineraries} error={error}/>}
-                {paso === 'entrega' && <PosEntrega token={token}/>}
+                {paso === 'entrega' && <PosEntrega token={token} weeks={4}/>}
                 {paso === 'revisar' && <PosRevisar onIrA={irA}/>}
             </div>
 

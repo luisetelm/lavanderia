@@ -184,8 +184,11 @@
 .pos-step-cliente .cs-result-meta { font-size: 0.82rem; }
 .pos-step-cliente .cs-results { max-height: 55vh; }
 
-/* Entrega: días del calendario más altos */
-.pos-step-entrega .dc-day { min-height: 78px; }
+/* Entrega: días del calendario más altos y con letra mayor */
+.pos-step-entrega .dc-day { min-height: 78px; padding: 8px 8px 6px; }
+.pos-step-entrega .dc-num { font-size: 1.15rem; }
+.pos-step-entrega .dc-meta { font-size: 0.75rem; }
+.pos-step-entrega .dc-wd { font-size: 0.78rem; }
 
 /* Revisar: letra algo mayor */
 .pos-step-revisar .pos-rev-body { font-size: 1rem; }
@@ -247,9 +250,13 @@
     }
     .pos-step-entrega .dc { display: contents; }
     .pos-step-entrega .dc-head    { grid-column: 1; grid-row: 1; }
-    .pos-step-entrega .dc-grid    { grid-column: 1; grid-row: 2 / span 3; align-self: start; }
-    .pos-step-entrega .dc-legend  { grid-column: 1; grid-row: 5; align-self: start; }
-    .pos-step-entrega .dc > .uk-alert-danger { grid-column: 1; grid-row: 6; }
+    /* El calendario baja hasta el final (incluida la fila elástica) y sus
+       semanas se reparten el alto: las celdas crecen con la pantalla */
+    .pos-step-entrega .dc-grid    { grid-column: 1; grid-row: 2 / span 4; align-self: stretch; grid-template-rows: auto; grid-auto-rows: minmax(78px, 1fr); }
+    .pos-step-entrega .dc-cell    { display: flex; }
+    .pos-step-entrega .dc-day     { flex: 1 1 auto; height: auto; }
+    .pos-step-entrega .dc-legend  { grid-column: 1; grid-row: 6; align-self: start; }
+    .pos-step-entrega .dc > .uk-alert-danger { grid-column: 1; grid-row: 7; }
     .pos-step-entrega .dc-summary { grid-column: 2; grid-row: 1; margin-top: 0; align-self: start; }
     .pos-step-entrega .dc-dia     { grid-column: 2; grid-row: 2; align-self: start; }
     .pos-step-entrega .dc-urgent  { grid-column: 2; grid-row: 3; align-self: start; }
