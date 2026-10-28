@@ -6,7 +6,7 @@ import {lineasActivas} from '../utils/lineas.js';
 import {fetchDates} from '../api';
 import {infoCalendario} from '../utils/pasosTPV.js';
 import {useDraftOrder} from '../hooks/useDraftOrder.js';
-import {rutaPedido, rutaCliente, rutaEntregas} from '../utils/rutas.js';
+import {rutaPedido, rutaEntregas} from '../utils/rutas.js';
 import './DateCarousel.css';
 
 /* ── Utilidades de fecha (todo en 'YYYY-MM-DD', hora local) ── */
@@ -103,7 +103,8 @@ function DayPopover({anchorEl, open, onClose, onMouseEnter, onMouseLeave, childr
     );
 }
 
-export default function DateCarousel({fechaLimite, setFechaLimite, token, weeks = WEEKS}) {
+// `lateral`: lo que va al final de la columna del día elegido (las observaciones del pedido)
+export default function DateCarousel({fechaLimite, setFechaLimite, token, weeks = WEEKS, lateral = null}) {
     const todayStr = ymd(new Date());
     // Suplemento de urgencia (entrega anterior a la sugerida): la previsión la
     // lleva el pedido en curso; aquí sólo se avisa y se le pasa lo que dice el servidor.
@@ -272,288 +273,294 @@ export default function DateCarousel({fechaLimite, setFechaLimite, token, weeks 
 
     return (
         <div className="dc">
-            {/* Cabecera: título + navegación */}
-            <div className="dc-head">
-                <h4 className="dc-title"><span uk-icon="icon: calendar; ratio: 0.9"></span>Fecha de entrega</h4>
-                <div className="dc-nav">
-                    <button type="button" className="dc-nav-btn" onClick={() => setWeekStart(mondayOf(todayStr))}
-                            disabled={!canGoBack} title="Volver a la semana actual">Hoy</button>
-                    <button type="button" className="dc-nav-btn" onClick={() => setWeekStart(addDays(weekStart, -7))}
-                            disabled={!canGoBack} aria-label="Semana anterior">
-                        <span uk-icon="icon: chevron-left; ratio: 0.9"></span>
-                    </button>
-                    <span className="dc-range">{rangeLabel}</span>
-                    <button type="button" className="dc-nav-btn" onClick={() => setWeekStart(addDays(weekStart, 7))}
-                            aria-label="Semana siguiente">
-                        <span uk-icon="icon: chevron-right; ratio: 0.9"></span>
-                    </button>
-                    <button type="button" className="dc-nav-btn" title="Elegir otra fecha"
-                            onClick={() => pickerRef.current?.showPicker ? pickerRef.current.showPicker() : pickerRef.current?.click()}>
-                        <span uk-icon="icon: calendar; ratio: 0.9"></span>
-                    </button>
-                    <input ref={pickerRef} type="date" className="dc-picker" min={todayStr}
-                           value="" onChange={handlePick} tabIndex={-1} aria-hidden="true"/>
+            {/* Dos bloques: el calendario y lo del día elegido. En el TPV por pasos van
+                en dos columnas independientes, para que lo que crece a la derecha
+                (el resumen de un día con muchos pedidos) no estire el calendario. */}
+            <div className="dc-main">
+                {/* Cabecera: título + navegación */}
+                <div className="dc-head">
+                    <h4 className="dc-title"><span uk-icon="icon: calendar; ratio: 0.9"></span>Fecha de entrega</h4>
+                    <div className="dc-nav">
+                        <button type="button" className="dc-nav-btn" onClick={() => setWeekStart(mondayOf(todayStr))}
+                                disabled={!canGoBack} title="Volver a la semana actual">Hoy</button>
+                        <button type="button" className="dc-nav-btn" onClick={() => setWeekStart(addDays(weekStart, -7))}
+                                disabled={!canGoBack} aria-label="Semana anterior">
+                            <span uk-icon="icon: chevron-left; ratio: 0.9"></span>
+                        </button>
+                        <span className="dc-range">{rangeLabel}</span>
+                        <button type="button" className="dc-nav-btn" onClick={() => setWeekStart(addDays(weekStart, 7))}
+                                aria-label="Semana siguiente">
+                            <span uk-icon="icon: chevron-right; ratio: 0.9"></span>
+                        </button>
+                        <button type="button" className="dc-nav-btn" title="Elegir otra fecha"
+                                onClick={() => pickerRef.current?.showPicker ? pickerRef.current.showPicker() : pickerRef.current?.click()}>
+                            <span uk-icon="icon: calendar; ratio: 0.9"></span>
+                        </button>
+                        <input ref={pickerRef} type="date" className="dc-picker" min={todayStr}
+                               value="" onChange={handlePick} tabIndex={-1} aria-hidden="true"/>
+                    </div>
                 </div>
-            </div>
 
-            {error && <div className="uk-alert-danger uk-margin-small" uk-alert="true"><p>{error}</p></div>}
+                {error && <div className="uk-alert-danger uk-margin-small" uk-alert="true"><p>{error}</p></div>}
 
-            {/* Rejilla semanal */}
-            <div className={`dc-grid ${loading ? 'is-loading' : ''}`}>
-                {WEEKDAYS.map(w => <div key={w} className="dc-wd">{w}</div>)}
+                {/* Rejilla semanal */}
+                <div className={`dc-grid ${loading ? 'is-loading' : ''}`}>
+                    {WEEKDAYS.map(w => <div key={w} className="dc-wd">{w}</div>)}
 
-                {days.map(day => {
-                    const orders = loadByDay[day.date] || [];
-                    const isSelected = fechaLimite === day.date;
-                    const isSuggested = suggestedDate === day.date;
-                    const closed = !day.isWorking;
-                    const disabled = day.isPast || closed;
-                    const dayMax = Number(day.loadMax) > 0 ? Number(day.loadMax) : loadMax; // tope propio (víspera de festivo) o general
-                    const level = loadLevel(day.load, dayMax);
-                    const showMonth = day.date.endsWith('-01') || day.date === days[0].date;
-                    const cls = [
-                        'dc-day',
-                        disabled ? 'is-disabled' : '',
-                        closed ? 'is-closed' : '',
-                        day.isPast ? 'is-past' : '',
-                        day.isToday ? 'is-today' : '',
-                        isSelected ? 'is-selected' : '',
-                        isSuggested && !isSelected ? 'is-suggested' : '',
-                        !disabled ? `load-${level}` : '',
-                    ].filter(Boolean).join(' ');
+                    {days.map(day => {
+                        const orders = loadByDay[day.date] || [];
+                        const isSelected = fechaLimite === day.date;
+                        const isSuggested = suggestedDate === day.date;
+                        const closed = !day.isWorking;
+                        const disabled = day.isPast || closed;
+                        const dayMax = Number(day.loadMax) > 0 ? Number(day.loadMax) : loadMax; // tope propio (víspera de festivo) o general
+                        const level = loadLevel(day.load, dayMax);
+                        const showMonth = day.date.endsWith('-01') || day.date === days[0].date;
+                        const cls = [
+                            'dc-day',
+                            disabled ? 'is-disabled' : '',
+                            closed ? 'is-closed' : '',
+                            day.isPast ? 'is-past' : '',
+                            day.isToday ? 'is-today' : '',
+                            isSelected ? 'is-selected' : '',
+                            isSuggested && !isSelected ? 'is-suggested' : '',
+                            !disabled ? `load-${level}` : '',
+                        ].filter(Boolean).join(' ');
 
-                    const title = closed
-                        ? `Cerrado${day.label ? ` · ${day.label}` : ''}`
-                        : day.isPast ? 'Fecha pasada'
-                            : `${orders.length} pedido${orders.length !== 1 ? 's' : ''} · carga ${fmtLoad(day.load)}`;
+                        const title = closed
+                            ? `Cerrado${day.label ? ` · ${day.label}` : ''}`
+                            : day.isPast ? 'Fecha pasada'
+                                : `${orders.length} pedido${orders.length !== 1 ? 's' : ''} · carga ${fmtLoad(day.load)}`;
 
-                    const hasPop = orders.length > 0 && !closed;
-                    return (
-                        <div key={day.date} className={`dc-cell ${disabled ? 'is-disabled' : ''} ${hasPop ? 'has-pop' : ''}`}
-                             ref={el => { cellRefs.current[day.date] = el; }}
-                             title={title}
-                             onMouseEnter={hasPop ? () => hoverIn(day.date) : undefined}
-                             onMouseLeave={hasPop ? hoverOut : undefined}>
-                            <button
-                                type="button"
-                                className={cls}
-                                onClick={() => selectDay(day)}
-                                disabled={disabled}
-                                aria-pressed={isSelected}
-                            >
-                                <span className="dc-num">
-                                    {fromYmd(day.date).getDate()}
-                                    {showMonth && <small>{fmt(day.date, {month: 'short'}).replace('.', '')}</small>}
-                                </span>
-
-                                {closed ? (
-                                    <span className={`dc-closed ${day.isException ? 'is-holiday' : ''}`}>
-                                        {day.isException && <span uk-icon="icon: ban; ratio: 0.6"></span>}
-                                        <span className="dc-closed-label">{day.label || 'Cerrado'}</span>
+                        const hasPop = orders.length > 0 && !closed;
+                        return (
+                            <div key={day.date} className={`dc-cell ${disabled ? 'is-disabled' : ''} ${hasPop ? 'has-pop' : ''}`}
+                                 ref={el => { cellRefs.current[day.date] = el; }}
+                                 title={title}
+                                 onMouseEnter={hasPop ? () => hoverIn(day.date) : undefined}
+                                 onMouseLeave={hasPop ? hoverOut : undefined}>
+                                <button
+                                    type="button"
+                                    className={cls}
+                                    onClick={() => selectDay(day)}
+                                    disabled={disabled}
+                                    aria-pressed={isSelected}
+                                >
+                                    <span className="dc-num">
+                                        {fromYmd(day.date).getDate()}
+                                        {showMonth && <small>{fmt(day.date, {month: 'short'}).replace('.', '')}</small>}
                                     </span>
-                                ) : day.isPast ? (
-                                    <span className="dc-meta">&nbsp;</span>
-                                ) : (
+
+                                    {closed ? (
+                                        <span className={`dc-closed ${day.isException ? 'is-holiday' : ''}`}>
+                                            {day.isException && <span uk-icon="icon: ban; ratio: 0.6"></span>}
+                                            <span className="dc-closed-label">{day.label || 'Cerrado'}</span>
+                                        </span>
+                                    ) : day.isPast ? (
+                                        <span className="dc-meta">&nbsp;</span>
+                                    ) : (
+                                        <>
+                                            {/* Tramo liso = pedidos reales; tramo rayado = reservado a grandes clientes que aún no han entregado */}
+                                            <span className="dc-bar">
+                                                <i style={{width: `${Math.min(Math.max(day.load - (day.reserved || 0), 0) / dayMax, 1) * 100}%`}}/>
+                                                {day.reserved > 0 && (
+                                                    <i className="is-reserved" style={{width: `${Math.min(day.reserved / dayMax, 1) * 100}%`}}/>
+                                                )}
+                                            </span>
+                                            <span className="dc-meta">
+                                                {orders.length > 0 ? `${orders.length} ped · ${fmtLoad(day.load)}` : (day.load > 0 ? `reserva · ${fmtLoad(day.load)}` : 'libre')}
+                                            </span>
+                                        </>
+                                    )}
+
+                                    {isSuggested && !closed && !day.isPast && <span className="dc-badge">Sugerida</span>}
+                                    {isSelected && <span className="dc-check" uk-icon="icon: check; ratio: 0.7"></span>}
+                                </button>
+
+                                {hasPop && (
                                     <>
-                                        {/* Tramo liso = pedidos reales; tramo rayado = reservado a grandes clientes que aún no han entregado */}
-                                        <span className="dc-bar">
-                                            <i style={{width: `${Math.min(Math.max(day.load - (day.reserved || 0), 0) / dayMax, 1) * 100}%`}}/>
-                                            {day.reserved > 0 && (
-                                                <i className="is-reserved" style={{width: `${Math.min(day.reserved / dayMax, 1) * 100}%`}}/>
-                                            )}
-                                        </span>
-                                        <span className="dc-meta">
-                                            {orders.length > 0 ? `${orders.length} ped · ${fmtLoad(day.load)}` : (day.load > 0 ? `reserva · ${fmtLoad(day.load)}` : 'libre')}
-                                        </span>
+                                        <button type="button" className="dc-pop-btn"
+                                                aria-label={`Ver los ${orders.length} pedidos del día`}
+                                                aria-expanded={popDay === day.date}
+                                                onClick={(e) => { e.stopPropagation(); togglePop(day.date); }}>
+                                            <span uk-icon="icon: list; ratio: 0.55"></span>
+                                        </button>
+                                        <DayPopover anchorEl={cellRefs.current[day.date]}
+                                                    open={popDay === day.date}
+                                                    onClose={closePop}
+                                                    onMouseEnter={clearPopTimer}
+                                                    onMouseLeave={hoverOut}>
+                                            <div className="dc-pop">
+                                                <div className="dc-pop-head uk-flex uk-flex-between uk-flex-middle">
+                                                    <strong>{cap(fmt(day.date, {weekday: 'long', day: 'numeric', month: 'short'}))}</strong>
+                                                    <button type="button" className="dc-pop-close" aria-label="Cerrar" onClick={closePop}>
+                                                        <span uk-icon="icon: close; ratio: 0.7"></span>
+                                                    </button>
+                                                </div>
+                                                <div className="dc-pop-list">
+                                                    {orders.map(order => {
+                                                        const [stLabel, stClass] = ESTADOS[order.status] || [order.status, 'default'];
+                                                        return (
+                                                            <div key={order.id} className="dc-pop-item">
+                                                                <div className="uk-flex uk-flex-between uk-flex-middle" style={{gap: 6}}>
+                                                                    <Link to={rutaPedido(order)} className="uk-text-bold" style={{fontSize: '0.82rem'}}
+                                                                          title="Abrir el pedido">
+                                                                        {order.orderNum}
+                                                                    </Link>
+                                                                    <span className={`uk-label uk-label-${stClass}`} style={{fontSize: '0.6rem'}}>{stLabel}</span>
+                                                                </div>
+                                                                {/* Sin el nombre del cliente: la pantalla del mostrador la puede ver
+                                                                    quien está pidiendo. Para saber de quién es, se abre el pedido. */}
+                                                                <div className="uk-text-muted" style={{fontSize: '0.72rem'}}>
+                                                                    Carga {fmtLoad(orderWeighted(order))}
+                                                                </div>
+                                                                <div style={{fontSize: '0.72rem', marginTop: 2, lineHeight: 1.35}}>
+                                                                    {lineasActivas(order.lines).map((l, i) => {
+                                                                        const noLoad = l.product?.countsForLoad === false;
+                                                                        return (
+                                                                            <span key={l.id} style={{color: noLoad ? '#9ca3af' : '#475569'}}>
+                                                                                {i > 0 ? ', ' : ''}{l.quantity}× {l.product?.name || `#${l.productId}`}{noLoad ? ' (no computa)' : ''}
+                                                                            </span>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                                <div className="dc-pop-foot uk-flex uk-flex-between uk-flex-middle">
+                                                    <span>{orders.length} pedido{orders.length !== 1 ? 's' : ''} · Carga {fmtLoad(day.load)}</span>
+                                                    <Link to={rutaEntregas(day.date)} title="Vista de Entregas de ese día">Ver el día completo</Link>
+                                                </div>
+                                            </div>
+                                        </DayPopover>
                                     </>
                                 )}
-
-                                {isSuggested && !closed && !day.isPast && <span className="dc-badge">Sugerida</span>}
-                                {isSelected && <span className="dc-check" uk-icon="icon: check; ratio: 0.7"></span>}
-                            </button>
-
-                            {hasPop && (
-                                <>
-                                    <button type="button" className="dc-pop-btn"
-                                            aria-label={`Ver los ${orders.length} pedidos del día`}
-                                            aria-expanded={popDay === day.date}
-                                            onClick={(e) => { e.stopPropagation(); togglePop(day.date); }}>
-                                        <span uk-icon="icon: list; ratio: 0.55"></span>
-                                    </button>
-                                    <DayPopover anchorEl={cellRefs.current[day.date]}
-                                                open={popDay === day.date}
-                                                onClose={closePop}
-                                                onMouseEnter={clearPopTimer}
-                                                onMouseLeave={hoverOut}>
-                                        <div className="dc-pop">
-                                            <div className="dc-pop-head uk-flex uk-flex-between uk-flex-middle">
-                                                <strong>{cap(fmt(day.date, {weekday: 'long', day: 'numeric', month: 'short'}))}</strong>
-                                                <button type="button" className="dc-pop-close" aria-label="Cerrar" onClick={closePop}>
-                                                    <span uk-icon="icon: close; ratio: 0.7"></span>
-                                                </button>
-                                            </div>
-                                            <div className="dc-pop-list">
-                                                {orders.map(order => {
-                                                    const [stLabel, stClass] = ESTADOS[order.status] || [order.status, 'default'];
-                                                    return (
-                                                        <div key={order.id} className="dc-pop-item">
-                                                            <div className="uk-flex uk-flex-between uk-flex-middle" style={{gap: 6}}>
-                                                                <Link to={rutaPedido(order)} className="uk-text-bold" style={{fontSize: '0.82rem'}}
-                                                                      title="Abrir el pedido">
-                                                                    {order.orderNum}
-                                                                </Link>
-                                                                <span className={`uk-label uk-label-${stClass}`} style={{fontSize: '0.6rem'}}>{stLabel}</span>
-                                                            </div>
-                                                            <div className="uk-text-muted" style={{fontSize: '0.72rem'}}>
-                                                                {order.client ? (
-                                                                    <Link to={rutaCliente(order.client)} className="dc-pop-client" title="Ver la ficha del cliente">
-                                                                        {order.client.firstName} {order.client.lastName}
-                                                                    </Link>
-                                                                ) : 'Cliente rápido'}
-                                                                {' · Carga '}{fmtLoad(orderWeighted(order))}
-                                                            </div>
-                                                            <div style={{fontSize: '0.72rem', marginTop: 2, lineHeight: 1.35}}>
-                                                                {lineasActivas(order.lines).map((l, i) => {
-                                                                    const noLoad = l.product?.countsForLoad === false;
-                                                                    return (
-                                                                        <span key={l.id} style={{color: noLoad ? '#9ca3af' : '#475569'}}>
-                                                                            {i > 0 ? ', ' : ''}{l.quantity}× {l.product?.name || `#${l.productId}`}{noLoad ? ' (no computa)' : ''}
-                                                                        </span>
-                                                                    );
-                                                                })}
-                                                            </div>
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
-                                            <div className="dc-pop-foot uk-flex uk-flex-between uk-flex-middle">
-                                                <span>{orders.length} pedido{orders.length !== 1 ? 's' : ''} · Carga {fmtLoad(day.load)}</span>
-                                                <Link to={rutaEntregas(day.date)} title="Vista de Entregas de ese día">Ver el día completo</Link>
-                                            </div>
-                                        </div>
-                                    </DayPopover>
-                                </>
-                            )}
-                        </div>
-                    );
-                })}
-
-                {loading && !days.length && (
-                    <div className="dc-loading"><div uk-spinner="ratio: 0.8"></div></div>
-                )}
-            </div>
-
-            {/* Resumen de la selección */}
-            <div className="dc-summary">
-                {fechaLimite ? (
-                    <>
-                        <span className="dc-summary-date">
-                            <span uk-icon="icon: calendar; ratio: 0.8"></span>
-                            {cap(fmt(fechaLimite, {weekday: 'long', day: 'numeric', month: 'long'}))}
-                        </span>
-                        {selected && !selected.isWorking && (
-                            <span className="dc-summary-warn">Ese día está cerrado, elige otra fecha</span>
-                        )}
-                        {selected && selected.isWorking && (
-                            <span className="dc-summary-load">
-                                {selected.orders > 0 ? `${selected.orders} pedido${selected.orders !== 1 ? 's' : ''} · carga ${fmtLoad(selected.load)}` : (selected.load > 0 ? `sin pedidos · carga ${fmtLoad(selected.load)}` : 'sin pedidos')}
-                                {selected.reserved > 0 && (
-                                    <> (incluye {fmtLoad(selected.reserved)} reservados para {(selected.reservedClients || []).join(', ') || 'grandes clientes'})</>
-                                )}
-                                {(selected.releasedClients || []).length > 0 && (
-                                    <> · reserva liberada: {selected.releasedClients.join(', ')} (pasó su recogida sin pedido para este día)</>
-                                )}
-                                {Number(selected.loadMax) > 0 && Number(selected.loadMax) !== loadMax && (
-                                    <> · tope de este día {fmtLoad(selected.loadMax)}{selected.label ? ` (${selected.label})` : ''}</>
-                                )}
-                            </span>
-                        )}
-                        {!selected && (
-                            <button type="button" className="dc-link" onClick={() => goToDate(fechaLimite)}>Ver en calendario</button>
-                        )}
-                        {suggestedDate && suggestedDate !== fechaLimite && (
-                            <button type="button" className="dc-link" onClick={() => { setFechaLimite(suggestedDate); goToDate(suggestedDate); }}>
-                                Usar sugerida ({fmt(suggestedDate, {weekday: 'short', day: 'numeric', month: 'short'})})
-                            </button>
-                        )}
-                    </>
-                ) : (
-                    <span className="uk-text-muted">Selecciona un día de entrega</span>
-                )}
-            </div>
-
-            {/* Lo que ya se entrega ese día, por producto: para no juntar trabajos de mucha dedicación */}
-            {selected && selected.isWorking && (resumenDia.coinciden.length > 0 || resumenDia.resto.length > 0) && (
-                <div className="dc-dia">
-                    {resumenDia.coinciden.length > 0 && (
-                        <div className="dc-dia-group">
-                            <div className="dc-dia-title">Lo de este pedido, ese día</div>
-                            <ul className="dc-dia-list">
-                                {resumenDia.coinciden.map(c => (
-                                    <li key={c.id} className={c.yaHay > 0 ? 'is-busy' : ''}>
-                                        <span className="dc-dia-name">{c.name}</span>
-                                        <span className="dc-dia-count">
-                                            {c.yaHay > 0 ? (
-                                                <>ya hay <strong>{fmtLoad(c.yaHay)}</strong> en {c.pedidos} pedido{c.pedidos !== 1 ? 's' : ''} · con este, {fmtLoad(c.yaHay + c.qty)}</>
-                                            ) : 'ninguno más ese día'}
-                                        </span>
-                                    </li>
-                                ))}
-                            </ul>
-                        </div>
-                    )}
-                    {resumenDia.resto.length > 0 && (
-                        <div className="dc-dia-group">
-                            <div className="dc-dia-title">{resumenDia.coinciden.length > 0 ? 'Además, ese día se entregan' : 'Ese día se entregan'}</div>
-                            <div className="dc-dia-chips">
-                                {resumenDia.resto.map(g => (
-                                    <span key={g.id} className="dc-dia-chip"
-                                          title={`${g.orders.size} pedido${g.orders.size !== 1 ? 's' : ''}`}>
-                                        <strong>{fmtLoad(g.qty)}</strong> {g.name}
-                                    </span>
-                                ))}
                             </div>
-                        </div>
+                        );
+                    })}
+
+                    {loading && !days.length && (
+                        <div className="dc-loading"><div uk-spinner="ratio: 0.8"></div></div>
                     )}
                 </div>
-            )}
 
-            {/* Entrega anterior a la sugerida: suplemento de urgencia */}
-            {fechaLimite && suplementoUrgencia.adelantada && (
-                <div className={`dc-urgent ${suplementoUrgencia.aplicado ? '' : 'is-off'}`}>
-                    <span uk-icon="icon: bolt; ratio: 0.8"></span>
-                    <span className="dc-urgent-text">
-                        {suplementoUrgencia.granCliente ? (
-                            <><strong>Entrega adelantada</strong>: antes de la fecha sugerida. Gran cliente con días de recogida y entrega pactados: sin suplemento.</>
-                        ) : suplementoUrgencia.pctPerDay > 0 ? (
-                            <>
-                                <strong>Entrega adelantada</strong> {suplementoUrgencia.dias} día{suplementoUrgencia.dias !== 1 ? 's' : ''} laborable{suplementoUrgencia.dias !== 1 ? 's' : ''} respecto a la sugerida
-                                {suggestedDate && <> ({fmt(suggestedDate, {weekday: 'short', day: 'numeric', month: 'short'})})</>}.
-                                {suplementoUrgencia.aplicado
-                                    ? <> Suplemento de urgencia del {suplementoUrgencia.pct} % ({suplementoUrgencia.pctPerDay} % por día{suplementoUrgencia.maxPct > 0 ? `, máximo ${suplementoUrgencia.maxPct} %` : ''}): <strong>{suplementoUrgencia.importe.toFixed(2)} €</strong>.</>
-                                    : suplementoUrgencia.importe > 0
-                                        ? <> Suplemento del {suplementoUrgencia.pct} % ({suplementoUrgencia.importe.toFixed(2)} €) eximido.</>
-                                        : <> El suplemento ({suplementoUrgencia.pct} %) se calculará sobre las prendas del pedido.</>}
-                            </>
-                        ) : (
-                            <><strong>Entrega adelantada</strong>: antes de la fecha sugerida. El suplemento de urgencia está desactivado.</>
+                <div className="dc-legend">
+                    <span><i className="load-low"/>Poca carga</span>
+                    <span><i className="load-mid"/>Media</span>
+                    <span><i className="load-high"/>Llena</span>
+                    <span><i className="closed"/>Cerrado / festivo</span>
+                </div>
+            </div>
+
+            <div className="dc-side">
+                {/* Resumen de la selección */}
+                <div className="dc-summary">
+                    {fechaLimite ? (
+                        <>
+                            <span className="dc-summary-date">
+                                <span uk-icon="icon: calendar; ratio: 0.8"></span>
+                                {cap(fmt(fechaLimite, {weekday: 'long', day: 'numeric', month: 'long'}))}
+                            </span>
+                            {selected && !selected.isWorking && (
+                                <span className="dc-summary-warn">Ese día está cerrado, elige otra fecha</span>
+                            )}
+                            {selected && selected.isWorking && (
+                                <span className="dc-summary-load">
+                                    {selected.orders > 0 ? `${selected.orders} pedido${selected.orders !== 1 ? 's' : ''} · carga ${fmtLoad(selected.load)}` : (selected.load > 0 ? `sin pedidos · carga ${fmtLoad(selected.load)}` : 'sin pedidos')}
+                                    {selected.reserved > 0 && (
+                                        <> (incluye {fmtLoad(selected.reserved)} reservados para {(selected.reservedClients || []).join(', ') || 'grandes clientes'})</>
+                                    )}
+                                    {(selected.releasedClients || []).length > 0 && (
+                                        <> · reserva liberada: {selected.releasedClients.join(', ')} (pasó su recogida sin pedido para este día)</>
+                                    )}
+                                    {Number(selected.loadMax) > 0 && Number(selected.loadMax) !== loadMax && (
+                                        <> · tope de este día {fmtLoad(selected.loadMax)}{selected.label ? ` (${selected.label})` : ''}</>
+                                    )}
+                                </span>
+                            )}
+                            {!selected && (
+                                <button type="button" className="dc-link" onClick={() => goToDate(fechaLimite)}>Ver en calendario</button>
+                            )}
+                            {suggestedDate && suggestedDate !== fechaLimite && (
+                                <button type="button" className="dc-link" onClick={() => { setFechaLimite(suggestedDate); goToDate(suggestedDate); }}>
+                                    Usar sugerida ({fmt(suggestedDate, {weekday: 'short', day: 'numeric', month: 'short'})})
+                                </button>
+                            )}
+                        </>
+                    ) : (
+                        <span className="uk-text-muted">Selecciona un día de entrega</span>
+                    )}
+                </div>
+
+                {/* Lo que ya se entrega ese día, por producto: para no juntar trabajos de mucha dedicación */}
+                {selected && selected.isWorking && (resumenDia.coinciden.length > 0 || resumenDia.resto.length > 0) && (
+                    <div className="dc-dia">
+                        {resumenDia.coinciden.length > 0 && (
+                            <div className="dc-dia-group">
+                                <div className="dc-dia-title">Lo de este pedido, ese día</div>
+                                <ul className="dc-dia-list">
+                                    {resumenDia.coinciden.map(c => (
+                                        <li key={c.id} className={c.yaHay > 0 ? 'is-busy' : ''}>
+                                            <span className="dc-dia-name">{c.name}</span>
+                                            <span className="dc-dia-count">
+                                                {c.yaHay > 0 ? (
+                                                    <>ya hay <strong>{fmtLoad(c.yaHay)}</strong> en {c.pedidos} pedido{c.pedidos !== 1 ? 's' : ''} · con este, {fmtLoad(c.yaHay + c.qty)}</>
+                                                ) : 'ninguno más ese día'}
+                                            </span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
                         )}
-                    </span>
-                    {suplementoUrgencia.pctPerDay > 0 && !suplementoUrgencia.granCliente && (
-                        <label className="dc-urgent-waive" title="No cobrar el suplemento en este pedido">
-                            <input type="checkbox" className="uk-checkbox" checked={!!sinSuplemento}
-                                   onChange={e => setSinSuplemento(e.target.checked)}/>
-                            Sin suplemento
-                        </label>
-                    )}
-                </div>
-            )}
+                        {resumenDia.resto.length > 0 && (
+                            <div className="dc-dia-group">
+                                <div className="dc-dia-title">{resumenDia.coinciden.length > 0 ? 'Además, ese día se entregan' : 'Ese día se entregan'}</div>
+                                <div className="dc-dia-chips">
+                                    {resumenDia.resto.map(g => (
+                                        <span key={g.id} className="dc-dia-chip"
+                                              title={`${g.orders.size} pedido${g.orders.size !== 1 ? 's' : ''}`}>
+                                            <strong>{fmtLoad(g.qty)}</strong> {g.name}
+                                        </span>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
 
-            <div className="dc-legend">
-                <span><i className="load-low"/>Poca carga</span>
-                <span><i className="load-mid"/>Media</span>
-                <span><i className="load-high"/>Llena</span>
-                <span><i className="closed"/>Cerrado / festivo</span>
+                {/* Entrega anterior a la sugerida: suplemento de urgencia */}
+                {fechaLimite && suplementoUrgencia.adelantada && (
+                    <div className={`dc-urgent ${suplementoUrgencia.aplicado ? '' : 'is-off'}`}>
+                        <span uk-icon="icon: bolt; ratio: 0.8"></span>
+                        <span className="dc-urgent-text">
+                            {suplementoUrgencia.granCliente ? (
+                                <><strong>Entrega adelantada</strong>: antes de la fecha sugerida. Gran cliente con días de recogida y entrega pactados: sin suplemento.</>
+                            ) : suplementoUrgencia.pctPerDay > 0 ? (
+                                <>
+                                    <strong>Entrega adelantada</strong> {suplementoUrgencia.dias} día{suplementoUrgencia.dias !== 1 ? 's' : ''} laborable{suplementoUrgencia.dias !== 1 ? 's' : ''} respecto a la sugerida
+                                    {suggestedDate && <> ({fmt(suggestedDate, {weekday: 'short', day: 'numeric', month: 'short'})})</>}.
+                                    {suplementoUrgencia.aplicado
+                                        ? <> Suplemento de urgencia del {suplementoUrgencia.pct} % ({suplementoUrgencia.pctPerDay} % por día{suplementoUrgencia.maxPct > 0 ? `, máximo ${suplementoUrgencia.maxPct} %` : ''}): <strong>{suplementoUrgencia.importe.toFixed(2)} €</strong>.</>
+                                        : suplementoUrgencia.importe > 0
+                                            ? <> Suplemento del {suplementoUrgencia.pct} % ({suplementoUrgencia.importe.toFixed(2)} €) eximido.</>
+                                            : <> El suplemento ({suplementoUrgencia.pct} %) se calculará sobre las prendas del pedido.</>}
+                                </>
+                            ) : (
+                                <><strong>Entrega adelantada</strong>: antes de la fecha sugerida. El suplemento de urgencia está desactivado.</>
+                            )}
+                        </span>
+                        {suplementoUrgencia.pctPerDay > 0 && !suplementoUrgencia.granCliente && (
+                            <label className="dc-urgent-waive" title="No cobrar el suplemento en este pedido">
+                                <input type="checkbox" className="uk-checkbox" checked={!!sinSuplemento}
+                                       onChange={e => setSinSuplemento(e.target.checked)}/>
+                                Sin suplemento
+                            </label>
+                        )}
+                    </div>
+                )}
+
+                {lateral}
             </div>
         </div>
     );

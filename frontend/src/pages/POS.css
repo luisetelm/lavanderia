@@ -238,29 +238,27 @@
     .pos-step-cliente .cs-results { flex: 1 1 auto; max-height: none; min-height: 200px; }
 
     /* Entrega: el calendario a la izquierda y, a la derecha, lo del día elegido
-       (resumen, lo que ya se entrega, suplemento) y las observaciones. Las piezas
-       del calendario pasan a ser celdas de esta rejilla (display: contents). */
-    .pos-step-entrega > .pos-sec-entrega {
-        min-height: 100%;
+       (resumen, lo que ya se entrega, suplemento) y las observaciones. Son dos
+       columnas independientes: el calendario ocupa el alto de la pantalla y la
+       derecha se desplaza sola si no cabe, así un día con muchos pedidos no
+       cambia el tamaño del calendario. */
+    .pos-wizard-body.pos-step-entrega { overflow: hidden; }
+    .pos-step-entrega > .pos-sec-entrega { height: 100%; display: flex; flex-direction: column; }
+    .pos-step-entrega .dc {
+        flex: 1 1 auto;
+        min-height: 0;
         display: grid;
         grid-template-columns: minmax(0, 3fr) minmax(300px, 2fr);
-        grid-template-rows: auto auto auto auto 1fr;
+        grid-template-rows: minmax(0, 1fr);
         column-gap: 24px;
-        align-content: start;
     }
-    .pos-step-entrega .dc { display: contents; }
-    .pos-step-entrega .dc-head    { grid-column: 1; grid-row: 1; }
-    /* El calendario baja hasta el final (incluida la fila elástica) y sus
-       semanas se reparten el alto: las celdas crecen con la pantalla */
-    .pos-step-entrega .dc-grid    { grid-column: 1; grid-row: 2 / span 4; align-self: stretch; grid-template-rows: auto; grid-auto-rows: minmax(78px, 1fr); }
-    .pos-step-entrega .dc-cell    { display: flex; }
-    .pos-step-entrega .dc-day     { flex: 1 1 auto; height: auto; }
-    .pos-step-entrega .dc-legend  { grid-column: 1; grid-row: 6; align-self: start; }
-    .pos-step-entrega .dc > .uk-alert-danger { grid-column: 1; grid-row: 7; }
-    .pos-step-entrega .dc-summary { grid-column: 2; grid-row: 1; margin-top: 0; align-self: start; }
-    .pos-step-entrega .dc-dia     { grid-column: 2; grid-row: 2; align-self: start; }
-    .pos-step-entrega .dc-urgent  { grid-column: 2; grid-row: 3; align-self: start; }
-    .pos-step-entrega .pos-field  { grid-column: 2; grid-row: 4 / span 2; margin-top: 8px; }
+    .pos-step-entrega .dc-main { display: flex; flex-direction: column; min-height: 0; }
+    /* Las semanas se reparten el alto: las celdas crecen con la pantalla */
+    .pos-step-entrega .dc-grid { flex: 1 1 auto; min-height: 0; grid-template-rows: auto; grid-auto-rows: minmax(70px, 1fr); }
+    .pos-step-entrega .dc-cell { display: flex; }
+    .pos-step-entrega .dc-day  { flex: 1 1 auto; height: auto; }
+    .pos-step-entrega .dc-side { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-right: 2px; }
+    .pos-step-entrega .dc-summary { margin-top: 0; }
     .pos-step-entrega .pos-field .uk-textarea { min-height: 120px; }
 
     /* Revisar: las prendas a la derecha, el resto a la izquierda */
