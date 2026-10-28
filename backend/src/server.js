@@ -29,6 +29,7 @@ import path from 'path';
 import cron from 'node-cron';
 import { generateMonthlyInvoices } from './services/monthlyInvoicing.js';
 import { retryFailedNotifications, remindUncollectedOrders } from './services/reminders.js';
+import { entregarPedidosEnRuta } from './services/entregasRuta.js';
 
 
 dotenv.config();
@@ -179,6 +180,18 @@ if (process.env.NOTIFY_REMINDER_ENABLED !== 'false') {
             console.error('[Cron] Error enviando recordatorios de pedidos:', err);
         }
     });
+}
+
+// Cron: pedidos de grandes clientes listos en su día de entrega → entregados (van
+// en ruta, no pasan por el mostrador). Al cierre, hora de Madrid. Ver services/entregasRuta.js
+if (process.env.RUTA_AUTOENTREGA_ENABLED !== 'false') {
+    cron.schedule('0 21 * * *', async () => {
+        try {
+            await entregarPedidosEnRuta(prisma);
+        } catch (err) {
+            console.error('[Cron] Error dando por entregados los pedidos en ruta:', err);
+        }
+    }, { timezone: 'Europe/Madrid' });
 }
 
 // Endpoints manuales (solo admin) para lanzar las tareas bajo demanda

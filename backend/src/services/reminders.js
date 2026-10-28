@@ -179,6 +179,9 @@ export async function remindUncollectedOrders(prisma) {
             readyReminderAt: null,
             updatedAt: { lte: cutoff },
             clientId: { not: null },
+            // A los grandes clientes se les lleva en ruta: no recogen nada
+            // (y sus pedidos se dan por entregados solos, services/entregasRuta.js)
+            NOT: { client: { isbigclient: true } },
         },
         select: { id: true },
         take: 200,
