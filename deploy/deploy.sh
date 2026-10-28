@@ -1,6 +1,10 @@
 #!/bin/bash
 set -e
 
+# Todo va dentro de una función que se llama al final: así bash lee el script
+# entero antes de empezar. Si no, el git pull de abajo puede cambiar este mismo
+# archivo mientras se ejecuta y bash seguiría leyendo la versión nueva a medias.
+desplegar() {
 echo "=== Desplegando Tinte y Burbuja ==="
 
 APP_DIR="/var/www/lavanderia"
@@ -11,6 +15,11 @@ cd "$APP_DIR"
 echo "--- Git pull ---"
 git checkout -- backend/package-lock.json 2>/dev/null || true
 git pull origin main
+
+# Base de datos: los SQL nuevos de backend/sql (ver deploy/aplicar-sql.sh).
+# Antes de reiniciar nada: si uno falla, el despliegue se para con la app de antes.
+echo "--- Base de datos: SQL pendientes ---"
+APP_DIR="$APP_DIR" bash "$APP_DIR/deploy/aplicar-sql.sh"
 
 # Backend
 echo "--- Backend: instalando dependencias ---"
@@ -42,3 +51,7 @@ echo ""
 echo "=== Deploy completado ==="
 echo "Verifica: https://app.tinteyburbuja.com"
 echo "Logs:     pm2 logs lavanderia"
+}
+
+desplegar "$@"
+exit

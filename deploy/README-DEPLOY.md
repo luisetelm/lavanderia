@@ -292,6 +292,20 @@ Un solo comando:
 /var/www/lavanderia/deploy.sh
 ```
 
+Los cambios de base de datos (`backend/sql/NNN_*.sql`) se aplican solos: tras
+el `git pull`, `deploy/aplicar-sql.sh` ejecuta en orden los que falten y los
+apunta en la tabla `sql_aplicado`. Si uno falla, el despliegue se para antes de
+reiniciar la app. La primera vez da por aplicados del 001 al 033 (se
+ejecutaron a mano) y sólo corre a partir del 034. Para ver cuáles hay:
+`SELECT * FROM sql_aplicado ORDER BY archivo;`
+
+`/var/www/lavanderia/deploy.sh` tiene que ser el del repositorio
+(`deploy/deploy.sh`) para recibir estos cambios. Si es una copia, cámbiala por
+un enlace una vez:
+```bash
+ln -sf /var/www/lavanderia/deploy/deploy.sh /var/www/lavanderia/deploy.sh
+```
+
 ---
 
 ## Impresión con QZ Tray (etiquetas y tickets)
