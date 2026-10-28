@@ -5,7 +5,9 @@ import { useNavigate } from 'react-router-dom';
 // Los lectores envían los caracteres muy rápido y terminan con Enter. Detectamos
 // esa ráfaga (independientemente del foco) y abrimos el pedido correspondiente.
 //
-// - Si el código es el QR del ticket de cliente (magic link del portal,
+// - Si es el QR del ticket de cliente (HTTPS://APP.TINTEYBURBUJA.COM/T/<código>),
+//   abre el pedido de ese ticket.
+// - Si es el QR de un ticket antiguo (magic link del portal,
 //   .../portal/verify/<jwt>), extrae el JWT: identifica al cliente, y
 //   /buscar-pedido resuelve sus pedidos activos.
 // - Si el código es una URL con ...buscar-pedido?num=XXXX, extrae XXXX.
@@ -16,6 +18,8 @@ import { useNavigate } from 'react-router-dom';
 // sólo [A-Za-z0-9_-]. Buscarlo así lo recupera intacto aunque el prefijo de la
 // URL venga codificado o alterado por el lector.
 const JWT_RE = /eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/;
+// Código corto del ticket de cliente (backend/src/utils/codigoTicket.js), tras /T/
+const CODIGO_TICKET_RE = /\/T\/([A-Z0-9]{8})(?![A-Z0-9])/i;
 
 export default function ScanCapture() {
     const navigate = useNavigate();
@@ -35,6 +39,12 @@ export default function ScanCapture() {
             // El magic link se comprueba antes que num=: si el lector ya venía
             // metiendo la URL entera dentro de num=, el JWT sigue ahí dentro y
             // es lo que de verdad identifica el ticket.
+            const ticket = num.match(CODIGO_TICKET_RE);
+            if (ticket) {
+                navigate(`/buscar-pedido?codigo=${encodeURIComponent(ticket[1].toUpperCase())}`);
+                return;
+            }
+
             const magic = num.match(JWT_RE);
             if (magic) {
                 navigate(`/buscar-pedido?token=${encodeURIComponent(magic[0])}`);

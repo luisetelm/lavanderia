@@ -1,12 +1,13 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { findOrderByNum, findOrdersByPortalToken } from '../api.js';
+import { findOrderByNum, findOrdersByPortalToken, findOrderByTicketCode } from '../api.js';
 import { rutaPedido } from '../utils/rutas.js';
 
 // Página de aterrizaje al escanear el QR de un ticket. Admite los dos QR que
 // imprime el sistema:
 //   - Ticket interno / etiqueta: /buscar-pedido?num=TPV/2025/0095
-//   - Ticket de cliente:         /buscar-pedido?token=<jwt del magic link>
+//   - Ticket de cliente:         /buscar-pedido?codigo=<código del QR> (abre ese pedido)
+//   - Ticket de cliente antiguo: /buscar-pedido?token=<jwt del magic link>
 // El segundo identifica al CLIENTE, no a un pedido, así que se resuelven sus
 // pedidos activos: si sólo hay uno se abre directo, si hay varios se elige.
 export default function OrderLookup({ token }) {
@@ -16,6 +17,7 @@ export default function OrderLookup({ token }) {
     const [choices, setChoices] = useState(null);   // { client, orders } si hay varios
     const num = params.get('num') || '';
     const magicToken = params.get('token') || '';
+    const codigo = params.get('codigo') || '';
 
     // useCallback para poder declararlo como dependencia del efecto sin que
     // se recree en cada render (y relance la búsqueda en bucle).
@@ -26,7 +28,15 @@ export default function OrderLookup({ token }) {
     useEffect(() => {
         let cancelled = false;
 
-        // ── Ticket de cliente: cliente → sus pedidos activos ──
+        // ── Ticket de cliente: el código lleva al pedido del ticket ──
+        if (codigo) {
+            findOrderByTicketCode(token, codigo)
+                .then((order) => { if (!cancelled) openOrder(order); })
+                .catch((err) => { if (!cancelled) setError(err.error || 'No se pudo leer el QR del ticket.'); });
+            return () => { cancelled = true; };
+        }
+
+        // ── Ticket de cliente antiguo: cliente → sus pedidos activos ──
         if (magicToken) {
             findOrdersByPortalToken(token, magicToken)
                 .then(({ client, orders }) => {
@@ -64,7 +74,7 @@ export default function OrderLookup({ token }) {
                 setError(err.error || `No se encontró el pedido "${num}".`);
             });
         return () => { cancelled = true; };
-    }, [num, magicToken, token, openOrder]);
+    }, [num, magicToken, codigo, token, openOrder]);
 
     if (error) {
         return (

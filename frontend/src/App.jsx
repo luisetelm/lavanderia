@@ -82,6 +82,7 @@ function PortalApp() {
         <Routes>
             <Route path="login" element={<PortalLogin />} />
             <Route path="verify/:token" element={<PortalVerify onAuth={handlePortalAuth} />} />
+            <Route path="codigo/:code" element={<PortalVerify onAuth={handlePortalAuth} />} />
             {/* Vuelta de Stripe tras firmar la domiciliación desde un enlace: pública */}
             <Route path="domiciliacion" element={<PortalSepaResult />} />
             {portalToken && portalUser ? (
@@ -149,6 +150,14 @@ export default function App() {
         window.addEventListener('unauthorized', handleLogout);
         return () => window.removeEventListener('unauthorized', handleLogout);
     }, []);
+
+    // QR del ticket de cliente: HTTPS://APP.TINTEYBURBUJA.COM/T/<código> (en
+    // mayúsculas, para que el QR sea lo más pequeño posible). Lleva al portal,
+    // que entra con ese código; el lector del mostrador lo trata en ScanCapture.
+    const enlaceTicket = location.pathname.match(/^\/t\/([A-Za-z0-9-]+)\/?$/i);
+    if (enlaceTicket) {
+        return <Navigate to={`/portal/codigo/${enlaceTicket[1]}`} replace />;
+    }
 
     // Rutas del portal: layout separado, sin sidebar ni UIkit nav
     if (location.pathname.startsWith('/portal')) {

@@ -413,6 +413,11 @@ export function adjustOrder(token, orderId, {add = [], void: toVoid = [], reason
 
 // Resuelve los pedidos activos de un cliente a partir del magic link impreso
 // en el QR de su ticket. Devuelve { client, orders }.
+// Pedido del QR de un ticket de cliente (código corto), para el lector del mostrador
+export function findOrderByTicketCode(token, code) {
+    return request(`/orders/by-ticket-code/${encodeURIComponent(code)}`, token);
+}
+
 export function findOrdersByPortalToken(token, magicToken) {
     return request(`/orders/find-by-portal-token?token=${encodeURIComponent(magicToken)}`, token);
 }
@@ -565,6 +570,11 @@ export function portalRequestAccess(phone) {
         method: 'POST',
         body: JSON.stringify({ phone }),
     });
+}
+
+// Entrar en el portal con el código del QR del ticket (HTTPS://APP.TINTEYBURBUJA.COM/T/<código>)
+export function portalVerifyCode(code) {
+    return request(`/portal/verify-code?code=${encodeURIComponent(code)}`, null);
 }
 
 export function portalVerifyToken(magicToken) {

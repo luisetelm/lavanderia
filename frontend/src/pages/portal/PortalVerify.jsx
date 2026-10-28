@@ -1,23 +1,26 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { portalVerifyToken } from '../../api.js';
+import { portalVerifyToken, portalVerifyCode } from '../../api.js';
 
+// Entrada al portal desde un enlace: /portal/verify/<jwt> (SMS de acceso y
+// tickets antiguos) o /portal/codigo/<código> (QR del ticket de cliente, que
+// lleva directamente al pedido del ticket).
 export default function PortalVerify({ onAuth }) {
-    const { token } = useParams();
+    const { token, code } = useParams();
     const navigate = useNavigate();
     const [error, setError] = useState('');
 
     useEffect(() => {
-        if (!token) return;
-        portalVerifyToken(token)
-            .then(({ token: sessionToken, user }) => {
+        if (!token && !code) return;
+        (code ? portalVerifyCode(code) : portalVerifyToken(token))
+            .then(({ token: sessionToken, user, orderId }) => {
                 onAuth({ token: sessionToken, user });
-                navigate('/portal', { replace: true });
+                navigate(orderId ? `/portal/orders/${orderId}` : '/portal', { replace: true });
             })
             .catch((err) => {
                 setError(err.error || 'Enlace inválido o expirado');
             });
-    }, [token]);
+    }, [token, code]);
 
     if (error) {
         return (

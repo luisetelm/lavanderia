@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken';
 import { sendSMScustomer } from '../services/twilio.js';
 import { normalizePhone } from '../utils/validatePhone.js';
+import { normalizarCodigo, esCodigoTicket } from '../utils/codigoTicket.js';
 import { SEPA_EN_CURSO, crearEnlaceMandato, mandatoActivo } from '../services/sepa.js';
 
 export default async function (fastify) {
@@ -86,6 +87,30 @@ export default async function (fastify) {
         } catch (err) {
             return reply.code(401).send({ error: 'Enlace inválido o expirado' });
         }
+    });
+
+    // Entrar con el QR del ticket (HTTPS://APP.TINTEYBURBUJA.COM/T/<código>,
+    // utils/codigoTicket.js): el código identifica el pedido y, con él, al
+    // cliente. Vale DIAS_VALIDEZ_PORTAL días desde la última impresión del ticket.
+    fastify.get('/verify-code', async (req, reply) => {
+        const code = normalizarCodigo(req.query.code);
+        const invalido = () => reply.code(401).send({ error: 'El código del ticket no es válido o ha caducado. Pide un enlace nuevo con tu teléfono.' });
+        if (!esCodigoTicket(code)) return invalido();
+        const ticket = await prisma.ticketCode.findUnique({
+            where: { code },
+            select: { expiresAt: true, order: { select: { id: true, clientId: true } } },
+        });
+        if (!ticket || ticket.expiresAt < new Date()) return invalido();
+        if (!ticket.order.clientId) {
+            return reply.code(404).send({ error: 'Este pedido no está asociado a ningún cliente. Entra con tu teléfono.' });
+        }
+        const client = await prisma.user.findUnique({
+            where: { id: ticket.order.clientId },
+            select: { id: true, firstName: true, lastName: true, email: true, phone: true, notifyChannel: true }
+        });
+        if (!client) return invalido();
+        const sessionToken = jwt.sign({ id: client.id, role: 'portal_client' }, process.env.JWT_SECRET, { expiresIn: '7d' });
+        return reply.send({ token: sessionToken, user: client, orderId: ticket.order.id });
     });
 
     // --- Rutas protegidas del portal (requieren JWT de portal) ---

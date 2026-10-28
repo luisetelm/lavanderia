@@ -222,7 +222,9 @@ export async function printSaleTicket(order, products = [], options = {}) {
     const client = order.client || {};
     const clientName = client.firstName ? `${client.firstName} ${client.lastName}`.trim() : 'Cliente rápido';
 
-    // QR del ticket de cliente: magic link al portal (auto-acceso a sus pedidos).
+    // QR del ticket de cliente: enlace corto con el código del pedido
+    // (HTTPS://APP.TINTEYBURBUJA.COM/T/<código>). Con el móvil entra en el portal;
+    // con el lector del mostrador abre el pedido.
     const origin = (typeof window !== 'undefined' && window.location?.origin)
         ? window.location.origin
         : 'https://app.tinteyburbuja.com';
@@ -231,18 +233,20 @@ export async function printSaleTicket(order, products = [], options = {}) {
     try {
         if (token && order.id != null) {
             const { link } = await fetchOrderPortalLink(token, order.id);
-            if (link) qrTarget = link;
+            // En mayúsculas: el QR usa el modo alfanumérico y sale con muchos
+            // menos módulos (la ruta /t/ no distingue mayúsculas)
+            if (link) qrTarget = /\/t\/[A-Za-z0-9]+$/.test(link) ? link.toUpperCase() : link;
         }
     } catch (e) {
-        console.warn('No se pudo obtener el magic link del portal, usando /portal', e);
+        console.warn('No se pudo obtener el enlace del ticket, usando /portal', e);
     }
     const qrCaption = 'Escanea para ver tus pedidos online';
 
-    // Generar el código QR como data URL.
-    // El magic link es un JWT largo → QR denso. Usamos corrección 'L' (menos
-    // módulos) y un tamaño de render grande para que sea legible al imprimir.
+    // Generar el código QR como data URL. Con el enlace corto sale un QR de
+    // 29x29 módulos (antes, con el JWT, 53x53), así que se puede usar la
+    // corrección 'M', que aguanta mejor el papel térmico gastado.
     const qrCodeDataUrl = await QRCode.toDataURL(qrTarget, {
-        width: 320, margin: 1, errorCorrectionLevel: 'L',
+        width: 320, margin: 1, errorCorrectionLevel: 'M',
     });
 
     // Logo de la empresa en Base64

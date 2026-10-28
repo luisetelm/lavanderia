@@ -13,6 +13,7 @@ import {
     diasLaborablesAdelantados, porcentajeUrgencia, topeDelDia,
 } from '../utils/cargaTrabajo.js';
 import jwt from 'jsonwebtoken';
+import { codigoDelPedido, normalizarCodigo, esCodigoTicket } from '../utils/codigoTicket.js';
 import fs from 'fs';
 import path from 'path';
 
@@ -1175,7 +1176,24 @@ export default async function (fastify, opts) {
         }
     });
 
+    // ─── GET /api/orders/by-ticket-code/:code ─────────────────────────────────
+    // Pedido del QR de un ticket de cliente (HTTPS://APP.TINTEYBURBUJA.COM/T/<código>,
+    // utils/codigoTicket.js): el lector del mostrador abre el pedido que el
+    // cliente viene a recoger. Exige sesión de empleado; la caducidad del código
+    // sólo cuenta para el portal (un ticket viejo puede tener el pedido sin recoger).
+    fastify.get('/by-ticket-code/:code', async (req, reply) => {
+        const code = normalizarCodigo(req.params.code);
+        if (!esCodigoTicket(code)) return reply.status(400).send({error: 'El código del ticket no es válido'});
+        const ticket = await fastify.prisma.ticketCode.findUnique({
+            where: {code},
+            select: {order: {select: {id: true, orderNum: true}}},
+        });
+        if (!ticket) return reply.status(404).send({error: `No hay ningún pedido con el código ${code}`});
+        return reply.send(ticket.order);
+    });
+
     // ─── GET /api/orders/find-by-portal-token?token=eyJ... ───────────────────
+    // (Tickets impresos antes del código corto: su QR lleva el JWT del cliente.)
     // Resuelve los pedidos activos de un cliente a partir del "magic link" que
     // lleva impreso el QR del ticket de cliente. Ese QR apunta al portal
     // (/portal/verify/<jwt>) e identifica al CLIENTE, no a un pedido, así que
@@ -1224,9 +1242,10 @@ export default async function (fastify, opts) {
     });
 
     // ─── GET /api/orders/:id/portal-link ─────────────────────────────────────
-    // Devuelve un "magic link" de acceso al portal del cliente del pedido, para
-    // imprimirlo como QR en el ticket de cliente. Si el pedido no tiene cliente
-    // (cliente rápido), devuelve la URL de login del portal.
+    // Enlace corto para el QR del ticket de cliente: ${APP_URL}/t/<código>
+    // (utils/codigoTicket.js). Con el móvil, el cliente entra en su portal; con
+    // el lector del mostrador se abre el pedido. Sin cliente registrado, el
+    // código sigue sirviendo en el mostrador y el portal pide el teléfono.
     fastify.get('/:id/portal-link', async (req, reply) => {
         const prisma = fastify.prisma;
         const orderId = Number(req.params.id);
@@ -1237,22 +1256,12 @@ export default async function (fastify, opts) {
         try {
             const order = await prisma.order.findUnique({
                 where: {id: orderId},
-                select: {id: true, client: {select: {id: true, role: true}}},
+                select: {id: true, clientId: true},
             });
             if (!order) return reply.status(404).send({error: 'Pedido no encontrado'});
 
-            // Sin cliente registrado → enlace genérico de login del portal.
-            if (!order.client?.id) {
-                return reply.send({link: `${baseUrl}/portal`, magic: false});
-            }
-
-            // Magic link de auto-acceso (mismo formato que el SMS de acceso al portal).
-            const magicToken = jwt.sign(
-                {id: order.client.id, role: 'portal_client'},
-                process.env.JWT_SECRET,
-                {expiresIn: '30d'}
-            );
-            return reply.send({link: `${baseUrl}/portal/verify/${magicToken}`, magic: true});
+            const code = await codigoDelPedido(prisma, order.id);
+            return reply.send({link: `${baseUrl}/t/${code}`, code, magic: Boolean(order.clientId)});
         } catch (err) {
             req.log.error(err);
             return reply.status(500).send({error: 'Error generando el enlace del portal'});

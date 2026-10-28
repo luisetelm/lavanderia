@@ -84,6 +84,7 @@ model Order {
   // un pedido con proforma sigue pendiente de facturar (sql/030).
   proformaOrders        ProformaOrder[]
   printJobs             print_job[]
+  ticketCode            TicketCode?     // código corto del QR del ticket de cliente (sql/034)
 
   @@index([createdAt], map: "idx_Order_createdAt") // sql/023
 }
@@ -688,4 +689,16 @@ model McpOauthToken {
   @@index([userId])
   @@index([expiresAt])
   @@map("mcp_oauth_token")
+}
+
+// Código corto del QR del ticket de cliente (sql/034, utils/codigoTicket.js):
+// abre el pedido en el mostrador y el portal del cliente desde su móvil.
+model TicketCode {
+  code      String   @id @db.VarChar(12)
+  orderId   Int      @unique @map("order_id")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("ticket_code")
 }
