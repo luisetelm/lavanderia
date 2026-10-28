@@ -9,6 +9,7 @@ import DraftLines from './DraftLines.jsx';
 import UIkit from 'uikit';
 import { normalizarTelefono, esTelefonoValido, TELEFONO_AYUDA } from '../utils/telefono.js';
 import { rutaPedido } from '../utils/rutas.js';
+import { pasoDeCampo, EVENTO_VALIDAR } from '../utils/pasosTPV.js';
 
 // Barra flotante del pedido en curso. En cualquier ruta muestra el resumen y
 // permite validar o descartar; fuera del POS además se puede desplegar para
@@ -40,6 +41,15 @@ export default function DraftOrderBanner({ token, worker }) {
         return () => { observer.disconnect(); draft.setBannerHeight(0); };
     }, [draft.isActive]);
 
+    // El botón «Validar pedido» del último paso del TPV por pasos pide esta
+    // misma validación, para no tener dos copias de las comprobaciones.
+    const validarRef = useRef(null);
+    useEffect(() => {
+        const onValidar = () => validarRef.current?.();
+        window.addEventListener(EVENTO_VALIDAR, onValidar);
+        return () => window.removeEventListener(EVENTO_VALIDAR, onValidar);
+    }, []);
+
     if (!draft.isActive) return null;
 
     const {
@@ -65,9 +75,12 @@ export default function DraftOrderBanner({ token, worker }) {
         }
     };
 
-    // Lleva al campo a corregir: si hace falta, primero al TPV, y luego lo enfoca
+    // Lleva al campo a corregir: si hace falta, primero al TPV (y en la vista
+    // por pasos, al paso donde está el campo), y luego lo enfoca
     const irAlCampo = (accion) => {
         if (accion.ruta) { navigate(accion.ruta); return; }
+        const paso = pasoDeCampo(accion.campo);
+        if (paso) draft.setPaso(paso);
         const enfocar = () => {
             const el = document.getElementById(accion.campo);
             if (!el) return;
@@ -78,7 +91,8 @@ export default function DraftOrderBanner({ token, worker }) {
             navigate('/pos');
             setTimeout(enfocar, 350);
         } else {
-            enfocar();
+            // Si ha cambiado de paso, el campo aparece en el siguiente pintado
+            setTimeout(enfocar, paso ? 60 : 0);
         }
     };
 
@@ -121,6 +135,13 @@ export default function DraftOrderBanner({ token, worker }) {
             setError(`El teléfono «${quickClient.phone}» no es válido. ${TELEFONO_AYUDA}`, { texto: 'Ir al teléfono', campo: 'pos-cliente-telefono' });
             return;
         }
+        // Sin fecha el servidor la pondría a una semana vista, sin mirar la carga
+        // de cada día. En la vista clásica el calendario ya pone la sugerida; en
+        // la vista por pasos se puede validar antes de llegar al paso de entrega.
+        if (!fechaLimite) {
+            setError('Falta la fecha de entrega. Elígela en el calendario, que enseña la carga de cada día.', { texto: 'Ir a la entrega', campo: 'pos-entrega' });
+            return;
+        }
 
         const linesPayload = cart.map(c => ({
             productId: c.productId,
@@ -160,6 +181,8 @@ export default function DraftOrderBanner({ token, worker }) {
 
         await submitOrder(payload);
     };
+
+    validarRef.current = () => { if (!submitting) handleValidate(); };
 
     const submitOrder = async (payload) => {
         setSubmitting(true);
@@ -239,8 +262,10 @@ export default function DraftOrderBanner({ token, worker }) {
     };
 
     // En el POS, el chip de prendas lleva a la tarjeta donde se editan
+    // (en la vista por pasos, primero al paso de prendas)
     const scrollToLines = () => {
-        document.getElementById('pos-prendas')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        draft.setPaso('prendas');
+        setTimeout(() => document.getElementById('pos-prendas')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 60);
     };
 
     /* ── Styles ── */

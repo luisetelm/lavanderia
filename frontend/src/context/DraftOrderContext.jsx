@@ -15,6 +15,7 @@ const defaultState = {
     fechaLimite: null,
     observaciones: '',
     sinSuplemento: false,  // quien pica el pedido exime el suplemento de urgencia
+    paso: 'cliente',       // paso del TPV por pasos en el que va el pedido (utils/pasosTPV.js)
 };
 
 // El pedido en curso se guarda en localStorage para que sobreviva a un cierre
@@ -149,6 +150,9 @@ export function DraftOrderProvider({ children, token }) {
                 quickClient: user ? { firstName: '', lastName: '', phone: '', email: '' } : prev.quickClient,
                 clientPrices: mismoCliente ? prev.clientPrices : {},
                 clientPricesFor: mismoCliente ? prev.clientPricesFor : null,
+                // Con el cliente elegido (en el TPV, o al llegar con «Nuevo pedido»
+                // desde su ficha o el chat) el TPV por pasos sigue con las prendas
+                paso: user && prev.paso === 'cliente' ? 'prendas' : prev.paso,
             };
         });
     }, []);
@@ -196,6 +200,10 @@ export function DraftOrderProvider({ children, token }) {
 
     const setSinSuplemento = useCallback((valor) => {
         setState(prev => ({ ...prev, sinSuplemento: !!valor }));
+    }, []);
+
+    const setPaso = useCallback((paso) => {
+        setState(prev => ({ ...prev, paso }));
     }, []);
 
     const clearDraft = useCallback(() => {
@@ -379,9 +387,10 @@ export function DraftOrderProvider({ children, token }) {
         fechaLimite: state.fechaLimite,
         observaciones: state.observaciones,
         sinSuplemento: state.sinSuplemento,
+        paso: state.paso,
         addToCart, updateQuantity, removeFromCart,
         setSelectedUser, setQuickClient,
-        setFechaLimite, setObservaciones, setSinSuplemento,
+        setFechaLimite, setObservaciones, setSinSuplemento, setPaso,
         clearDraft,
         updateLineNotes, addLinePhoto, removeLinePhoto, splitLine,
         toggleOptionalStep, setLineColor,
@@ -390,7 +399,7 @@ export function DraftOrderProvider({ children, token }) {
         calendarInfo, setCalendarInfo, suplementoUrgencia, totalConSuplemento,
         bannerHeight, setBannerHeight,
     }), [state, addToCart, updateQuantity, removeFromCart, setSelectedUser, setQuickClient,
-        setFechaLimite, setObservaciones, setSinSuplemento, clearDraft,
+        setFechaLimite, setObservaciones, setSinSuplemento, setPaso, clearDraft,
         updateLineNotes, addLinePhoto, removeLinePhoto, splitLine,
         toggleOptionalStep, setLineColor,
         getPriceForItem, agreedPriceFor, total, itemCount, clientName, discount, isActive,

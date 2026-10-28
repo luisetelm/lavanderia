@@ -120,3 +120,118 @@
     .pos-sec-prendas   { order: 3; }
     .pos-sec-entrega   { order: 4; }
 }
+
+/* ── Interruptor de vista: por pasos / clásica ── */
+.pos-vista {
+    display: inline-flex;
+    margin-right: 6px;
+    border: 1px solid var(--tyb-border);
+    border-radius: 999px;
+    overflow: hidden;
+}
+.pos-vista .uk-button {
+    border: 0;
+    border-radius: 0;
+    background: var(--tyb-surface);
+    color: var(--tyb-text-muted);
+    text-transform: none;
+}
+.pos-vista .uk-button.is-active { background: var(--tyb-accent-soft); color: var(--tyb-primary); font-weight: 600; }
+
+/* ── TPV por pasos ── */
+.pos-wizard { display: flex; flex-direction: column; gap: 12px; }
+
+.pos-steps { display: flex; gap: 6px; flex-wrap: wrap; }
+.pos-step {
+    flex: 1 1 0;
+    min-width: 120px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    border: 1px solid var(--tyb-border);
+    border-radius: 10px;
+    background: var(--tyb-surface);
+    color: var(--tyb-text-muted);
+    font: inherit;
+    font-size: 0.9rem;
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+}
+.pos-step:focus-visible { outline: 2px solid var(--tyb-ring); outline-offset: 2px; }
+.pos-step-num {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px; height: 26px;
+    border-radius: 999px;
+    background: var(--tyb-surface-muted);
+    font-size: 0.8rem;
+    font-variant-numeric: tabular-nums;
+}
+.pos-step.is-done { color: var(--tyb-success); }
+.pos-step.is-done .pos-step-num { background: var(--tyb-success-soft); }
+.pos-step.is-current { border-color: var(--tyb-primary); background: var(--tyb-primary); color: var(--tyb-primary-foreground); }
+.pos-step.is-current .pos-step-num { background: var(--tyb-primary-foreground); color: var(--tyb-primary); }
+
+/* Cliente, entrega y revisión no necesitan todo el ancho */
+.pos-step-cliente > .pos-card,
+.pos-step-entrega > .pos-card,
+.pos-step-revisar > .pos-card { max-width: 820px; margin: 0 auto; }
+
+/* Prendas: catálogo a la izquierda y prendas del pedido a la derecha */
+.pos-step-prendas { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 16px; align-items: start; }
+
+.pos-wizard-nav {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+.pos-nav-btn { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 22px; border-radius: 10px; text-transform: none; font-size: 0.95rem; font-weight: 600; }
+.pos-nav-end { display: inline-flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.pos-nav-hint { font-size: 0.85rem; color: var(--tyb-warning); }
+
+/* Revisión del pedido */
+.pos-rev { display: flex; flex-direction: column; gap: 10px; }
+.pos-rev-block { padding: 10px 12px; border: 1px solid var(--tyb-border); border-radius: 8px; }
+.pos-rev-block.is-missing { border-color: var(--tyb-warning); background: var(--tyb-warning-soft); }
+.pos-rev-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 4px; }
+.pos-rev-title { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--tyb-text-muted); }
+.pos-rev-edit { font-size: 0.85rem; text-transform: none; }
+.pos-rev-body { color: var(--tyb-text); font-size: 0.92rem; }
+.pos-rev-lines { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.pos-rev-lines li { display: flex; justify-content: space-between; gap: 12px; }
+.pos-rev-price { flex: none; font-variant-numeric: tabular-nums; color: var(--tyb-text-muted); }
+.pos-rev-meta { color: var(--tyb-text-muted); }
+.pos-rev-warn { color: var(--tyb-warning); font-weight: 600; }
+.pos-rev-total { display: flex; justify-content: flex-end; align-items: center; gap: 10px; margin-top: 12px; font-size: 0.9rem; color: var(--tyb-text-muted); }
+
+/* Escritorio: los pasos ocupan justo la pantalla, como la vista clásica */
+@media (min-width: 1101px) {
+    .pos-wizard { height: 100%; }
+    .pos-steps, .pos-wizard-nav { flex: 0 0 auto; }
+    .pos-wizard-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+    .pos-wizard-body.pos-step-prendas { overflow: hidden; grid-template-rows: minmax(0, 1fr); align-items: stretch; }
+    .pos-step-prendas > .pos-sec-productos,
+    .pos-step-prendas > .pos-sec-prendas { min-height: 0; max-height: none; }
+}
+
+/* Tablet y móvil: una columna, y Atrás / Siguiente siempre a mano sobre la barra del pedido */
+@media (max-width: 1100px) {
+    .pos-step-prendas { grid-template-columns: minmax(0, 1fr); }
+    .pos-wizard-nav {
+        position: sticky;
+        bottom: calc(var(--pos-bottom, 24px) - 8px);
+        z-index: 5;
+        padding: 10px 0;
+        background: var(--tyb-bg);
+    }
+}
+@media (max-width: 640px) {
+    .pos-step { min-width: 0; padding: 8px; }
+    .pos-step-label { font-size: 0.8rem; }
+}

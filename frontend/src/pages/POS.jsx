@@ -27,6 +27,8 @@ import { useDraftOrder } from '../hooks/useDraftOrder.js';
 import PosCliente from '../components/pos/PosCliente.jsx';
 import PosEntrega from '../components/pos/PosEntrega.jsx';
 import PosPrendas from '../components/pos/PosPrendas.jsx';
+import PosPasos from '../components/pos/PosPasos.jsx';
+import {leerVistaTPV, guardarVistaTPV} from '../utils/pasosTPV.js';
 import './POS.css';
 
 const signed = (t, a) => (['withdrawal', 'refund_cash_out'].includes(t) ? -Math.abs(a) : Math.abs(a));
@@ -38,6 +40,10 @@ export default function POS({token, user}) {
     const [products, setProducts] = useState([]);
     const [itineraries, setItineraries] = useState([]);
     const [error, setError] = useState('');
+    // Vista por pasos o la clásica (todo a la vez). Las dos trabajan sobre el
+    // mismo pedido en curso: cambiar a mitad de pedido no pierde nada.
+    const [vista, setVistaState] = useState(leerVistaTPV);
+    const setVista = (v) => { setVistaState(v); guardarVistaTPV(v); };
 
     // Caja: estado UI
     const [showMovementModal, setShowMovementModal] = useState(false);
@@ -277,6 +283,16 @@ export default function POS({token, user}) {
             title="Punto de Venta"
             actions={
                 <div className="pos-cash-actions">
+                    <div className="pos-vista" role="group" aria-label="Vista del TPV">
+                        <button type="button" className={`uk-button uk-button-small ${vista === 'pasos' ? 'is-active' : ''}`}
+                                aria-pressed={vista === 'pasos'} onClick={() => setVista('pasos')}>
+                            Por pasos
+                        </button>
+                        <button type="button" className={`uk-button uk-button-small ${vista === 'clasica' ? 'is-active' : ''}`}
+                                aria-pressed={vista === 'clasica'} onClick={() => setVista('clasica')}>
+                            Vista clásica
+                        </button>
+                    </div>
                     <button type="button" className="uk-button uk-button-small uk-button-default" onClick={async () => {
                         await loadCash();
                         setShowMovementModal(true);
@@ -307,18 +323,22 @@ export default function POS({token, user}) {
         />
 
         <div className="section-content">
-            <div className="pos-layout">
-                {/* Columna del pedido: cliente y entrega */}
-                <div className="pos-col pos-col-order">
-                    <PosCliente token={token}/>
-                    <PosEntrega token={token}/>
-                </div>
+            {vista === 'pasos' ? (
+                <PosPasos token={token} products={products} itineraries={itineraries} error={error}/>
+            ) : (
+                <div className="pos-layout">
+                    {/* Columna del pedido: cliente y entrega */}
+                    <div className="pos-col pos-col-order">
+                        <PosCliente token={token}/>
+                        <PosEntrega token={token}/>
+                    </div>
 
-                {/* Columna del catálogo: productos y prendas */}
-                <div className="pos-col pos-col-catalog">
-                    <PosPrendas products={products} itineraries={itineraries} error={error}/>
+                    {/* Columna del catálogo: productos y prendas */}
+                    <div className="pos-col pos-col-catalog">
+                        <PosPrendas products={products} itineraries={itineraries} error={error}/>
+                    </div>
                 </div>
-            </div>
+            )}
         </div>
 
         <CashMovementModal

@@ -4,6 +4,7 @@ import {Link} from 'react-router-dom';
 import UIkit from 'uikit';
 import {lineasActivas} from '../utils/lineas.js';
 import {fetchDates} from '../api';
+import {infoCalendario} from '../utils/pasosTPV.js';
 import {useDraftOrder} from '../hooks/useDraftOrder.js';
 import {rutaPedido, rutaCliente, rutaEntregas} from '../utils/rutas.js';
 import './DateCarousel.css';
@@ -177,15 +178,8 @@ export default function DateCarousel({fechaLimite, setFechaLimite, token}) {
     const loadMax = Number(data?.loadMax) > 0 ? Number(data.loadMax) : LOAD_MAX_FALLBACK;
     const {setCalendarInfo, suplementoUrgencia, sinSuplemento, setSinSuplemento} = draft;
     useEffect(() => {
-        if (!data) return;
-        const daysAheadByDate = {};
-        (data.days || []).forEach(d => { daysAheadByDate[d.date] = d.daysAhead || 0; });
-        setCalendarInfo({
-            suggestedDate,
-            urgency: {pctPerDay: Number(data.urgency?.pctPerDay) || 0, maxPct: Number(data.urgency?.maxPct) || 0},
-            daysAheadByDate,
-        });
-    }, [data, suggestedDate, setCalendarInfo]);
+        if (data) setCalendarInfo(infoCalendario(data));
+    }, [data, setCalendarInfo]);
     const weekEnd = addDays(weekStart, WEEKS * 7 - 1);
     const canGoBack = weekStart > mondayOf(todayStr);
 

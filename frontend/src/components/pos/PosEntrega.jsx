@@ -8,7 +8,7 @@ export default function PosEntrega({token}) {
     const draft = useDraftOrder();
 
     return (
-        <section className="uk-card uk-card-default pos-card pos-sec-entrega">
+        <section id="pos-entrega" className="uk-card uk-card-default pos-card pos-sec-entrega">
             <DateCarousel
                 fechaLimite={draft.fechaLimite}
                 setFechaLimite={(d) => draft.setFechaLimite(d)}
