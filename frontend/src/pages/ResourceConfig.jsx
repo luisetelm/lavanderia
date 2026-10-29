@@ -206,7 +206,7 @@ export default function ResourceConfig({ token }) {
                                         </select>
                                     </td>
                                     <td style={{ textAlign: 'center' }}>
-                                        <input className="uk-input uk-form-small" type="number" min="1" value={form.batchCapacity} onChange={e => setForm(f => ({ ...f, batchCapacity: Number(e.target.value) }))} style={{ width: 55, textAlign: 'center' }} disabled={form.processingMode !== 'batch'} />
+                                        <input className="uk-input uk-form-small" type="number" min="0" title="0 = sin límite (tendedero)" value={form.batchCapacity} onChange={e => setForm(f => ({ ...f, batchCapacity: Number(e.target.value) }))} style={{ width: 55, textAlign: 'center' }} disabled={form.processingMode !== 'batch'} />
                                     </td>
                                     <td>
                                         <select className="uk-select uk-form-small" value={form.capacityUnit} onChange={e => setForm(f => ({ ...f, capacityUnit: e.target.value }))} disabled={form.processingMode !== 'batch'}>
@@ -270,10 +270,10 @@ export default function ResourceConfig({ token }) {
                                     </td>
                                     <td style={{ textAlign: 'center' }}>
                                         {editingId === r.id ? (
-                                            <input className="uk-input uk-form-small" type="number" min="1" value={form.batchCapacity} onChange={e => setForm(f => ({ ...f, batchCapacity: Number(e.target.value) }))} style={{ width: 55, textAlign: 'center' }} disabled={form.processingMode !== 'batch'} />
+                                            <input className="uk-input uk-form-small" type="number" min="0" title="0 = sin límite (tendedero)" value={form.batchCapacity} onChange={e => setForm(f => ({ ...f, batchCapacity: Number(e.target.value) }))} style={{ width: 55, textAlign: 'center' }} disabled={form.processingMode !== 'batch'} />
                                         ) : (
                                             r.processingMode === 'batch' ? (
-                                                <span>{r.batchCapacity} {(r.capacityUnit || 'items') === 'kg' ? 'kg' : 'uds'}</span>
+                                                <span>{r.batchCapacity > 0 ? `${r.batchCapacity} ${(r.capacityUnit || 'items') === 'kg' ? 'kg' : 'uds'}` : 'Sin límite'}</span>
                                             ) : '—'
                                         )}
                                     </td>
@@ -377,6 +377,7 @@ export default function ResourceConfig({ token }) {
                 <ul style={{ margin: 0, paddingLeft: 20 }}>
                     <li><strong>Modo Lote</strong> (ej. lavadora): varias prendas en un mismo ciclo. El tiempo se calcula como <code>⌈carga/capacidad⌉ × tiempo/ciclo ÷ unidades</code></li>
                     <li><strong>Modo Individual</strong> (ej. planchado): prenda a prenda. Tiempo = <code>cantidad × tiempo/prenda ÷ unidades (personas)</code></li>
+                    <li><strong>Capacidad 0</strong> = sin límite: para el tendedero, donde no es lo mismo una camiseta que unas toallas. El tiempo no depende de cuánto se tienda.</li>
                     <li><strong>Unid. medida</strong>: para lotes, indica si la capacidad se mide en <em>prendas</em> o <em>kg</em>. Si es kg, se usa el peso del producto × cantidad.</li>
                     <li><strong>Unidades</strong>: cuántas máquinas o personas hay disponibles (divide el tiempo total).</li>
                     <li><strong>Tipo</strong>: <em>Persona</em> (pretratar, planchar: en el taller se mide con tandas), <em>Máquina</em> (lavadora, secadora: se carga con un programa y avisa al acabar) o <em>Tendido</em> (como una máquina, sin ocupar a nadie; varias tandas a la vez).</li>

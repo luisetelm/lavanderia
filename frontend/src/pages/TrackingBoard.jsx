@@ -281,7 +281,7 @@ export default function TrackingBoard({ token }) {
                             {column.resource && !isEmpty && (
                                 <div style={{ padding: '4px 14px', background: isBatch ? '#f0fdf4' : '#f0f9ff', fontSize: '0.68rem', color: isBatch ? '#15803d' : '#0369a1', borderBottom: '1px solid #e0f2fe' }}>
                                     {column.resource.label} ({column.resource.units}u)
-                                    {isBatch && <span> · Lote max. {column.resource.batchCapacity} {(column.resource.capacityUnit || 'items') === 'kg' ? 'kg' : 'uds'}</span>}
+                                    {isBatch && column.resource.batchCapacity > 0 && <span> · Lote max. {column.resource.batchCapacity} {(column.resource.capacityUnit || 'items') === 'kg' ? 'kg' : 'uds'}</span>}
                                 </div>
                             )}
 

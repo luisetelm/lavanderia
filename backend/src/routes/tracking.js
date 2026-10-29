@@ -493,7 +493,8 @@ export default async function (fastify, opts) {
                 if (resource.processingMode === 'batch') {
                     // Batch: varias prendas por ciclo. stepDurationMin = duración de un ciclo.
                     const load = resource.capacityUnit === 'kg' ? (productWeight || 0) * quantity : quantity;
-                    const cycles = Math.ceil(load / (resource.batchCapacity || 1));
+                    // Capacidad 0 = sin límite (tendedero): una sola tanda
+                    const cycles = resource.batchCapacity > 0 ? Math.ceil(load / resource.batchCapacity) : 1;
                     return Math.round((cycles * stepDurationMin) / (resource.units || 1));
                 }
                 // Individual: stepDurationMin = tiempo por prenda
@@ -1373,7 +1374,7 @@ export default async function (fastify, opts) {
                     label,
                     units: units || 1,
                     processingMode: processingMode || 'individual',
-                    batchCapacity: batchCapacity || 1,
+                    batchCapacity: batchCapacity != null && batchCapacity !== '' ? Math.max(0, Number(batchCapacity) || 0) : 1,
                     cycleDurationMin: cycleDurationMin || 0,
                     capacityUnit: capacityUnit || 'items',
                     resourceKind: TIPOS_RECURSO.includes(resourceKind) ? resourceKind
@@ -1400,7 +1401,7 @@ export default async function (fastify, opts) {
             if (label !== undefined) data.label = label;
             if (units !== undefined) data.units = Number(units);
             if (processingMode !== undefined) data.processingMode = processingMode;
-            if (batchCapacity !== undefined) data.batchCapacity = Number(batchCapacity);
+            if (batchCapacity !== undefined) data.batchCapacity = Math.max(0, Number(batchCapacity) || 0); // 0 = sin límite
             if (cycleDurationMin !== undefined) data.cycleDurationMin = Number(cycleDurationMin);
             if (capacityUnit !== undefined) data.capacityUnit = capacityUnit;
 
@@ -1513,7 +1514,8 @@ export default async function (fastify, opts) {
                             minutes = stepDuration;
                         } else if (resource.processingMode === 'batch') {
                             const load = resource.capacityUnit === 'kg' ? weight * qty : qty;
-                            const cycles = Math.ceil(load / (resource.batchCapacity || 1));
+                            // Capacidad 0 = sin límite (tendedero): una sola tanda
+                    const cycles = resource.batchCapacity > 0 ? Math.ceil(load / resource.batchCapacity) : 1;
                             minutes = (cycles * stepDuration) / (resource.units || 1);
                         } else {
                             // individual
