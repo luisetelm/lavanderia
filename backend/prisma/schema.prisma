@@ -136,6 +136,9 @@ model OrderLine {
   priceOriginal  Float?   @map("price_original")
   priceNote      String?  @map("price_note") @db.VarChar(200)
   workloadWeight Float?   @map("workload_weight")
+  // Itinerario de esta prenda: lo propone el producto y se puede cambiar después (sql/036).
+  itineraryId    Int?       @map("itinerary_id")
+  itinerary      Itinerary? @relation(fields: [itineraryId], references: [id])
   order      Order           @relation(fields: [orderId], references: [id])
   product    Product         @relation(fields: [productId], references: [id])
   variant    ProductVariant? @relation(fields: [variantId], references: [id])
@@ -173,11 +176,29 @@ model OrderLineStep {
   stepConfig      ServiceStepConfig? @relation(fields: [stepConfigId], references: [id])
   itineraryStep   ItineraryStep?     @relation(fields: [itineraryStepId], references: [id])
   completedByUser User?              @relation("step_completed_by", fields: [completedBy], references: [id])
+  repeats         OrderLineStepRepeat[]
 
   @@unique([orderLineId, stepConfigId])
   @@index([orderLineId])
   @@index([status])
   @@map("order_line_steps")
+}
+
+// Pasada de una etapa que se deshizo al repetirla (no quedó bien). isCause = la
+// etapa que se repitió; false = posterior rehecha por arrastre (sql/036).
+model OrderLineStepRepeat {
+  id              Int           @id @default(autoincrement())
+  orderLineStepId Int           @map("order_line_step_id")
+  startedAt       DateTime?     @map("started_at") @db.Timestamptz(6)
+  completedAt     DateTime?     @map("completed_at") @db.Timestamptz(6)
+  completedBy     Int?          @map("completed_by")
+  repeatedAt      DateTime      @default(now()) @map("repeated_at") @db.Timestamptz(6)
+  repeatedBy      Int?          @map("repeated_by")
+  isCause         Boolean       @default(false) @map("is_cause")
+  orderLineStep   OrderLineStep @relation(fields: [orderLineStepId], references: [id], onDelete: Cascade)
+
+  @@index([orderLineStepId])
+  @@map("order_line_step_repeat")
 }
 
 model ResourceConfig {
@@ -201,6 +222,7 @@ model Itinerary {
   createdAt   DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
   steps       ItineraryStep[]
   products    Product[]
+  orderLines  OrderLine[]
 
   @@map("itinerary")
 }

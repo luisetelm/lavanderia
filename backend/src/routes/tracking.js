@@ -713,6 +713,142 @@ export default async function (fastify, opts) {
         }
     });
 
+    // ─── POST /api/tracking/steps/:stepId/repeat ── Repetir una etapa que no quedó bien ──
+    // A diferencia de «deshacer» (corregir un toque equivocado, sin rastro), la
+    // pasada que se deshace queda guardada en order_line_step_repeat con sus
+    // tiempos. Las etapas posteriores ya hechas también vuelven a pendiente
+    // (si el lavado no quedó bien, hay que volver a secar y planchar) y se
+    // guardan como rehechas por arrastre (isCause = false).
+    fastify.post('/steps/:stepId/repeat', async (req, reply) => {
+        const stepId = Number(req.params.stepId);
+        const userId = req.user?.userId || null;
+        if (isNaN(stepId)) return reply.status(400).send({ error: 'ID inválido' });
+
+        try {
+            const step = await prisma.orderLineStep.findUnique({
+                where: { id: stepId },
+                include: {
+                    stepConfig: true, itineraryStep: true,
+                    orderLine: { include: { order: { select: { id: true, status: true } } } },
+                },
+            });
+            if (!step) return reply.status(404).send({ error: 'Paso no encontrado' });
+            if (step.status !== 'done') return reply.status(400).send({ error: 'Sólo se puede repetir una etapa ya hecha' });
+            const order = step.orderLine.order;
+            if (order.status === 'collected' || order.status === 'cancelled') {
+                return reply.status(400).send({ error: 'El pedido ya está entregado o anulado' });
+            }
+            if (step.orderLine.voidedAt) return reply.status(400).send({ error: 'La prenda está anulada' });
+
+            const info = getStepInfo(step);
+            const lineSteps = await prisma.orderLineStep.findMany({
+                where: { orderLineId: step.orderLineId },
+                include: { stepConfig: true, itineraryStep: true },
+            });
+            const later = lineSteps.filter(s =>
+                s.id !== step.id && s.status !== 'pending' && getStepInfo(s).position > info.position
+            );
+            const now = new Date();
+
+            await prisma.$transaction(async (tx) => {
+                for (const s of [step, ...later]) {
+                    await tx.orderLineStepRepeat.create({
+                        data: {
+                            orderLineStepId: s.id,
+                            startedAt: s.startedAt,
+                            completedAt: s.completedAt,
+                            completedBy: s.completedBy,
+                            repeatedAt: now,
+                            repeatedBy: userId,
+                            isCause: s.id === step.id,
+                        },
+                    });
+                }
+                await tx.orderLineStep.updateMany({
+                    where: { id: { in: [step.id, ...later.map(s => s.id)] } },
+                    data: { status: 'pending', startedAt: null, completedAt: null, completedBy: null },
+                });
+                if (order.status === 'ready') {
+                    await tx.order.update({ where: { id: order.id }, data: { status: 'pending' } });
+                }
+            });
+
+            return reply.send({
+                ok: true,
+                stepLabel: info.stepLabel,
+                reset: 1 + later.length,
+                orderBackToPending: order.status === 'ready',
+            });
+        } catch (err) {
+            console.error('Error en POST /tracking/steps/:stepId/repeat:', err);
+            return reply.status(500).send({ error: 'Error repitiendo la etapa' });
+        }
+    });
+
+    // ─── PUT /api/tracking/lines/:lineId/itinerary ── Cambiar el itinerario de una prenda ──
+    // Para corregir el del mostrador. Las etapas hechas se conservan (aunque el
+    // itinerario nuevo no las tenga: el trabajo se hizo); una en curso se
+    // conserva si el itinerario nuevo la tiene. Las pendientes se sustituyen por
+    // las del itinerario nuevo que falten.
+    fastify.put('/lines/:lineId/itinerary', async (req, reply) => {
+        const lineId = Number(req.params.lineId);
+        const itineraryId = Number(req.body?.itineraryId);
+        const optionalStepIds = (req.body?.optionalStepIds || []).map(Number);
+        if (isNaN(lineId) || !itineraryId) return reply.status(400).send({ error: 'Datos inválidos' });
+
+        try {
+            const line = await prisma.orderLine.findUnique({
+                where: { id: lineId },
+                include: {
+                    order: { select: { id: true, status: true } },
+                    steps: { include: { stepConfig: true, itineraryStep: true } },
+                },
+            });
+            if (!line) return reply.status(404).send({ error: 'Prenda no encontrada' });
+            if (line.voidedAt) return reply.status(400).send({ error: 'La prenda está anulada' });
+            if (line.order.status === 'collected' || line.order.status === 'cancelled') {
+                return reply.status(400).send({ error: 'El pedido ya está entregado o anulado' });
+            }
+
+            const itinerary = await prisma.itinerary.findUnique({
+                where: { id: itineraryId },
+                include: { steps: { orderBy: { position: 'asc' } } },
+            });
+            if (!itinerary || !itinerary.isActive || itinerary.steps.length === 0) {
+                return reply.status(400).send({ error: 'Itinerario no disponible' });
+            }
+
+            const wanted = itinerary.steps.filter(s => !s.isOptional || optionalStepIds.includes(s.id));
+            const wantedKeys = new Set(wanted.map(s => s.stepKey));
+            const keep = line.steps.filter(s =>
+                s.status === 'done' || (s.status === 'in_progress' && wantedKeys.has(getStepInfo(s).stepKey))
+            );
+            const keptKeys = new Set(keep.map(s => getStepInfo(s).stepKey));
+            const toDelete = line.steps.filter(s => !keep.includes(s)).map(s => s.id);
+            const toCreate = wanted.filter(s => !keptKeys.has(s.stepKey));
+
+            await prisma.$transaction(async (tx) => {
+                if (toDelete.length) await tx.orderLineStep.deleteMany({ where: { id: { in: toDelete } } });
+                for (const s of toCreate) {
+                    await tx.orderLineStep.create({
+                        data: { orderLineId: lineId, itineraryStepId: s.id, status: 'pending' },
+                    });
+                }
+                await tx.orderLine.update({ where: { id: lineId }, data: { itineraryId } });
+                if (toCreate.length && line.order.status === 'ready') {
+                    await tx.order.update({ where: { id: line.order.id }, data: { status: 'pending' } });
+                }
+            });
+
+            // Si con el cambio ya no le queda nada a la prenda, el pedido puede quedar listo.
+            const orderBecameReady = toCreate.length === 0 && await autoMarkOrderReady(prisma, line.order.id);
+            return reply.send({ ok: true, itinerary: { id: itinerary.id, name: itinerary.name }, created: toCreate.length, orderBecameReady });
+        } catch (err) {
+            console.error('Error en PUT /tracking/lines/:lineId/itinerary:', err);
+            return reply.status(500).send({ error: 'Error cambiando el itinerario' });
+        }
+    });
+
     // ─── POST /api/tracking/steps/batch-complete ── Completar/Iniciar varios pasos a la vez ──
     fastify.post('/steps/batch-complete', async (req, reply) => {
         const { stepIds, action = 'complete' } = req.body;

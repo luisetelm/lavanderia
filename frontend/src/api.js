@@ -842,6 +842,23 @@ export function undoStep(token, stepId) {
     });
 }
 
+// Repetir una etapa hecha que no quedó bien: vuelve a pendiente con las
+// posteriores y queda registrada (no es «deshacer»).
+export function repeatStep(token, stepId) {
+    return request(`/tracking/steps/${stepId}/repeat`, token, {
+        method: 'POST',
+        body: JSON.stringify({}),
+    });
+}
+
+// Cambiar el itinerario de una prenda del pedido (error del mostrador).
+export function changeLineItinerary(token, lineId, itineraryId, optionalStepIds = []) {
+    return request(`/tracking/lines/${lineId}/itinerary`, token, {
+        method: 'PUT',
+        body: JSON.stringify({ itineraryId, optionalStepIds }),
+    });
+}
+
 export function batchCompleteSteps(token, stepIds, action = 'complete') {
     return request('/tracking/steps/batch-complete', token, {
         method: 'POST',

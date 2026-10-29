@@ -80,6 +80,20 @@ function splitOrderNum(orderNum) {
     return { prefix: `${parts.join('/')}/`, seq };
 }
 
+/* La búsqueda es por nombre del cliente si lleva letras (la ropa blanca no
+   lleva etiqueta: sólo se reconoce por el cliente) y por nº de pedido si son
+   cifras. */
+const quitarAcentos = t => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+const esBusquedaPorNombre = query => /[a-zñáéíóúü]/i.test(query) && !/^tpv\//i.test(query.trim());
+
+function matchesQuery(item, query) {
+    if (esBusquedaPorNombre(query)) {
+        const nombre = quitarAcentos(item.clientName || '');
+        return quitarAcentos(query).split(/\s+/).filter(Boolean).every(p => nombre.includes(p));
+    }
+    return matchesOrderQuery(item.orderNum, query);
+}
+
 /* Búsqueda por nº de pedido. Acepta "95", "0095" y también el número
    completo pegado ("TPV/2026/0095"). Compara sólo la parte secuencial,
    así encuentra igual los pedidos de años anteriores. */
@@ -307,7 +321,7 @@ export default function TrackingWorkshop({ token }) {
         let total = 0;
         for (const col of board) {
             const isHidden = hiddenCols.includes(col.stepKey);
-            const filtered = query ? col.items.filter(i => matchesOrderQuery(i.orderNum, query)) : col.items;
+            const filtered = query ? col.items.filter(i => matchesQuery(i, query)) : col.items;
             if (isHidden) {
                 hiddenMatches += query ? filtered.length : 0;
                 continue;
@@ -376,7 +390,7 @@ export default function TrackingWorkshop({ token }) {
                     </div>
                 }
             >
-                {/* Búsqueda por nº de pedido */}
+                {/* Búsqueda por nº de pedido o por cliente */}
                 <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 12, flexWrap: 'wrap' }}>
                     <div style={{
                         display: 'flex', alignItems: 'center', flex: '1 1 320px', maxWidth: 560,
@@ -392,17 +406,16 @@ export default function TrackingWorkshop({ token }) {
                             padding: '0 2px 0 8px', color: '#94a3b8', fontSize: '1rem',
                             fontVariantNumeric: 'tabular-nums', userSelect: 'none', whiteSpace: 'nowrap',
                         }}>
-                            {ORDER_PREFIX}
+                            {esBusquedaPorNombre(query) ? '' : ORDER_PREFIX}
                         </span>
                         <input
                             type="text"
-                            inputMode="numeric"
                             value={query}
                             onChange={e => setQuery(e.target.value)}
                             onFocus={() => setSearchFocused(true)}
                             onBlur={() => setSearchFocused(false)}
-                            placeholder="0095"
-                            aria-label="Buscar por número de pedido"
+                            placeholder="0095 o cliente"
+                            aria-label="Buscar por número de pedido o nombre del cliente"
                             style={{
                                 flex: 1, minWidth: 0, border: 'none', outline: 'none', height: '100%',
                                 fontSize: '1.7rem', fontWeight: 700, letterSpacing: '0.04em',

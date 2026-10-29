@@ -19,6 +19,10 @@ import {
     addLineAnnotation,
     createStripeCheckout,
     updateStepStatus,
+    undoStep,
+    repeatStep,
+    changeLineItinerary,
+    fetchItineraries,
     recalculateTracking
 } from '../api.js';
 import AdjustOrderModal from './AdjustOrderModal.jsx';
@@ -100,6 +104,11 @@ export default function PaymentSection({token, orderId, onPaid, initialOrder = n
 
     // Recalcular tracking
     const [recalculating, setRecalculating] = useState(false);
+
+    // Cambiar el itinerario de una prenda (error del mostrador)
+    const [itineraries, setItineraries] = useState(null);
+    const [itinEdit, setItinEdit] = useState(null); // { lineId, itineraryId, optionalStepIds }
+    const [itinSaving, setItinSaving] = useState(false);
 
     /* ── Comprimir foto a JPEG pequeño (reutilizable) ── */
     const compressPhoto = (file) => new Promise((resolve) => {
@@ -331,6 +340,73 @@ export default function PaymentSection({token, orderId, onPaid, initialOrder = n
                 message: 'Error al completar el paso',
                 status: 'danger', pos: 'top-right', timeout: 2000
             });
+        }
+    };
+
+    // Deshacer: la etapa se marcó por error. No deja rastro.
+    const handleUndoStep = async (stepId, label) => {
+        try {
+            await undoStep(token, stepId);
+            notify(`«${label}» vuelve a estar pendiente`, 'warning');
+        } catch (e) {
+            notify(e?.error || 'No se pudo deshacer', 'danger', 4000);
+        } finally {
+            await loadOrder();
+        }
+    };
+
+    // Repetir: la etapa se hizo pero no quedó bien. Queda registrado.
+    const handleRepeatStep = async (stepId, label) => {
+        const ok = await confirmar(
+            `La prenda vuelve a «${label}» y las etapas siguientes que ya estuvieran hechas quedan pendientes. Queda registrado como repetición.`,
+            { titulo: 'Repetir etapa', textoConfirmar: 'Repetir' }
+        );
+        if (!ok) return;
+        try {
+            const res = await repeatStep(token, stepId);
+            notify(res?.orderBackToPending
+                ? `Repetir «${label}»: el pedido vuelve a estar en proceso`
+                : `Repetir «${label}»`, 'warning');
+        } catch (e) {
+            notify(e?.error || 'No se pudo repetir la etapa', 'danger', 4000);
+        } finally {
+            await loadOrder();
+        }
+    };
+
+    const openItinEditor = async (line) => {
+        let list = itineraries;
+        if (!list) {
+            try {
+                list = await fetchItineraries(token);
+                setItineraries(list);
+            } catch {
+                notify('No se pudieron cargar los itinerarios', 'danger');
+                return;
+            }
+        }
+        const current = list.find(i => i.id === line.itinerary?.id) || null;
+        // Etapas opcionales (costura, desmontar…) que la prenda ya lleva
+        const lineKeys = new Set((line.steps || []).map(s => s.stepKey));
+        setItinEdit({
+            lineId: line.id,
+            itineraryId: current?.id || '',
+            optionalStepIds: (current?.steps || []).filter(st => st.isOptional && lineKeys.has(st.stepKey)).map(st => st.id),
+        });
+    };
+
+    const saveItin = async () => {
+        if (!itinEdit?.itineraryId) return;
+        setItinSaving(true);
+        try {
+            const res = await changeLineItinerary(token, itinEdit.lineId, Number(itinEdit.itineraryId), itinEdit.optionalStepIds);
+            notify(`Itinerario cambiado a «${res?.itinerary?.name || ''}»`, 'success');
+            setItinEdit(null);
+            await loadOrder();
+        } catch (e) {
+            notify(e?.error || 'No se pudo cambiar el itinerario', 'danger', 4000);
+        } finally {
+            setItinSaving(false);
         }
     };
 
@@ -901,12 +977,81 @@ export default function PaymentSection({token, orderId, onPaid, initialOrder = n
                         )}
 
                         {/* Tracking de pasos */}
-                        {l.steps && l.steps.length > 0 && (
-                            <StepProgress
-                                steps={l.steps}
-                                onComplete={order.status !== 'cancelled' ? handleCompleteStep : undefined}
-                            />
-                        )}
+                        {(() => {
+                            // Deshacer, repetir y cambiar itinerario sólo con el pedido en curso
+                            const enCurso = !anulada && order.status !== 'cancelled' && order.status !== 'collected';
+                            return (<>
+                                {l.steps && l.steps.length > 0 && (
+                                    <StepProgress
+                                        steps={l.steps}
+                                        onComplete={order.status !== 'cancelled' ? handleCompleteStep : undefined}
+                                        onUndo={enCurso ? handleUndoStep : undefined}
+                                        onRepeat={enCurso ? handleRepeatStep : undefined}
+                                    />
+                                )}
+                                {(l.itinerary || (l.steps && l.steps.length > 0)) && itinEdit?.lineId !== l.id && (
+                                    <div style={{fontSize: 11, color: 'var(--tyb-text-muted)', marginTop: 4}}>
+                                        Itinerario: <strong>{l.itinerary?.name || 'sin asignar'}</strong>
+                                        {enCurso && (
+                                            <button type="button" className="uk-button uk-button-link"
+                                                    style={{fontSize: 11, marginLeft: 6, textTransform: 'none'}}
+                                                    onClick={() => openItinEditor(l)}>
+                                                Cambiar
+                                            </button>
+                                        )}
+                                    </div>
+                                )}
+                                {itinEdit?.lineId === l.id && (() => {
+                                    const sel = (itineraries || []).find(i => i.id === Number(itinEdit.itineraryId));
+                                    const opcionales = (sel?.steps || []).filter(st => st.isOptional);
+                                    return (
+                                        <div style={{
+                                            marginTop: 6, padding: 8, borderRadius: 6,
+                                            border: '1px solid var(--tyb-border)', background: 'var(--tyb-surface-muted)', fontSize: 12,
+                                        }}>
+                                            <select className="uk-select uk-form-small" value={itinEdit.itineraryId}
+                                                    onChange={e => setItinEdit({...itinEdit, itineraryId: e.target.value, optionalStepIds: []})}>
+                                                <option value="">Elige itinerario…</option>
+                                                {(itineraries || []).map(i => (
+                                                    <option key={i.id} value={i.id}>{i.name}</option>
+                                                ))}
+                                            </select>
+                                            {sel && (
+                                                <div style={{marginTop: 4, color: 'var(--tyb-text-muted)'}}>
+                                                    {sel.steps.filter(st => !st.isOptional).map(st => st.stepLabel).join(' → ')}
+                                                </div>
+                                            )}
+                                            {opcionales.map(st => (
+                                                <label key={st.id} style={{display: 'block', marginTop: 4}}>
+                                                    <input type="checkbox" className="uk-checkbox" style={{marginRight: 6}}
+                                                           checked={itinEdit.optionalStepIds.includes(st.id)}
+                                                           onChange={e => setItinEdit({
+                                                               ...itinEdit,
+                                                               optionalStepIds: e.target.checked
+                                                                   ? [...itinEdit.optionalStepIds, st.id]
+                                                                   : itinEdit.optionalStepIds.filter(id => id !== st.id),
+                                                           })}/>
+                                                    {st.stepLabel}
+                                                </label>
+                                            ))}
+                                            <div style={{marginTop: 4, color: 'var(--tyb-text-muted)'}}>
+                                                Las etapas ya hechas se conservan.
+                                            </div>
+                                            <div style={{display: 'flex', gap: 6, marginTop: 6}}>
+                                                <button type="button" className="uk-button uk-button-primary uk-button-small"
+                                                        disabled={!itinEdit.itineraryId || itinSaving} onClick={saveItin}>
+                                                    {itinSaving ? 'Guardando…' : 'Guardar'}
+                                                </button>
+                                                <button type="button" className="uk-button uk-button-default uk-button-small"
+                                                        disabled={itinSaving} onClick={() => setItinEdit(null)}>
+                                                    Cancelar
+                                                </button>
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
+                            </>);
+                        })()}
 
                         {/* Anotaciones de la línea (notas + fotos unificadas) */}
                         {(() => {

@@ -106,10 +106,16 @@ function computeStepTimes(steps, now) {
     return { startMs, endMs, totalElapsedMs, perStepElapsedMs, perStepInferred, isFinished };
 }
 
-export default function StepProgress({ steps, onComplete, compact = false }) {
+/**
+ * onUndo(stepId): deshace la última etapa hecha (un toque equivocado, sin rastro).
+ * onRepeat(stepId): repite una etapa hecha que no quedó bien (queda registrada).
+ * Sin estas props no se pintan los botones.
+ */
+export default function StepProgress({ steps, onComplete, onUndo, onRepeat, compact = false }) {
     // Reloj para refrescar pasos en curso cada segundo
     const [now, setNow] = useState(Date.now());
     const [showTimeline, setShowTimeline] = useState(false);
+    const [choosingRepeat, setChoosingRepeat] = useState(false);
     useEffect(() => {
         const allDone = (steps || []).every(s => s.status === 'done');
         if (allDone) return; // si está finalizado no hace falta tick
@@ -125,6 +131,18 @@ export default function StepProgress({ steps, onComplete, compact = false }) {
 
     const { startMs, endMs, totalElapsedMs, perStepElapsedMs, perStepInferred, isFinished } = computeStepTimes(steps, now);
     const totalEstimateMin = steps.reduce((acc, s) => acc + (s.durationMin || 0), 0);
+
+    // Etapas hechas, de la última a la primera: la última es la que se puede deshacer.
+    const doneSteps = steps
+        .filter(s => s.status === 'done')
+        .sort((a, b) => (b.position ?? 0) - (a.position ?? 0)
+            || new Date(b.completedAt || 0).getTime() - new Date(a.completedAt || 0).getTime());
+    const lastDone = doneSteps[0];
+    const actionBtn = {
+        padding: '1px 8px', borderRadius: 10, border: '1px solid var(--tyb-border)',
+        background: 'var(--tyb-surface)', color: 'var(--tyb-text-muted)',
+        cursor: 'pointer', fontSize: '0.68rem',
+    };
 
     return (
         <div style={{ marginTop: compact ? 4 : 8 }}>
@@ -196,6 +214,12 @@ export default function StepProgress({ steps, onComplete, compact = false }) {
                                             : null
                                 }
                                 {step.stepLabel}
+                                {step.repeats > 0 && (
+                                    <span title={`Repetida ${step.repeats} ${step.repeats === 1 ? 'vez' : 'veces'} porque no quedó bien`}
+                                          style={{ marginLeft: 2, fontWeight: 700, color: 'var(--tyb-warning)' }}>
+                                        ↻{step.repeats}
+                                    </span>
+                                )}
                                 {/* Tiempo inline en la chip: real si ya empezó, estimado si aún no */}
                                 {(isDone && elapsedMs != null) ? (
                                     <span style={{ marginLeft: 3, opacity: 0.75, fontWeight: 400, fontVariantNumeric: 'tabular-nums' }}
@@ -214,6 +238,43 @@ export default function StepProgress({ steps, onComplete, compact = false }) {
                             </div>
                         );
                     })}
+                </div>
+            )}
+
+            {/* Deshacer (toque equivocado) y repetir (no quedó bien) */}
+            {!compact && lastDone && (onUndo || onRepeat) && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6, alignItems: 'center' }}>
+                    {onUndo && !choosingRepeat && (
+                        <button type="button" style={actionBtn}
+                                title="Marcada por error: vuelve a dejarla pendiente, sin dejar rastro"
+                                onClick={() => onUndo(lastDone.id, lastDone.stepLabel)}>
+                            ↶ Deshacer «{lastDone.stepLabel}»
+                        </button>
+                    )}
+                    {onRepeat && !choosingRepeat && (
+                        <button type="button" style={actionBtn}
+                                title="La etapa no quedó bien y hay que volver a hacerla"
+                                onClick={() => (doneSteps.length === 1
+                                    ? onRepeat(lastDone.id, lastDone.stepLabel)
+                                    : setChoosingRepeat(true))}>
+                            ↻ Repetir etapa{doneSteps.length === 1 ? ` «${lastDone.stepLabel}»` : '…'}
+                        </button>
+                    )}
+                    {choosingRepeat && (
+                        <>
+                            <span style={{ fontSize: '0.68rem', color: 'var(--tyb-text-muted)' }}>¿Qué etapa no quedó bien?</span>
+                            {[...doneSteps].reverse().map(s => (
+                                <button key={s.id} type="button"
+                                        style={{ ...actionBtn, borderColor: 'var(--tyb-warning)', color: 'var(--tyb-warning)' }}
+                                        onClick={() => { setChoosingRepeat(false); onRepeat(s.id, s.stepLabel); }}>
+                                    {s.stepLabel}
+                                </button>
+                            ))}
+                            <button type="button" style={actionBtn} onClick={() => setChoosingRepeat(false)}>
+                                Cancelar
+                            </button>
+                        </>
+                    )}
                 </div>
             )}
 

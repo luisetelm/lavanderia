@@ -246,9 +246,15 @@ export default async function (fastify, opts) {
                 const product = line.product;
 
                 // ── NUEVO SISTEMA: Itinerario ──
-                if (product?.itineraryId) {
+                // El de la prenda si ya lo tiene; si no, el del producto, que queda
+                // guardado en la prenda para poder cambiarlo después (sql/036).
+                const itineraryId = line.itineraryId || product?.itineraryId;
+                if (itineraryId) {
+                    if (!line.itineraryId) {
+                        await prisma.orderLine.update({ where: { id: line.id }, data: { itineraryId } });
+                    }
                     const itinerarySteps = await prisma.itineraryStep.findMany({
-                        where: { itineraryId: product.itineraryId },
+                        where: { itineraryId },
                         orderBy: { position: 'asc' }
                     });
 
@@ -758,6 +764,7 @@ export default async function (fastify, opts) {
                     voidReason: true,
                     // Prenda fuera de catálogo y precio ajustado (sql/035)
                     customName: true, priceOriginal: true, priceNote: true,
+                    itinerary: { select: { id: true, name: true } },
                     product: {
                         select: {id: true, name: true, basePrice: true, serviceOptions: true, labelCount: true, printWashLabel: true}
                     },
@@ -765,7 +772,8 @@ export default async function (fastify, opts) {
                         include: {
                             stepConfig: true,
                             itineraryStep: true,
-                            completedByUser: { select: { id: true, firstName: true } }
+                            completedByUser: { select: { id: true, firstName: true } },
+                            _count: { select: { repeats: true } },
                         },
                         orderBy: { id: 'asc' }
                     }
@@ -816,6 +824,7 @@ export default async function (fastify, opts) {
                             position: position ?? idx,
                             resourceKey: resourceKey || null,
                             durationMin: s.itineraryStep?.durationMin ?? s.stepConfig?.durationMin ?? 0,
+                            repeats: s._count?.repeats || 0,
                         };
                     });
                 });
@@ -1297,6 +1306,7 @@ export default async function (fastify, opts) {
                             voidedAt: true,
                             voidReason: true,
                             customName: true, priceOriginal: true, priceNote: true,
+                            itinerary: { select: { id: true, name: true } },
                             product: {
                                 select: {id: true, name: true, basePrice: true, serviceOptions: true, labelCount: true, printWashLabel: true,
                                     itinerary: {
@@ -1313,7 +1323,8 @@ export default async function (fastify, opts) {
                                 include: {
                                     stepConfig: true,
                                     itineraryStep: true,
-                                    completedByUser: { select: { id: true, firstName: true } }
+                                    completedByUser: { select: { id: true, firstName: true } },
+                                    _count: { select: { repeats: true } },
                                 },
                                 orderBy: { id: 'asc' }
                             }
@@ -1404,6 +1415,8 @@ export default async function (fastify, opts) {
                     invoicedInId: l.invoicedInId != null ? String(l.invoicedInId) : null,
                     voidedAt: l.voidedAt || null,
                     voidReason: l.voidReason || null,
+                    // Itinerario de la prenda (se puede cambiar desde el pedido, sql/036)
+                    itinerary: l.itinerary || null,
                     product: {
                         id: l.product?.id, name: l.product?.name, basePrice: l.product?.basePrice,
                         // Necesarios para la impresión de etiquetas de lavado en el frontend:
@@ -1451,6 +1464,8 @@ export default async function (fastify, opts) {
                             resourceKey: resourceKey || null,
                             // Duración estimada (minutos) del paso, desde itinerario o legacy stepConfig
                             durationMin: s.itineraryStep?.durationMin ?? s.stepConfig?.durationMin ?? 0,
+                            // Veces que se ha repetido la etapa porque no quedó bien (sql/036)
+                            repeats: s._count?.repeats || 0,
                         };
                     }),
                 };
@@ -1667,10 +1682,14 @@ export default async function (fastify, opts) {
                 // Si la línea ya tiene pasos completados o en progreso, no los eliminamos
                 const hasProgress = existingSteps.some(s => s.status !== 'pending');
 
-                if (product?.itineraryId) {
-                    // ── NUEVO SISTEMA: Itinerario ──
+                const itineraryId = line.itineraryId || product?.itineraryId;
+                if (itineraryId) {
+                    // ── NUEVO SISTEMA: Itinerario ── (el de la prenda; si no, el del producto)
+                    if (!line.itineraryId) {
+                        await prisma.orderLine.update({ where: { id: line.id }, data: { itineraryId } });
+                    }
                     const itinerarySteps = await prisma.itineraryStep.findMany({
-                        where: { itineraryId: product.itineraryId },
+                        where: { itineraryId },
                         orderBy: { position: 'asc' }
                     });
 
