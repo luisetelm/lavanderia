@@ -248,9 +248,18 @@ export default async function (fastify, opts) {
                 // ── NUEVO SISTEMA: Itinerario ──
                 // El de la prenda si ya lo tiene; si no, el del producto, que queda
                 // guardado en la prenda para poder cambiarlo después (sql/036).
-                const itineraryId = line.itineraryId || product?.itineraryId;
+                // En el TPV se puede elegir otro (sql/037): sólo vale el del producto
+                // o uno de sus alternativos activos.
+                let elegido = Number(lines[li]?.itineraryId) || null;
+                if (elegido && elegido !== product?.itineraryId) {
+                    const alt = await prisma.productItinerary.findFirst({
+                        where: { productId: line.productId, itineraryId: elegido, itinerary: { isActive: true } },
+                    });
+                    if (!alt) elegido = null;
+                }
+                const itineraryId = elegido || line.itineraryId || product?.itineraryId;
                 if (itineraryId) {
-                    if (!line.itineraryId) {
+                    if (line.itineraryId !== itineraryId) {
                         await prisma.orderLine.update({ where: { id: line.id }, data: { itineraryId } });
                     }
                     const itinerarySteps = await prisma.itineraryStep.findMany({
@@ -726,6 +735,7 @@ export default async function (fastify, opts) {
                         OR: [
                             {firstName: {contains: term, mode: 'insensitive'}},
                             {lastName: {contains: term, mode: 'insensitive'}},
+                            {alias: {contains: term, mode: 'insensitive'}},
                             {email: {contains: term, mode: 'insensitive'}},
                         ],
                     },
@@ -779,7 +789,7 @@ export default async function (fastify, opts) {
                     }
                 }
             }, client: {
-                select: {id: true, firstName: true, lastName: true, phone: true, email: true, notifyChannel: true, isbigclient: true, autoMonthlyInvoice: true},
+                select: {id: true, firstName: true, lastName: true, alias: true, phone: true, email: true, notifyChannel: true, isbigclient: true, autoMonthlyInvoice: true},
             }, notification: {
                 select: {id: true, type: true, sentAt: true, status: true, content: true}
             }, invoiceTickets: {
@@ -1330,7 +1340,7 @@ export default async function (fastify, opts) {
                             }
                         }
                     },
-                    client: {select: {id: true, firstName: true, lastName: true, email: true, phone: true, notifyChannel: true, denominacionsocial: true, nif: true, isbigclient: true, autoMonthlyInvoice: true}},
+                    client: {select: {id: true, firstName: true, lastName: true, alias: true, email: true, phone: true, notifyChannel: true, denominacionsocial: true, nif: true, isbigclient: true, autoMonthlyInvoice: true}},
                     notification: {select: {id: true, type: true, sentAt: true, status: true, content: true}},
                     invoiceTickets: {
                         include: {

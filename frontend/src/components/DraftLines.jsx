@@ -155,7 +155,7 @@ export default function DraftLines({theme = 'light', emptyText = null}) {
     const {
         cart, discount, getPriceForItem, agreedPriceFor,
         updateQuantity, removeFromCart, updateLineNotes, addLinePhoto, removeLinePhoto,
-        splitLine, toggleOptionalStep, setLineColor, setLinePrice,
+        splitLine, toggleOptionalStep, setLineItinerary, setLineColor, setLinePrice,
     } = useDraftOrder();
     const [openLineId, setOpenLineId] = useState(null);
     const [precioLineId, setPrecioLineId] = useState(null); // prenda con el ajuste de precio abierto
@@ -290,6 +290,20 @@ export default function DraftLines({theme = 'light', emptyText = null}) {
                         )}
                         {ajustado && precioLineId !== c.lineId && c.motivoPrecio && (
                             <div className="dl-price-note">Precio ajustado: {c.motivoPrecio}</div>
+                        )}
+
+                        {/* Itinerario: sólo si el producto puede ir por más de uno */}
+                        {(c.itineraryOptions || []).length > 1 && (
+                            <div className="dl-extras">
+                                <span className="dl-extras-label">Itinerario:</span>
+                                {c.itineraryOptions.map(op => (
+                                    <button key={op.id} type="button"
+                                            className={`dl-chip ${c.itineraryId === op.id ? 'is-selected' : ''}`}
+                                            onClick={() => setLineItinerary(c.lineId, op.id)}>
+                                        {c.itineraryId === op.id ? '✓ ' : ''}{op.name}
+                                    </button>
+                                ))}
+                            </div>
                         )}
 
                         {/* Pasos opcionales del itinerario */}

@@ -29,6 +29,7 @@ export default function UserForm({ initial = {}, onSave, token, onCancel, logged
   const [form, setForm] = useState({
     firstName: initial.firstName || '',
     lastName: initial.lastName || '',
+    alias: initial.alias || '',
     email: initial.email || '',
     role: initial.role || 'customer',
     phone: initial.phone || '',
@@ -171,6 +172,12 @@ export default function UserForm({ initial = {}, onSave, token, onCancel, logged
             <label className="uk-form-label">Apellidos *</label>
             <input className="uk-input" value={form.lastName}
               onChange={e => set('lastName', e.target.value)} required />
+          </div>
+          <div className="uk-width-1-2@m">
+            <label className="uk-form-label">Alias</label>
+            <input className="uk-input" value={form.alias} maxLength={60}
+              placeholder="Como lo llamáis en la tienda"
+              onChange={e => set('alias', e.target.value)} />
           </div>
           <div className="uk-width-1-2@m">
             <label className="uk-form-label">Email</label>

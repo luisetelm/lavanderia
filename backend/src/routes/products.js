@@ -161,14 +161,36 @@ export default async function (fastify, opts) {
     // Por defecto sólo los activos, que es lo que necesitan el TPV, los ajustes de
     // pedidos y los precios pactados. ?archived=all incluye los archivados y
     // ?archived=only devuelve sólo ellos.
+    const ITINERARIO_TPV = { select: { id: true, name: true, isActive: true, steps: { where: { isOptional: true }, select: { id: true, stepKey: true, stepLabel: true, position: true }, orderBy: { position: 'asc' } } } };
+
+    // Itinerarios alternativos (sql/037): ids para el formulario y, para el TPV,
+    // los activos con sus pasos opcionales.
+    const conAlternativos = (p) => {
+        const { alternativeItineraries = [], ...resto } = p;
+        const alts = alternativeItineraries.map(a => a.itinerary).filter(it => it && it.isActive && it.id !== p.itineraryId);
+        return { ...resto, alternativeItineraryIds: alts.map(it => it.id), altItineraries: alts };
+    };
+
+    const guardarAlternativos = async (productId, ids, porDefecto) => {
+        if (!Array.isArray(ids)) return;
+        const limpios = [...new Set(ids.map(Number).filter(id => id && id !== porDefecto))];
+        await prisma.$transaction([
+            prisma.productItinerary.deleteMany({ where: { productId } }),
+            ...(limpios.length ? [prisma.productItinerary.createMany({ data: limpios.map(itineraryId => ({ productId, itineraryId })) })] : []),
+        ]);
+    };
+
     fastify.get('/', async (req, reply) => {
         const archived = req.query?.archived;
         const where = archived === 'all' ? {} : archived === 'only' ? { archivedAt: { not: null } } : { archivedAt: null };
         const products = await prisma.product.findMany({
             where,
-            include: { variants: true, category: true, itinerary: { select: { id: true, name: true, steps: { where: { isOptional: true }, select: { id: true, stepKey: true, stepLabel: true, position: true }, orderBy: { position: 'asc' } } } } },
+            include: {
+                variants: true, category: true, itinerary: ITINERARIO_TPV,
+                alternativeItineraries: { include: { itinerary: ITINERARIO_TPV } },
+            },
         });
-        return products;
+        return products.map(conAlternativos);
     });
 
     // Actividad reciente de cada producto para el catálogo: unidades de los
@@ -333,10 +355,13 @@ export default async function (fastify, opts) {
         const { id } = req.params;
         const product = await prisma.product.findUnique({
             where: { id: Number(id) },
-            include: { variants: true, category: true, itinerary: { include: { steps: { orderBy: { position: 'asc' } } } } },
+            include: {
+                variants: true, category: true, itinerary: { include: { steps: { orderBy: { position: 'asc' } } } },
+                alternativeItineraries: { include: { itinerary: ITINERARIO_TPV } },
+            },
         });
         if (!product) return reply.status(404).send({ error: 'Producto no encontrado' });
-        return product;
+        return conAlternativos(product);
     });
 
     // Estadísticas de pedidos del producto en un rango (?from&to, YYYY-MM-DD).
@@ -611,7 +636,7 @@ export default async function (fastify, opts) {
 
     fastify.post('/', async (req, reply) => {
         if (!esAdmin(req)) return reply.status(403).send({ error: SOLO_ADMIN });
-        let { name, sku, basePrice, categoryId, description, type, weight, bigClientPrice, serviceOptions, itineraryId, labelCount, countsForLoad, workloadWeight, printWashLabel, webSection, webName, webOrder } = req.body;
+        let { name, sku, basePrice, categoryId, description, type, weight, bigClientPrice, serviceOptions, itineraryId, alternativeItineraryIds, labelCount, countsForLoad, workloadWeight, printWashLabel, webSection, webName, webOrder } = req.body;
         if (!name || basePrice == null) return reply.status(400).send({ error: 'Name and basePrice required' });
         let seccionWeb;
         try { seccionWeb = leerSeccionWeb(webSection); } catch (e) { return reply.status(400).send({ error: e.message }); }
@@ -658,13 +683,14 @@ export default async function (fastify, opts) {
             ],
             { origen: 'alta', userId: req.user?.userId, log: req.log },
         );
+        await guardarAlternativos(product.id, alternativeItineraryIds, product.itineraryId);
         return reply.status(201).send(product);
     });
 
     fastify.put('/:id', async (req, reply) => {
         if (!esAdmin(req)) return reply.status(403).send({ error: SOLO_ADMIN });
         const { id } = req.params;
-        const { name, sku, basePrice, categoryId, description, type, weight, bigClientPrice, serviceOptions, itineraryId, labelCount, countsForLoad, workloadWeight, printWashLabel, webSection, webName, webOrder } = req.body;
+        const { name, sku, basePrice, categoryId, description, type, weight, bigClientPrice, serviceOptions, itineraryId, alternativeItineraryIds, labelCount, countsForLoad, workloadWeight, printWashLabel, webSection, webName, webOrder } = req.body;
         try {
             const data = {};
             if (webSection !== undefined) {
@@ -702,6 +728,7 @@ export default async function (fastify, opts) {
                     .map((campo) => ({ productId: product.id, campo, antes: previo?.[campo], despues: product[campo] })),
                 { origen: 'edicion', userId: req.user?.userId, log: req.log },
             );
+            await guardarAlternativos(product.id, alternativeItineraryIds, product.itineraryId);
             return product;
         } catch (e) {
             return reply.status(404).send({ error: 'Producto no encontrado' });

@@ -614,7 +614,9 @@ export default function PaymentSection({token, orderId, onPaid, initialOrder = n
     if (error) return <div style={{color: 'red'}}>{error}</div>;
     if (!order) return <div>Pedido no encontrado</div>;
 
-    const clienteDisplay = () => (order.client ? `${order.client.firstName} ${order.client.lastName}` : 'Cliente rápido');
+    const clienteDisplay = () => (order.client
+        ? `${order.client.firstName} ${order.client.lastName}${order.client.alias ? ` «${order.client.alias}»` : ''}`
+        : 'Cliente rápido');
     const telefonoDisplay = () => order.client?.phone || null;
 
     const createdDate = order.createdAt ? new Date(order.createdAt).toLocaleDateString('es-ES') : '—';

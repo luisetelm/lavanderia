@@ -150,6 +150,8 @@ export default function DraftOrderBanner({ token, worker }) {
             notes: c.notes || '',
             photos: (c.photos || []),
             optionalStepIds: (c.optionalStepIds || []),
+            // Itinerario elegido en el TPV (el backend sólo acepta el del producto o un alternativo)
+            ...(c.itineraryId ? { itineraryId: c.itineraryId } : {}),
             color: c.color || null,
             // Precio ajustado con su motivo, y nombre de la prenda fuera de catálogo
             // (el backend valida y guarda las dos cosas, utils/presupuesto.js)

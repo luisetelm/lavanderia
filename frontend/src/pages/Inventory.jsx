@@ -292,8 +292,16 @@ export default function Inventory({ token, user }) {
             const itin = itineraries.find(i => i.id === product.itineraryId);
             if (itin) {
                 return (
-                    <span className="uk-badge" style={{ background: '#3b82f6', fontSize: '0.7rem', whiteSpace: 'nowrap', padding: '0 8px' }}>
-                        {itin.name}
+                    <span style={{ whiteSpace: 'nowrap' }}>
+                        <span className="uk-badge" style={{ background: '#3b82f6', fontSize: '0.7rem', whiteSpace: 'nowrap', padding: '0 8px' }}>
+                            {itin.name}
+                        </span>
+                        {(product.altItineraries || []).length > 0 && (
+                            <span style={{ marginLeft: 4, fontSize: '0.7rem', color: 'var(--tyb-text-muted)' }}
+                                  title={`También: ${product.altItineraries.map(a => a.name).join(', ')}`}>
+                                +{product.altItineraries.length}
+                            </span>
+                        )}
                     </span>
                 );
             }

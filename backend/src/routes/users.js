@@ -142,17 +142,19 @@ export default async function (fastify, opts) {
         if (q) {
             const words = q.trim().split(/\s+/);
             if (words.length > 1) {
-                // Multi-word: each word must match firstName OR lastName
+                // Multi-word: each word must match firstName, lastName or alias
                 where.AND = words.map(w => ({
                     OR: [
                         { firstName: { contains: w, mode: 'insensitive' } },
                         { lastName: { contains: w, mode: 'insensitive' } },
+                        { alias: { contains: w, mode: 'insensitive' } },
                     ],
                 }));
             } else {
                 where.OR = [
                     { firstName: { contains: q, mode: 'insensitive' } },
                     { lastName: { contains: q, mode: 'insensitive' } },
+                    { alias: { contains: q, mode: 'insensitive' } },
                     { email: { contains: q, mode: 'insensitive' } },
                     { phone: { contains: q, mode: 'insensitive' } },
                     { denominacionsocial: { contains: q, mode: 'insensitive' } },
@@ -169,6 +171,7 @@ export default async function (fastify, opts) {
                 id: true,
                 firstName: true,
                 lastName: true,
+                alias: true,
                 email: true,
                 role: true,
                 phone: true,
@@ -261,6 +264,7 @@ export default async function (fastify, opts) {
                 id: true,
                 firstName: true,
                 lastName: true,
+                alias: true,
                 email: true,
                 role: true,
                 phone: true,
@@ -427,6 +431,7 @@ export default async function (fastify, opts) {
         const {
             firstName,
             lastName,
+            alias,
             email,
             password,
             role,
@@ -494,6 +499,7 @@ export default async function (fastify, opts) {
             data: {
                 firstName,
                 lastName,
+                alias: alias?.trim() || null,
                 email: email?.trim() !== '' ? email : null,
                 password: hashed,
                 role: effectiveRole,
@@ -514,6 +520,7 @@ export default async function (fastify, opts) {
                 id: true,
                 firstName: true,
                 lastName: true,
+                alias: true,
                 email: true,
                 role: true,
                 phone: true,
@@ -545,6 +552,7 @@ export default async function (fastify, opts) {
         const {
             firstName,
             lastName,
+            alias,
             email,
             password,
             role,
@@ -618,6 +626,7 @@ export default async function (fastify, opts) {
         // parcial que no la mandaba (p. ej. guardar el canal de aviso desde el TPV) la
         // desactivaba sin que nadie lo pidiera, y el cliente dejaba de facturarse.
         if (autoMonthlyInvoice !== undefined) data.autoMonthlyInvoice = !!autoMonthlyInvoice;
+        if (alias !== undefined) data.alias = alias?.trim() || null;
         // Validación y asignación de discount (0-100) si viene
         if (discount !== undefined) {
             const d = parseFloat(discount);

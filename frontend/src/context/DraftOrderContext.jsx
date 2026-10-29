@@ -63,6 +63,8 @@ function loadFromStorage() {
             notes: c.notes || '',
             photos: c.photos || [],
             optionalStepIds: c.optionalStepIds || [],
+            // Las opciones de itinerario sí se guardan: de ellas salen los extras
+            availableOptionalSteps: (c.itineraryOptions || []).find(o => o.id === c.itineraryId)?.optionalSteps || [],
         }));
         result.quickClient = qc;
         // Borradores de antes de fechaManual: una fecha ya puesta se respeta
@@ -72,6 +74,18 @@ function loadFromStorage() {
         storage.remove();
         return null;
     }
+}
+
+// Itinerarios entre los que se puede elegir para la prenda: el del producto
+// (por defecto) y sus alternativos (sql/037). null si sólo tiene uno.
+function opcionesItinerario(product) {
+    const alts = product.altItineraries || [];
+    if (!product.itinerary || alts.length === 0) return null;
+    return [product.itinerary, ...alts].map(it => ({
+        id: it.id,
+        name: it.name,
+        optionalSteps: (it.steps || []).map(s => ({ id: s.id, stepKey: s.stepKey, stepLabel: s.stepLabel })),
+    }));
 }
 
 export function DraftOrderProvider({ children, token }) {
@@ -122,6 +136,8 @@ export function DraftOrderProvider({ children, token }) {
                     color: null,
                     optionalStepIds: [],
                     availableOptionalSteps: optionalSteps,
+                    itineraryId: product.itineraryId || null,
+                    itineraryOptions: opcionesItinerario(product),
                 }],
             };
         });
@@ -164,6 +180,8 @@ export function DraftOrderProvider({ children, token }) {
                 color: null,
                 optionalStepIds: [],
                 availableOptionalSteps: optionalSteps,
+                itineraryId: product.itineraryId || null,
+                itineraryOptions: opcionesItinerario(product),
             }],
         }));
     }, []);
@@ -290,6 +308,20 @@ export function DraftOrderProvider({ children, token }) {
                     ? { ...c, photos: (c.photos || []).filter((_, i) => i !== photoIndex) }
                     : c
             ),
+        }));
+    }, []);
+
+    // Elegir el itinerario de una prenda (según tejido o manchas). Los extras
+    // son los del itinerario elegido, así que se vacían.
+    const setLineItinerary = useCallback((lineId, itineraryId) => {
+        setState(prev => ({
+            ...prev,
+            cart: prev.cart.map(c => {
+                if (c.lineId !== lineId) return c;
+                const opcion = (c.itineraryOptions || []).find(o => o.id === itineraryId);
+                if (!opcion) return c;
+                return { ...c, itineraryId, optionalStepIds: [], availableOptionalSteps: opcion.optionalSteps };
+            }),
         }));
     }, []);
 
@@ -449,7 +481,7 @@ export function DraftOrderProvider({ children, token }) {
         setFechaLimite, setObservaciones, setSinSuplemento, setPaso,
         clearDraft,
         updateLineNotes, addLinePhoto, removeLinePhoto, splitLine,
-        toggleOptionalStep, setLineColor,
+        toggleOptionalStep, setLineItinerary, setLineColor,
         getPriceForItem, agreedPriceFor,
         total, itemCount, clientName, discount, isActive,
         calendarInfo, setCalendarInfo, suplementoUrgencia, totalConSuplemento,
@@ -457,7 +489,7 @@ export function DraftOrderProvider({ children, token }) {
     }), [state, addToCart, updateQuantity, removeFromCart, addCustomToCart, setLinePrice, setSelectedUser, setQuickClient,
         setFechaLimite, setObservaciones, setSinSuplemento, setPaso, clearDraft,
         updateLineNotes, addLinePhoto, removeLinePhoto, splitLine,
-        toggleOptionalStep, setLineColor,
+        toggleOptionalStep, setLineItinerary, setLineColor,
         getPriceForItem, agreedPriceFor, total, itemCount, clientName, discount, isActive,
         calendarInfo, suplementoUrgencia, totalConSuplemento, bannerHeight]);
 

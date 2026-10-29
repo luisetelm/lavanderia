@@ -88,7 +88,7 @@ const esBusquedaPorNombre = query => /[a-zñáéíóúü]/i.test(query) && !/^tp
 
 function matchesQuery(item, query) {
     if (esBusquedaPorNombre(query)) {
-        const nombre = quitarAcentos(item.clientName || '');
+        const nombre = quitarAcentos(`${item.clientName || ''} ${item.clientAlias || ''}`);
         return quitarAcentos(query).split(/\s+/).filter(Boolean).every(p => nombre.includes(p));
     }
     return matchesOrderQuery(item.orderNum, query);
@@ -743,6 +743,7 @@ function GarmentCard({ item, busy, onStart, onComplete }) {
                 {item.clientId
                     ? <Link to={rutaCliente(item.clientId)} title="Ver la ficha del cliente" style={{ color: 'inherit', textDecoration: 'underline dotted' }}>{item.clientName}</Link>
                     : item.clientName}
+                {item.clientAlias && <strong style={{ color: 'var(--tyb-text)' }}> «{item.clientAlias}»</strong>}
                 {item.fechaLimite && (
                     <> · Entrega {new Date(item.fechaLimite).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}</>
                 )}
@@ -882,7 +883,7 @@ function BatchModal({ data, onConfirm, onClose }) {
                                         {item.quantity > 1 ? `${item.quantity}x ` : ''}{item.productName}
                                     </span>
                                     <span style={{ fontSize: '0.78rem', color: '#64748b', fontVariantNumeric: 'tabular-nums' }}>
-                                        <span style={{ color: '#94a3b8' }}>{prefix}</span>{seq} · {item.clientName}
+                                        <span style={{ color: '#94a3b8' }}>{prefix}</span>{seq} · {item.clientName}{item.clientAlias ? ` «${item.clientAlias}»` : ''}
                                     </span>
                                 </span>
                             </label>

@@ -44,6 +44,20 @@ model Product {
   category       ProductCategory? @relation(fields: [categoryId], references: [id])
   variants       ProductVariant[]
   itinerary      Itinerary?       @relation(fields: [itineraryId], references: [id])
+  // Itinerarios alternativos al de por defecto (sql/037)
+  alternativeItineraries ProductItinerary[]
+}
+
+// Itinerario alternativo de un producto: el TPV deja elegirlo por prenda (sql/037).
+model ProductItinerary {
+  productId   Int       @map("product_id")
+  itineraryId Int       @map("itinerary_id")
+  product     Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  itinerary   Itinerary @relation(fields: [itineraryId], references: [id], onDelete: Cascade)
+
+  @@id([productId, itineraryId])
+  @@index([itineraryId])
+  @@map("product_itinerary")
 }
 
 model ProductVariant {
@@ -223,6 +237,7 @@ model Itinerary {
   steps       ItineraryStep[]
   products    Product[]
   orderLines  OrderLine[]
+  altProducts ProductItinerary[]
 
   @@map("itinerary")
 }
@@ -274,6 +289,7 @@ model User {
   id                 Int            @id @default(autoincrement())
   firstName          String
   lastName           String
+  alias              String?        @db.VarChar(60) // como lo llaman en la tienda (sql/038)
   email              String?        @unique
   password           String?
   role               String         @default("cashier")

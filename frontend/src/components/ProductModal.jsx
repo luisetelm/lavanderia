@@ -16,6 +16,7 @@ export default function ProductModal({ onSave, initial, token, onClose, isOpen, 
         weight: 0,
         bigClientPrice: 0,
         itineraryId: null,
+        alternativeItineraryIds: [],
         labelCount: 1,
         printWashLabel: true,
         countsForLoad: true,
@@ -39,6 +40,7 @@ export default function ProductModal({ onSave, initial, token, onClose, isOpen, 
             weight: src.weight ?? 0,
             bigClientPrice: src.bigClientPrice ?? 0,
             itineraryId: src.itineraryId ?? null,
+            alternativeItineraryIds: src.alternativeItineraryIds ?? [],
             labelCount: src.labelCount ?? 1,
             printWashLabel: src.printWashLabel ?? true,
             countsForLoad: src.countsForLoad ?? true,
@@ -82,6 +84,9 @@ export default function ProductModal({ onSave, initial, token, onClose, isOpen, 
                 weight: parseFloat(form.weight),
                 bigClientPrice: parseFloat(form.bigClientPrice),
                 itineraryId: form.itineraryId ? Number(form.itineraryId) : null,
+                alternativeItineraryIds: form.itineraryId
+                    ? form.alternativeItineraryIds.filter(id => id !== Number(form.itineraryId))
+                    : [],
                 labelCount: Math.max(1, parseInt(form.labelCount, 10) || 1),
                 printWashLabel: !!form.printWashLabel,
                 countsForLoad: !!form.countsForLoad,
@@ -338,6 +343,31 @@ export default function ProductModal({ onSave, initial, token, onClose, isOpen, 
                                         </div>
                                     );
                                 })()}
+                                {form.itineraryId && itineraries.length > 1 && (
+                                    <div style={{ marginTop: 10 }}>
+                                        <div style={{ fontSize: '0.8rem', fontWeight: 600 }}>También puede ir por</div>
+                                        <div style={{ fontSize: '0.75rem', color: 'var(--tyb-text-muted)', marginBottom: 4 }}>
+                                            Según el tejido o las manchas. En el TPV se elige en cada prenda; el de arriba sale elegido.
+                                        </div>
+                                        {itineraries.filter(it => it.id !== Number(form.itineraryId)).map(it => (
+                                            <label key={it.id} style={{ display: 'block', fontSize: '0.85rem' }}>
+                                                <input
+                                                    type="checkbox"
+                                                    className="uk-checkbox"
+                                                    style={{ marginRight: 6 }}
+                                                    checked={form.alternativeItineraryIds.includes(it.id)}
+                                                    onChange={e => setForm(f => ({
+                                                        ...f,
+                                                        alternativeItineraryIds: e.target.checked
+                                                            ? [...f.alternativeItineraryIds, it.id]
+                                                            : f.alternativeItineraryIds.filter(id => id !== it.id),
+                                                    }))}
+                                                />
+                                                {it.name}
+                                            </label>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}

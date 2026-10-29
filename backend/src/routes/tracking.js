@@ -247,7 +247,7 @@ export default async function (fastify, opts) {
                                     orderNum: true,
                                     fechaLimite: true,
                                     status: true,
-                                    client: { select: { id: true, firstName: true, lastName: true } }
+                                    client: { select: { id: true, firstName: true, lastName: true, alias: true } }
                                 }
                             },
                             steps: {
@@ -337,6 +337,7 @@ export default async function (fastify, opts) {
                     clientName: step.orderLine.order.client
                         ? `${step.orderLine.order.client.firstName} ${step.orderLine.order.client.lastName || ''}`.trim()
                         : '—',
+                    clientAlias: step.orderLine.order.client?.alias || null,
                     // Tiempos reales de ejecución (en ms para precisión, el frontend formatea):
                     //  - lineFirstStartedAt: cuándo se inició la primera operación sobre esa prenda
                     //  - lineElapsedMsCompleted: ms acumulados de pasos ya completados (no incluye paso actual)

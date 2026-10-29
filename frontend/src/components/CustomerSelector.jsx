@@ -54,7 +54,7 @@ export default function CustomerSelector({
                 <div className="cs-avatar">{initials(u)}</div>
                 <div className="cs-selected-body">
                     <div className="cs-selected-name">
-                        {u.firstName} {u.lastName}
+                        {u.firstName} {u.lastName}{u.alias ? ` «${u.alias}»` : ''}
                         {u.role && u.role !== 'customer' && (
                             <span className={`uk-label ${ROLE_CLASS[u.role] || 'uk-label-default'}`}>{ROLE_LABEL[u.role] || u.role}</span>
                         )}
@@ -127,7 +127,7 @@ export default function CustomerSelector({
                                 <span className="cs-avatar cs-avatar-sm">{initials(u)}</span>
                                 <span className="cs-result-body">
                                     <span className="cs-result-name">
-                                        {u.firstName} {u.lastName}
+                                        {u.firstName} {u.lastName}{u.alias ? ` «${u.alias}»` : ''}
                                         {u.role && u.role !== 'customer' && (
                                             <span className={`uk-label ${ROLE_CLASS[u.role] || 'uk-label-default'}`}>{ROLE_LABEL[u.role] || u.role}</span>
                                         )}
