@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { rutaCliente, rutaPedido } from '../utils/rutas.js';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { fetchTrackingBoard, updateStepStatus, undoStep, batchCompleteSteps } from '../api.js';
+import { fetchTrackingBoard, updateStepStatus, undoStep, batchCompleteSteps, createLoad, loadAction, startSession, sessionAction } from '../api.js';
 import PageToolbar from '../components/PageToolbar.jsx';
 import { avisar } from '../utils/dialogo.js';
 import { COLOR_HEX, colorDotBorder } from '../utils/colores.js';
@@ -20,6 +20,9 @@ import { printFinishedLabelForOrder, printGarmentFinishedLabel } from '../utils/
      - Objetivos táctiles grandes: se usa de pie y con prisa.
      - Sin cronómetros ni acumulados: son métricas de gestión.
      - Deshacer visible tras cada acción; en taller se marca mal a menudo.
+     - Tiempos sin cronómetros (sql/039): las máquinas se cargan con un
+       programa y avisan al acabar; en las fases de persona, una tanda mide
+       cada prenda desde la anterior. Los datos van a supervisión.
    ───────────────────────────────────────────────────────────── */
 
 const HIDDEN_COLS_KEY = 'trackingHiddenColumns';
@@ -121,8 +124,12 @@ export default function TrackingWorkshop({ token }) {
     const [colsPanelOpen, setColsPanelOpen] = useState(false);
     const [query, setQuery] = useState('');
     const [actionLoading, setActionLoading] = useState(null);
-    const [undoInfo, setUndoInfo] = useState(null); // { stepIds, label }
+    const [undoInfo, setUndoInfo] = useState(null); // { stepIds, label } o { onUndo, label }
     const [batchModal, setBatchModal] = useState(null);
+    const [loadModal, setLoadModal] = useState(null); // { resource, candidates }
+    const [busyLoad, setBusyLoad] = useState(null);
+    const [busySession, setBusySession] = useState(null);
+    const [now, setNow] = useState(Date.now());
     const [searchFocused, setSearchFocused] = useState(false);
     const [isFullscreen, setIsFullscreen] = useState(false);
     const undoTimer = useRef(null);
@@ -145,7 +152,7 @@ export default function TrackingWorkshop({ token }) {
 
     /* El refresco automático reordena las tarjetas bajo el dedo, así que se
        pausa mientras el trabajador está buscando o tiene un panel abierto. */
-    const refreshPaused = Boolean(query) || Boolean(batchModal) || colsPanelOpen;
+    const refreshPaused = Boolean(query) || Boolean(batchModal) || Boolean(loadModal) || colsPanelOpen;
     useEffect(() => {
         if (refreshPaused) return;
         const id = setInterval(loadBoard, REFRESH_MS);
@@ -159,6 +166,12 @@ export default function TrackingWorkshop({ token }) {
     }, [hiddenCols]);
 
     useEffect(() => () => { if (undoTimer.current) clearTimeout(undoTimer.current); }, []);
+
+    // Reloj de las cargas de máquina (cuánto falta)
+    useEffect(() => {
+        const id = setInterval(() => setNow(Date.now()), 30000);
+        return () => clearInterval(id);
+    }, []);
 
     // Mantener el botón sincronizado si se sale con Escape o con un gesto.
     useEffect(() => {
@@ -207,19 +220,21 @@ export default function TrackingWorkshop({ token }) {
         }
     };
 
+    // stepIds: pasos a deshacer; o una función (deshacer una carga)
     const armUndo = useCallback((stepIds, label) => {
         if (undoTimer.current) clearTimeout(undoTimer.current);
-        setUndoInfo({ stepIds, label });
+        setUndoInfo(typeof stepIds === 'function' ? { onUndo: stepIds, label } : { stepIds, label });
         undoTimer.current = setTimeout(() => setUndoInfo(null), UNDO_TIMEOUT_MS);
     }, []);
 
     const handleUndo = async () => {
         if (!undoInfo) return;
-        const { stepIds } = undoInfo;
+        const { stepIds, onUndo } = undoInfo;
         if (undoTimer.current) clearTimeout(undoTimer.current);
         setUndoInfo(null);
         try {
-            for (const id of [...stepIds].reverse()) await undoStep(token, id);
+            if (onUndo) await onUndo();
+            else for (const id of [...stepIds].reverse()) await undoStep(token, id);
             avisar('Acción deshecha', 'warning', 2000);
         } catch (e) {
             avisar(e?.error || 'No se pudo deshacer', 'danger', 4000);
@@ -310,6 +325,89 @@ export default function TrackingWorkshop({ token }) {
     };
 
     const board = useMemo(() => data?.board || [], [data]);
+    const resources = useMemo(() => data?.resources || {}, [data]);
+    const loads = useMemo(() => data?.loads || [], [data]);
+    const sessions = useMemo(() => data?.sessions || [], [data]);
+
+    /* Prendas que pueden entrar en una máquina: las que la esperan y las que
+       están en la etapa de persona justo anterior (el pretratamiento se da por
+       hecho al cargar). Se miran todas las columnas, aunque estén ocultas. */
+    const openLoad = (resource) => {
+        const candidates = [];
+        for (const col of board) {
+            const colKind = kindOf(resources[col.resourceKey]);
+            for (const item of col.items) {
+                if (item.loadId) continue;
+                if (col.resourceKey === resource.resourceKey) candidates.push(item);
+                else if (colKind === 'persona' && item.nextResourceKey === resource.resourceKey) {
+                    candidates.push({ ...item, desde: col.stepLabel });
+                }
+            }
+        }
+        setLoadModal({ resource, candidates });
+    };
+
+    const handleCreateLoad = async (payload) => {
+        try {
+            const carga = await createLoad(token, payload);
+            setLoadModal(null);
+            await loadBoard();
+            const r = resources[payload.resourceKey];
+            armUndo(async () => { await loadAction(token, carga.id, 'cancel'); },
+                `${nombreUnidad(r, carga.unitNo)}: ${carga.stepIds.length} ${carga.stepIds.length === 1 ? 'prenda' : 'prendas'}`);
+        } catch (e) {
+            avisar(e?.error || 'No se pudo cargar', 'danger', 4000);
+        }
+    };
+
+    const handleFinishLoad = async (carga, resource) => {
+        setBusyLoad(carga.id);
+        try {
+            const res = await loadAction(token, carga.id, 'finish');
+            await loadBoard();
+            armUndo(async () => { await loadAction(token, carga.id, 'reopen'); },
+                `${nombreUnidad(resource, carga.unitNo)}: ${kindOf(resource) === 'tendido' ? 'recogido' : 'sacada'}`);
+            const conEtiquetaDePrenda = new Set();
+            for (const lid of (res?.readyLineIds || [])) {
+                const it = carga.items.find(i => i.orderLineId === lid);
+                if (it && await printGarmentLabelFor(it)) conEtiquetaDePrenda.add(it.orderId);
+            }
+            for (const oid of (res?.readyOrderIds || [])) {
+                if (!conEtiquetaDePrenda.has(oid)) await printFinishedLabel(oid);
+            }
+        } catch (e) {
+            avisar(e?.error || 'No se pudo sacar la carga', 'danger', 4000);
+        } finally {
+            setBusyLoad(null);
+        }
+    };
+
+    const handleCancelLoad = async (carga, resource) => {
+        setBusyLoad(carga.id);
+        try {
+            await loadAction(token, carga.id, 'cancel');
+            avisar(`${nombreUnidad(resource, carga.unitNo)}: carga anulada`, 'warning', 2500);
+        } catch (e) {
+            avisar(e?.error || 'No se pudo anular', 'danger', 4000);
+        } finally {
+            setBusyLoad(null);
+            await loadBoard();
+        }
+    };
+
+    const handleSession = async (stepKey, accion) => {
+        setBusySession(stepKey);
+        try {
+            const abierta = sessions.find(s => s.stepKey === stepKey);
+            if (accion === 'start') await startSession(token, stepKey);
+            else if (abierta) await sessionAction(token, abierta.id, accion);
+        } catch (e) {
+            avisar(e?.error || 'No se pudo cambiar la tanda', 'danger', 4000);
+        } finally {
+            setBusySession(null);
+            await loadBoard();
+        }
+    };
 
     /* Columnas visibles + filtrado por búsqueda. Se cuenta también cuántas
        coincidencias caen en columnas ocultas: si no, buscar un pedido que
@@ -540,6 +638,9 @@ export default function TrackingWorkshop({ token }) {
                 </div>
             )}
 
+            <MachinesPanel resources={resources} loads={loads} now={now} busyId={busyLoad}
+                           onFinish={handleFinishLoad} onCancel={handleCancelLoad}/>
+
             {board.length === 0 && (
                 <div className="uk-alert uk-alert-primary uk-text-center">
                     No hay itinerarios configurados. Configura itinerarios y asígnalos a productos para ver el tablero.
@@ -583,6 +684,12 @@ export default function TrackingWorkshop({ token }) {
                         query={query}
                         actionLoading={actionLoading}
                         inmersivo={isFullscreen}
+                        resources={resources}
+                        loads={loads}
+                        session={sessions.find(s => s.stepKey === column.stepKey) || null}
+                        sessionBusy={busySession === column.stepKey}
+                        onSession={(accion) => handleSession(column.stepKey, accion)}
+                        onOpenLoad={openLoad}
                         onStart={handleStart}
                         onComplete={handleComplete}
                         onOpenBatch={setBatchModal}
@@ -598,6 +705,15 @@ export default function TrackingWorkshop({ token }) {
                 />
             )}
 
+            {loadModal && (
+                <LoadModal
+                    data={loadModal}
+                    loads={loads}
+                    onConfirm={handleCreateLoad}
+                    onClose={() => setLoadModal(null)}
+                />
+            )}
+
             {undoInfo && (
                 <UndoBar label={undoInfo.label} onUndo={handleUndo} onDismiss={() => setUndoInfo(null)} />
             )}
@@ -606,8 +722,12 @@ export default function TrackingWorkshop({ token }) {
 }
 
 /* ── Columna ── */
-function WorkshopColumn({ column, query, actionLoading, inmersivo, onStart, onComplete, onOpenBatch }) {
-    const isBatch = column.resource?.processingMode === 'batch';
+function WorkshopColumn({ column, query, actionLoading, inmersivo, resources, loads, session, sessionBusy, onSession, onOpenLoad, onStart, onComplete, onOpenBatch }) {
+    const resource = resources?.[column.resourceKey] || column.resource || null;
+    const kind = kindOf(resource);
+    const esMaquina = kind === 'maquina' || kind === 'tendido';
+    const isBatch = !esMaquina && column.resource?.processingMode === 'batch';
+    const esperando = column.items.filter(i => !i.loadId).length;
     const pendingItems = column.items.filter(i => i.status === 'pending');
     const inProgressItems = column.items.filter(i => i.status === 'in_progress');
 
@@ -626,6 +746,22 @@ function WorkshopColumn({ column, query, actionLoading, inmersivo, onStart, onCo
                     {column.items.length}
                 </span>
             </div>
+
+            {/* Máquina o tendedero: se carga con varias prendas a la vez */}
+            {esMaquina && (
+                <div style={{ padding: 8, borderBottom: '1px solid #e5e7eb' }}>
+                    <button type="button" className="uk-button uk-button-primary"
+                            style={{ width: '100%', minHeight: TOUCH_MIN, fontWeight: 600 }}
+                            onClick={() => onOpenLoad(resource)}>
+                        {kind === 'tendido' ? 'Tender' : `Cargar ${resource.label}`}{esperando ? ` (${esperando} esperando)` : ''}
+                    </button>
+                </div>
+            )}
+
+            {/* Fase de persona: la tanda mide el tiempo de cada prenda */}
+            {!esMaquina && column.resourceKey && (
+                <SessionBar session={session} busy={sessionBusy} onAction={onSession}/>
+            )}
 
             {/* Acciones por lote: sólo tienen sentido en recursos de tipo lote (lavadoras, secadoras). */}
             {isBatch && column.items.length > 1 && (
@@ -670,6 +806,8 @@ function WorkshopColumn({ column, query, actionLoading, inmersivo, onStart, onCo
                         <GarmentCard
                             key={item.stepId}
                             item={item}
+                            machine={esMaquina ? resource : null}
+                            load={item.loadId ? loads.find(l => l.id === item.loadId) : null}
                             busy={actionLoading === item.stepId}
                             onStart={onStart}
                             onComplete={onComplete}
@@ -682,7 +820,7 @@ function WorkshopColumn({ column, query, actionLoading, inmersivo, onStart, onCo
 }
 
 /* ── Tarjeta de prenda ── */
-function GarmentCard({ item, busy, onStart, onComplete }) {
+function GarmentCard({ item, machine, load, busy, onStart, onComplete }) {
     const urgency = getUrgency(item);
     const tone = urgency ? TONES[urgency.tone] : null;
     const isInProgress = item.status === 'in_progress';
@@ -690,8 +828,9 @@ function GarmentCard({ item, busy, onStart, onComplete }) {
 
     // Misma regla que el tablero de supervisión: los pasos autoProgress se
     // inician primero y sólo entonces se pueden completar.
-    const showStart = item.autoProgress && item.status === 'pending';
-    const showComplete = !item.autoProgress || isInProgress;
+    // En máquina o tendedero no hay botones: se carga desde la cabecera y se saca desde el panel.
+    const showStart = !machine && item.autoProgress && item.status === 'pending';
+    const showComplete = !machine && (!item.autoProgress || isInProgress);
 
     return (
         <div style={{
@@ -749,7 +888,15 @@ function GarmentCard({ item, busy, onStart, onComplete }) {
                 )}
             </div>
 
-            <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
+            {machine && (
+                <div style={{ marginTop: 8, fontSize: '0.85rem', fontWeight: 600, color: load ? '#1d4ed8' : '#64748b' }}>
+                    {load
+                        ? `En ${kindOf(machine) === 'tendido' ? machine.label : nombreUnidad(machine, load.unitNo)}`
+                        : 'Esperando'}
+                </div>
+            )}
+
+            <div style={{ display: 'flex', gap: 6, marginTop: showStart || showComplete ? 10 : 0 }}>
                 {showStart && (
                     <button
                         className="uk-button uk-button-default"
@@ -769,7 +916,7 @@ function GarmentCard({ item, busy, onStart, onComplete }) {
                         disabled={busy}
                         onClick={() => onComplete(item)}
                     >
-                        {busy ? '...' : '✓ Completar'}
+                        {busy ? '...' : '✓ Hecho'}
                     </button>
                 )}
             </div>
@@ -908,6 +1055,282 @@ function BatchModal({ data, onConfirm, onClose }) {
                         disabled={selected.length === 0}
                     >
                         {isStart ? 'Iniciar' : 'Completar'} ({selected.length})
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+/* ── Tipo de tiempo de una fase (sql/039): persona, máquina o tendido ── */
+function kindOf(resource) {
+    return resource?.resourceKind || 'persona';
+}
+
+function nombreUnidad(resource, unitNo) {
+    if (!resource) return '';
+    return (resource.units || 1) > 1 ? `${resource.label} ${unitNo}` : resource.label;
+}
+
+function minutosHasta(fecha, now) {
+    return Math.round((new Date(fecha).getTime() - now) / 60000);
+}
+
+/* ── Máquinas: qué hay dentro, cuándo acaba y cuáles están libres ── */
+function MachinesPanel({ resources, loads, now, busyId, onFinish, onCancel }) {
+    const maquinas = Object.values(resources || {}).filter(r => ['maquina', 'tendido'].includes(kindOf(r)));
+    if (maquinas.length === 0) return null;
+
+    const tarjetas = [];
+    for (const r of maquinas) {
+        const abiertas = loads.filter(l => l.resourceKey === r.resourceKey);
+        if (kindOf(r) === 'maquina') {
+            for (let u = 1; u <= (r.units || 1); u++) {
+                const carga = abiertas.find(l => l.unitNo === u);
+                tarjetas.push({ key: `${r.resourceKey}-${u}`, resource: r, unitNo: u, carga });
+            }
+        } else {
+            for (const carga of abiertas) tarjetas.push({ key: `${r.resourceKey}-c${carga.id}`, resource: r, unitNo: carga.unitNo, carga });
+        }
+    }
+    if (tarjetas.length === 0) return null;
+
+    return (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+            {tarjetas.map(({ key, resource, unitNo, carga }) => {
+                if (!carga) {
+                    return (
+                        <div key={key} style={{
+                            padding: '8px 12px', borderRadius: 10, border: '1px dashed #cbd5e1',
+                            color: '#64748b', fontSize: '0.85rem', minHeight: TOUCH_MIN,
+                            display: 'flex', alignItems: 'center',
+                        }}>
+                            {nombreUnidad(resource, unitNo)} · <strong style={{ marginLeft: 4 }}>libre</strong>
+                        </div>
+                    );
+                }
+                const faltan = minutosHasta(carga.endsAt, now);
+                const lista = faltan <= 0;
+                const tendido = kindOf(resource) === 'tendido';
+                const prendas = carga.items.reduce((acc, i) => acc + (i.quantity || 1), 0);
+                return (
+                    <div key={key} style={{
+                        padding: 10, borderRadius: 10, minWidth: 240, flex: '0 1 300px',
+                        border: `2px solid ${lista ? '#16a34a' : '#2563eb'}`,
+                        background: lista ? '#f0fdf4' : '#eff6ff',
+                    }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                            <strong>{tendido ? resource.label : nombreUnidad(resource, unitNo)}</strong>
+                            <span style={{ fontWeight: 700, color: lista ? '#15803d' : '#1d4ed8' }}>
+                                {lista
+                                    ? (faltan === 0 ? 'Terminada' : `Terminada hace ${-faltan} min`)
+                                    : `${faltan} min · ${formatClock(new Date(carga.endsAt).getTime())}`}
+                            </span>
+                        </div>
+                        <div style={{ fontSize: '0.8rem', color: '#475569', marginTop: 2 }}>
+                            {carga.programName || `${carga.durationMin} min`} · {prendas} {prendas === 1 ? 'prenda' : 'prendas'}
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: 2 }}>
+                            {carga.items.slice(0, 4).map(i => `${splitOrderNum(i.orderNum).seq} ${i.clientAlias || i.clientName}`).join(' · ')}
+                            {carga.items.length > 4 ? ` · +${carga.items.length - 4}` : ''}
+                        </div>
+                        <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                            <button type="button" className="uk-button uk-button-primary"
+                                    style={{ flex: 1, minHeight: TOUCH_MIN, fontWeight: 600 }}
+                                    disabled={busyId === carga.id}
+                                    onClick={() => onFinish(carga, resource)}>
+                                {busyId === carga.id ? '...' : (tendido ? 'Recoger' : 'Sacar')}
+                            </button>
+                            <button type="button" className="uk-button uk-button-default"
+                                    style={{ minHeight: TOUCH_MIN, fontSize: '0.8rem' }}
+                                    title="Se cargó por error: las prendas vuelven a esperar"
+                                    disabled={busyId === carga.id}
+                                    onClick={() => onCancel(carga, resource)}>
+                                Anular
+                            </button>
+                        </div>
+                    </div>
+                );
+            })}
+        </div>
+    );
+}
+
+/* ── Tanda de trabajo en una fase de persona ── */
+function SessionBar({ session, busy, onAction }) {
+    const boton = { minHeight: 44, fontSize: '0.85rem', fontWeight: 600 };
+    if (!session) {
+        return (
+            <div style={{ padding: 8, borderBottom: '1px solid #e5e7eb' }}>
+                <button type="button" className="uk-button uk-button-default" disabled={busy}
+                        style={{ ...boton, width: '100%' }}
+                        title="Mide el tiempo de cada prenda: cuenta desde la anterior que marcaste"
+                        onClick={() => onAction('start')}>
+                    ▶ Empezar tanda
+                </button>
+            </div>
+        );
+    }
+    const pausada = Boolean(session.pausedAt);
+    return (
+        <div style={{
+            padding: 8, borderBottom: '1px solid #e5e7eb', display: 'flex', gap: 6, alignItems: 'center',
+            background: pausada ? '#fffbeb' : '#f0fdf4',
+        }}>
+            <span style={{ flex: 1, fontSize: '0.8rem', fontWeight: 600, color: pausada ? '#b45309' : '#15803d' }}>
+                {pausada ? 'Tanda en pausa' : `● Tanda desde las ${formatClock(new Date(session.startedAt).getTime())}`}
+            </span>
+            <button type="button" className="uk-button uk-button-default" style={boton} disabled={busy}
+                    onClick={() => onAction(pausada ? 'resume' : 'pause')}>
+                {pausada ? 'Seguir' : 'Pausa'}
+            </button>
+            <button type="button" className="uk-button uk-button-default" style={boton} disabled={busy}
+                    onClick={() => onAction('end')}>
+                Terminar
+            </button>
+        </div>
+    );
+}
+
+/* ── Cargar una máquina o tender ── */
+function LoadModal({ data, loads, onConfirm, onClose }) {
+    const { resource, candidates } = data;
+    const tendido = kindOf(resource) === 'tendido';
+    const ocupadas = loads.filter(l => l.resourceKey === resource.resourceKey).map(l => l.unitNo);
+    const unidades = Array.from({ length: resource.units || 1 }, (_, i) => i + 1);
+    const libres = tendido ? unidades : unidades.filter(u => !ocupadas.includes(u));
+    const programas = resource.programs || [];
+
+    const [unitNo, setUnitNo] = useState(libres[0] || null);
+    const [programId, setProgramId] = useState(programas[0]?.id || null);
+    const [minutos, setMinutos] = useState(resource.cycleDurationMin || 60);
+    const [selected, setSelected] = useState([]);
+    const [saving, setSaving] = useState(false);
+
+    const toggle = (stepId) => setSelected(prev => prev.includes(stepId)
+        ? prev.filter(id => id !== stepId) : [...prev, stepId]);
+
+    const enKg = (resource.capacityUnit || 'items') === 'kg';
+    const carga = candidates
+        .filter(c => selected.includes(c.stepId))
+        .reduce((acc, c) => acc + (enKg ? (Number(c.productWeight) || 0) * (c.quantity || 1) : (c.quantity || 1)), 0);
+    const pasada = resource.batchCapacity && carga > resource.batchCapacity;
+
+    const confirmar = async () => {
+        setSaving(true);
+        try {
+            await onConfirm({
+                resourceKey: resource.resourceKey,
+                unitNo: unitNo || 1,
+                programId: programas.length ? programId : null,
+                durationMin: programas.length ? null : Number(minutos) || null,
+                stepIds: selected,
+            });
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const chip = (activo) => ({
+        minHeight: 44, padding: '0 14px', borderRadius: 22, cursor: 'pointer', fontSize: '0.9rem',
+        border: `1px solid ${activo ? '#048ABF' : '#cbd5e1'}`,
+        background: activo ? '#e0f2fe' : '#fff', color: activo ? '#036a94' : '#334155',
+        fontWeight: activo ? 700 : 400,
+    });
+
+    return (
+        <div style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1100,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+        }} onClick={onClose}>
+            <div style={{
+                background: '#fff', borderRadius: 12, padding: 20, maxWidth: 520, width: '100%',
+                maxHeight: '90vh', display: 'flex', flexDirection: 'column',
+            }} onClick={e => e.stopPropagation()}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: 700, margin: '0 0 10px' }}>
+                    {tendido ? 'Tender' : `Cargar ${resource.label}`}
+                </h3>
+
+                {!tendido && unidades.length > 1 && (
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+                        {unidades.map(u => (
+                            <button key={u} type="button" style={chip(unitNo === u)}
+                                    disabled={!libres.includes(u)} onClick={() => setUnitNo(u)}>
+                                {resource.label} {u}{libres.includes(u) ? '' : ' · ocupada'}
+                            </button>
+                        ))}
+                    </div>
+                )}
+                {!tendido && libres.length === 0 && (
+                    <div className="uk-alert uk-alert-warning" style={{ margin: '0 0 10px' }}>
+                        Todas están ocupadas. Saca antes una carga.
+                    </div>
+                )}
+
+                {programas.length > 0 ? (
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+                        {programas.map(p => (
+                            <button key={p.id} type="button" style={chip(programId === p.id)} onClick={() => setProgramId(p.id)}>
+                                {p.name} · {p.durationMin} min
+                            </button>
+                        ))}
+                    </div>
+                ) : (
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, fontSize: '0.9rem' }}>
+                        {tendido ? 'Tiempo de secado aproximado' : 'Duración del programa'}
+                        <input type="number" min="1" className="uk-input" value={minutos}
+                               onChange={e => setMinutos(e.target.value)} style={{ width: 90, minHeight: 44 }}/>
+                        min
+                    </label>
+                )}
+
+                <div style={{ fontSize: '0.82rem', color: pasada ? '#b91c1c' : '#64748b', marginBottom: 6 }}>
+                    Marca las prendas que entran.
+                    {resource.batchCapacity ? ` Carga: ${Math.round(carga * 10) / 10} / ${resource.batchCapacity} ${enKg ? 'kg' : 'prendas'}` : ''}
+                    {pasada ? ' · se pasa de la capacidad' : ''}
+                </div>
+
+                <div style={{ overflowY: 'auto', flex: 1, marginBottom: 12 }}>
+                    {candidates.length === 0 && (
+                        <div style={{ padding: 16, textAlign: 'center', color: '#94a3b8' }}>No hay prendas esperando.</div>
+                    )}
+                    {candidates.map(item => {
+                        const { prefix, seq } = splitOrderNum(item.orderNum);
+                        return (
+                            <label key={item.stepId} style={{
+                                display: 'flex', alignItems: 'center', gap: 12, padding: '10px 4px',
+                                borderBottom: '1px solid #f1f5f9', cursor: 'pointer', minHeight: TOUCH_MIN,
+                            }}>
+                                <input type="checkbox" className="uk-checkbox" checked={selected.includes(item.stepId)}
+                                       onChange={() => toggle(item.stepId)} style={{ width: 22, height: 22, flexShrink: 0 }}/>
+                                <span style={{ minWidth: 0 }}>
+                                    <span style={{ fontWeight: 600, fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                        {item.color && COLOR_HEX[item.color] && (
+                                            <span style={{
+                                                width: 11, height: 11, borderRadius: '50%', flexShrink: 0,
+                                                background: COLOR_HEX[item.color], border: colorDotBorder(item.color),
+                                            }}></span>
+                                        )}
+                                        {item.quantity > 1 ? `${item.quantity}x ` : ''}{item.productName}
+                                    </span>
+                                    <span style={{ fontSize: '0.78rem', color: '#64748b', fontVariantNumeric: 'tabular-nums' }}>
+                                        <span style={{ color: '#94a3b8' }}>{prefix}</span>{seq} · {item.clientName}{item.clientAlias ? ` «${item.clientAlias}»` : ''}
+                                        {item.desde && <span style={{ color: '#b45309' }}> · {item.desde} se da por hecho</span>}
+                                    </span>
+                                </span>
+                            </label>
+                        );
+                    })}
+                </div>
+
+                <div style={{ display: 'flex', gap: 8 }}>
+                    <button className="uk-button uk-button-default" style={{ flex: 1, minHeight: TOUCH_MIN }} type="button" onClick={onClose}>
+                        Cancelar
+                    </button>
+                    <button className="uk-button uk-button-primary" style={{ flex: 2, minHeight: TOUCH_MIN, fontWeight: 600 }} type="button"
+                            disabled={saving || selected.length === 0 || (!tendido && !unitNo)}
+                            onClick={confirmar}>
+                        {saving ? '...' : `${tendido ? 'Tender' : 'Cargar'} (${selected.length})`}
                     </button>
                 </div>
             </div>

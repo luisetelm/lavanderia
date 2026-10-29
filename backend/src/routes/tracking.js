@@ -93,6 +93,70 @@ function getStepInfo(step) {
     return { stepKey: '?', stepLabel: '?', position: 0, displayOrder: 0, resourceKey: null, autoProgress: false, durationMin: 0 };
 }
 
+// Qué tiempo ocupa un recurso (sql/039)
+const TIPOS_RECURSO = ['persona', 'maquina', 'tendido'];
+
+// ── Tandas de trabajo (sql/039) ──
+// Con una tanda abierta en la fase, cada prenda que se marca como hecha cuenta
+// desde la marca anterior. Varias marcadas a la vez se reparten el hueco.
+// Un hueco mayor que este (una pausa sin pulsar «Pausa») no se mide.
+const TANDA_HUECO_MAX_MIN = 180;
+const fechaMadrid = (d) => new Date(d).toLocaleDateString('sv-SE', { timeZone: 'Europe/Madrid' });
+
+// Devuelve { sessionId, tramos: [{ startedAt, completedAt }] } para n prendas
+// de la fase, o null si no hay tanda abierta (o no se puede medir). Mueve la
+// marca de la tanda a "now".
+async function tiemposDeTanda(db, stepKey, n, now) {
+    const tanda = await db.workSession.findFirst({ where: { stepKey, endedAt: null } });
+    if (!tanda || tanda.pausedAt || n < 1) return null;
+    // Una tanda que se quedó abierta de otro día se cierra sin medir
+    if (fechaMadrid(tanda.lastMarkAt) !== fechaMadrid(now)) {
+        await db.workSession.update({ where: { id: tanda.id }, data: { endedAt: tanda.lastMarkAt } });
+        return null;
+    }
+    const desde = new Date(tanda.lastMarkAt).getTime();
+    const hueco = now.getTime() - desde;
+    await db.workSession.update({ where: { id: tanda.id }, data: { lastMarkAt: now } });
+    if (hueco < 0 || hueco > TANDA_HUECO_MAX_MIN * 60000) return null;
+    const tramo = hueco / n;
+    return {
+        sessionId: tanda.id,
+        tramos: Array.from({ length: n }, (_, i) => ({
+            startedAt: new Date(desde + tramo * i),
+            completedAt: i === n - 1 ? now : new Date(desde + tramo * (i + 1)),
+        })),
+    };
+}
+
+// Completa pasos aplicando las tandas abiertas. Los pasos deben venir con
+// itineraryStep/stepConfig. Un paso ya iniciado conserva su inicio.
+async function completarPasos(db, steps, userId, now) {
+    const porFase = {};
+    for (const s of steps) {
+        if (s.status === 'done') continue;
+        const key = getStepInfo(s).stepKey;
+        (porFase[key] = porFase[key] || []).push(s);
+    }
+    for (const [stepKey, grupo] of Object.entries(porFase)) {
+        const sinEmpezar = grupo.filter(s => s.status === 'pending' || !s.startedAt);
+        const tanda = await tiemposDeTanda(db, stepKey, sinEmpezar.length, now);
+        for (const s of grupo) {
+            const i = sinEmpezar.indexOf(s);
+            const medido = tanda && i >= 0 ? tanda.tramos[i] : null;
+            await db.orderLineStep.update({
+                where: { id: s.id },
+                data: {
+                    status: 'done',
+                    startedAt: medido ? medido.startedAt : (s.startedAt || now),
+                    completedAt: medido ? medido.completedAt : now,
+                    completedBy: userId || null,
+                    ...(medido ? { sessionId: tanda.sessionId } : {}),
+                },
+            });
+        }
+    }
+}
+
 export default async function (fastify, opts) {
     const prisma = fastify.prisma;
 
@@ -252,7 +316,7 @@ export default async function (fastify, opts) {
                             },
                             steps: {
                                 include: {
-                                    itineraryStep: { select: { stepKey: true, stepLabel: true, position: true, displayOrder: true } },
+                                    itineraryStep: { select: { stepKey: true, stepLabel: true, position: true, displayOrder: true, resourceKey: true } },
                                     stepConfig:    { select: { stepKey: true, stepLabel: true, position: true } },
                                 },
                                 orderBy: { id: 'asc' }
@@ -318,6 +382,21 @@ export default async function (fastify, opts) {
                 }
                 columns[key].items.push({
                     stepId: step.id,
+                    // Carga de máquina o tendido en la que está (sql/039)
+                    loadId: step.loadId || null,
+                    // Siguiente etapa de la prenda: al cargar una máquina se pueden
+                    // elegir prendas que aún están en la etapa anterior (pretratamiento)
+                    ...(() => {
+                        const resto = (step.orderLine.steps || [])
+                            .filter(s => s.status !== 'done' && s.id !== step.id)
+                            .map(s => ({ id: s.id, ...getStepInfo(s) }))
+                            .filter(s => s.position > info.position)
+                            .sort((a, b) => a.position - b.position);
+                        const sig = resto[0];
+                        return sig
+                            ? { nextStepId: sig.id, nextStepKey: sig.stepKey, nextStepLabel: sig.stepLabel, nextResourceKey: sig.resourceKey || null }
+                            : { nextStepId: null, nextStepKey: null, nextStepLabel: null, nextResourceKey: null };
+                    })(),
                     stepConfigId: step.stepConfigId,
                     itineraryStepId: step.itineraryStepId,
                     status: step.status,
@@ -394,8 +473,10 @@ export default async function (fastify, opts) {
                 });
             }
 
-            // Obtener recursos
-            const resources = await prisma.resourceConfig.findMany();
+            // Obtener recursos (con sus programas, sql/039)
+            const resources = await prisma.resourceConfig.findMany({
+                include: { programs: { where: { isActive: true }, orderBy: [{ position: 'asc' }, { durationMin: 'asc' }] } },
+            });
             const resourceMap = {};
             resources.forEach(r => { resourceMap[r.resourceKey] = r; });
 
@@ -495,7 +576,50 @@ export default async function (fastify, opts) {
                     };
                 });
 
-            return reply.send({ board, resources: resourceMap });
+            // Cargas de máquina y tendidos abiertos, y tandas abiertas (sql/039)
+            const loads = (await prisma.machineLoad.findMany({
+                where: { finishedAt: null },
+                orderBy: { startedAt: 'asc' },
+                include: {
+                    steps: {
+                        select: {
+                            id: true, status: true,
+                            orderLine: {
+                                select: {
+                                    id: true, quantity: true, customName: true, color: true,
+                                    product: { select: { name: true, weight: true } },
+                                    order: { select: { id: true, orderNum: true, fechaLimite: true, client: { select: { firstName: true, lastName: true, alias: true } } } },
+                                },
+                            },
+                        },
+                    },
+                },
+            })).map(l => ({
+                id: l.id,
+                resourceKey: l.resourceKey,
+                unitNo: l.unitNo,
+                programName: l.programName,
+                durationMin: l.durationMin,
+                startedAt: l.startedAt,
+                endsAt: new Date(new Date(l.startedAt).getTime() + l.durationMin * 60000),
+                items: l.steps.map(s => ({
+                    stepId: s.id,
+                    orderLineId: s.orderLine.id,
+                    orderId: s.orderLine.order.id,
+                    orderNum: s.orderLine.order.orderNum,
+                    fechaLimite: s.orderLine.order.fechaLimite,
+                    quantity: s.orderLine.quantity,
+                    productName: s.orderLine.customName || s.orderLine.product?.name || '?',
+                    productWeight: s.orderLine.product?.weight || 0,
+                    color: s.orderLine.color || null,
+                    clientName: s.orderLine.order.client
+                        ? `${s.orderLine.order.client.firstName} ${s.orderLine.order.client.lastName || ''}`.trim() : '—',
+                    clientAlias: s.orderLine.order.client?.alias || null,
+                })),
+            }));
+            const sessions = await prisma.workSession.findMany({ where: { endedAt: null } });
+
+            return reply.send({ board, resources: resourceMap, loads, sessions });
         } catch (err) {
             console.error('Error en GET /tracking/board:', err);
             return reply.status(500).send({ error: 'Error cargando tablero de tracking' });
@@ -617,13 +741,9 @@ export default async function (fastify, opts) {
                     startedAt: now,
                 };
             } else {
-                // complete
-                data = {
-                    status: 'done',
-                    startedAt: step.startedAt || now,
-                    completedAt: now,
-                    completedBy: userId || null,
-                };
+                // complete (con tanda abierta, el tiempo cuenta desde la marca anterior)
+                if (step.status !== 'done') await completarPasos(prisma, [step], userId, now);
+                data = {};
             }
 
             const updated = await prisma.orderLineStep.update({
@@ -690,6 +810,8 @@ export default async function (fastify, opts) {
                     startedAt: null,
                     completedAt: null,
                     completedBy: null,
+                    loadId: null,
+                    sessionId: null,
                 },
                 include: {
                     stepConfig: true,
@@ -767,7 +889,7 @@ export default async function (fastify, opts) {
                 }
                 await tx.orderLineStep.updateMany({
                     where: { id: { in: [step.id, ...later.map(s => s.id)] } },
-                    data: { status: 'pending', startedAt: null, completedAt: null, completedBy: null },
+                    data: { status: 'pending', startedAt: null, completedAt: null, completedBy: null, loadId: null, sessionId: null },
                 });
                 if (order.status === 'ready') {
                     await tx.order.update({ where: { id: order.id }, data: { status: 'pending' } });
@@ -850,6 +972,218 @@ export default async function (fastify, opts) {
         }
     });
 
+    // ═══ Cargas de máquina y tendidos (sql/039) ═══
+
+    // Prendas de la carga que han dejado la prenda o el pedido terminados: el
+    // taller imprime con esto sus etiquetas, igual que al completar en lote.
+    async function listosTrasCompletar(stepIds) {
+        const pasos = await prisma.orderLineStep.findMany({
+            where: { id: { in: stepIds } },
+            select: { orderLineId: true, orderLine: { select: { orderId: true } } },
+        });
+        const readyLineIds = [];
+        for (const lid of [...new Set(pasos.map(p => p.orderLineId))]) {
+            if (await isLineFullyDone(prisma, lid)) readyLineIds.push(lid);
+        }
+        const readyOrderIds = [];
+        for (const oid of [...new Set(pasos.map(p => p.orderLine.orderId))]) {
+            if (await autoMarkOrderReady(prisma, oid)) readyOrderIds.push(oid);
+        }
+        return { readyLineIds, readyOrderIds };
+    }
+
+    // ─── POST /api/tracking/loads ── Cargar una máquina (o tender) ──
+    // stepIds: el paso actual de cada prenda. Si es de esta máquina, entra en la
+    // carga; si es la etapa justo anterior (pretratamiento), se da por hecha
+    // (con la tanda, si hay) y entra la siguiente.
+    fastify.post('/loads', async (req, reply) => {
+        const userId = req.user?.userId || null;
+        const { resourceKey, unitNo = 1, programId = null, durationMin = null, stepIds = [] } = req.body || {};
+        if (!resourceKey || !Array.isArray(stepIds) || stepIds.length === 0) {
+            return reply.status(400).send({ error: 'Faltan la máquina o las prendas' });
+        }
+        try {
+            const recurso = await prisma.resourceConfig.findUnique({ where: { resourceKey } });
+            if (!recurso || !['maquina', 'tendido'].includes(recurso.resourceKind)) {
+                return reply.status(400).send({ error: 'Ese recurso no es una máquina ni un tendedero' });
+            }
+            const unidad = Math.max(1, Math.min(Number(unitNo) || 1, recurso.units || 1));
+            if (recurso.resourceKind === 'maquina') {
+                const ocupada = await prisma.machineLoad.findFirst({ where: { resourceKey, unitNo: unidad, finishedAt: null } });
+                if (ocupada) return reply.status(409).send({ error: `${recurso.label} ${unidad} ya tiene una carga dentro` });
+            }
+            let programa = null;
+            if (programId) {
+                programa = await prisma.resourceProgram.findFirst({ where: { id: Number(programId), resourceKey } });
+                if (!programa) return reply.status(400).send({ error: 'Programa no válido' });
+            }
+            const duracion = programa ? programa.durationMin : Math.max(1, Number(durationMin) || recurso.cycleDurationMin || 1);
+
+            const pasos = await prisma.orderLineStep.findMany({
+                where: { id: { in: stepIds.map(Number) } },
+                include: {
+                    stepConfig: true, itineraryStep: true,
+                    orderLine: { include: { steps: { include: { stepConfig: true, itineraryStep: true } } } },
+                },
+            });
+            const aCompletar = [];
+            const aCargar = [];
+            for (const paso of pasos) {
+                if (paso.status === 'done') continue;
+                const info = getStepInfo(paso);
+                if (info.resourceKey === resourceKey) {
+                    if (paso.loadId) continue; // ya está en una carga
+                    aCargar.push(paso.id);
+                    continue;
+                }
+                const siguiente = paso.orderLine.steps
+                    .filter(s => s.status !== 'done' && s.id !== paso.id && getStepInfo(s).position > info.position)
+                    .sort((a, b) => getStepInfo(a).position - getStepInfo(b).position)[0];
+                if (!siguiente || getStepInfo(siguiente).resourceKey !== resourceKey) {
+                    return reply.status(400).send({ error: `Una de las prendas no va ahora a ${recurso.label}` });
+                }
+                aCompletar.push(paso);
+                aCargar.push(siguiente.id);
+            }
+            if (aCargar.length === 0) return reply.status(400).send({ error: 'Ninguna de esas prendas se puede cargar' });
+
+            const now = new Date();
+            const carga = await prisma.$transaction(async (tx) => {
+                const nueva = await tx.machineLoad.create({
+                    data: {
+                        resourceKey, unitNo: unidad,
+                        programId: programa?.id || null, programName: programa?.name || null,
+                        durationMin: duracion, startedAt: now, startedBy: userId,
+                    },
+                });
+                await completarPasos(tx, aCompletar, userId, now);
+                await tx.orderLineStep.updateMany({
+                    where: { id: { in: aCargar } },
+                    data: { status: 'in_progress', startedAt: now, completedAt: null, completedBy: null, loadId: nueva.id },
+                });
+                return nueva;
+            });
+            return reply.status(201).send({ ...carga, stepIds: aCargar, completedStepIds: aCompletar.map(p => p.id) });
+        } catch (err) {
+            console.error('Error en POST /tracking/loads:', err);
+            return reply.status(500).send({ error: 'Error cargando la máquina' });
+        }
+    });
+
+    // ─── POST /api/tracking/loads/:id/finish ── Sacar de la máquina / recoger ──
+    fastify.post('/loads/:id/finish', async (req, reply) => {
+        const id = Number(req.params.id);
+        const userId = req.user?.userId || null;
+        try {
+            const carga = await prisma.machineLoad.findUnique({ where: { id } });
+            if (!carga) return reply.status(404).send({ error: 'Carga no encontrada' });
+            if (carga.finishedAt) return reply.status(400).send({ error: 'Esa carga ya se sacó' });
+            const now = new Date();
+            const pasos = await prisma.orderLineStep.findMany({ where: { loadId: id, status: { not: 'done' } }, select: { id: true } });
+            const ids = pasos.map(p => p.id);
+            await prisma.$transaction([
+                prisma.machineLoad.update({ where: { id }, data: { finishedAt: now, finishedBy: userId } }),
+                prisma.orderLineStep.updateMany({
+                    where: { id: { in: ids } },
+                    data: { status: 'done', completedAt: now, completedBy: userId },
+                }),
+            ]);
+            const listos = await listosTrasCompletar(ids);
+            return reply.send({ ok: true, stepIds: ids, ...listos });
+        } catch (err) {
+            console.error('Error en POST /tracking/loads/:id/finish:', err);
+            return reply.status(500).send({ error: 'Error sacando la carga' });
+        }
+    });
+
+    // ─── POST /api/tracking/loads/:id/reopen ── Deshacer «Sacar» ──
+    fastify.post('/loads/:id/reopen', async (req, reply) => {
+        const id = Number(req.params.id);
+        try {
+            const carga = await prisma.machineLoad.findUnique({
+                where: { id },
+                include: { steps: { select: { id: true, orderLine: { select: { orderId: true } } } } },
+            });
+            if (!carga || !carga.finishedAt) return reply.status(400).send({ error: 'Esa carga no está sacada' });
+            const orderIds = [...new Set(carga.steps.map(s => s.orderLine.orderId))];
+            await prisma.$transaction([
+                prisma.machineLoad.update({ where: { id }, data: { finishedAt: null, finishedBy: null } }),
+                prisma.orderLineStep.updateMany({
+                    where: { loadId: id },
+                    data: { status: 'in_progress', completedAt: null, completedBy: null },
+                }),
+                prisma.order.updateMany({ where: { id: { in: orderIds }, status: 'ready' }, data: { status: 'pending' } }),
+            ]);
+            return reply.send({ ok: true });
+        } catch (err) {
+            console.error('Error en POST /tracking/loads/:id/reopen:', err);
+            return reply.status(500).send({ error: 'Error deshaciendo' });
+        }
+    });
+
+    // ─── POST /api/tracking/loads/:id/cancel ── Anular una carga (se cargó por error) ──
+    // Las prendas vuelven a esperar la máquina. Un pretratamiento que se dio por
+    // hecho al cargar sigue hecho: el trabajo se hizo.
+    fastify.post('/loads/:id/cancel', async (req, reply) => {
+        const id = Number(req.params.id);
+        try {
+            const carga = await prisma.machineLoad.findUnique({ where: { id } });
+            if (!carga) return reply.status(404).send({ error: 'Carga no encontrada' });
+            if (carga.finishedAt) return reply.status(400).send({ error: 'Esa carga ya se sacó' });
+            await prisma.$transaction([
+                prisma.orderLineStep.updateMany({
+                    where: { loadId: id },
+                    data: { status: 'pending', startedAt: null, completedAt: null, completedBy: null, loadId: null },
+                }),
+                prisma.machineLoad.delete({ where: { id } }),
+            ]);
+            return reply.send({ ok: true });
+        } catch (err) {
+            console.error('Error en POST /tracking/loads/:id/cancel:', err);
+            return reply.status(500).send({ error: 'Error anulando la carga' });
+        }
+    });
+
+    // ═══ Tandas de trabajo de persona (sql/039) ═══
+
+    // ─── POST /api/tracking/sessions ── Empezar tanda en una fase ──
+    fastify.post('/sessions', async (req, reply) => {
+        const stepKey = String(req.body?.stepKey || '').trim();
+        if (!stepKey) return reply.status(400).send({ error: 'Falta la fase' });
+        try {
+            const abierta = await prisma.workSession.findFirst({ where: { stepKey, endedAt: null } });
+            if (abierta) return reply.send(abierta);
+            const now = new Date();
+            const tanda = await prisma.workSession.create({
+                data: { stepKey, startedAt: now, lastMarkAt: now, startedBy: req.user?.userId || null },
+            });
+            return reply.status(201).send(tanda);
+        } catch (err) {
+            console.error('Error en POST /tracking/sessions:', err);
+            return reply.status(500).send({ error: 'Error empezando la tanda' });
+        }
+    });
+
+    // ─── POST /api/tracking/sessions/:id/(pause|resume|end) ──
+    // Al seguir tras una pausa, la marca se pone en ese momento: la pausa no cuenta.
+    fastify.post('/sessions/:id/:accion', async (req, reply) => {
+        const id = Number(req.params.id);
+        const accion = req.params.accion;
+        if (!['pause', 'resume', 'end'].includes(accion)) return reply.status(404).send({ error: 'Acción no válida' });
+        try {
+            const tanda = await prisma.workSession.findUnique({ where: { id } });
+            if (!tanda || tanda.endedAt) return reply.status(400).send({ error: 'Esa tanda ya terminó' });
+            const now = new Date();
+            const data = accion === 'pause' ? { pausedAt: now }
+                : accion === 'resume' ? { pausedAt: null, lastMarkAt: now }
+                    : { endedAt: now };
+            return reply.send(await prisma.workSession.update({ where: { id }, data }));
+        } catch (err) {
+            console.error('Error en POST /tracking/sessions/:id:', err);
+            return reply.status(500).send({ error: 'Error en la tanda' });
+        }
+    });
+
     // ─── POST /api/tracking/steps/batch-complete ── Completar/Iniciar varios pasos a la vez ──
     fastify.post('/steps/batch-complete', async (req, reply) => {
         const { stepIds, action = 'complete' } = req.body;
@@ -868,10 +1202,20 @@ export default async function (fastify, opts) {
                 data = { status: 'done', completedAt: now, completedBy: userId || null };
             }
 
-            const updated = await prisma.orderLineStep.updateMany({
-                where: { id: { in: stepIds.map(Number) } },
-                data
-            });
+            let updated;
+            if (action === 'start') {
+                updated = await prisma.orderLineStep.updateMany({
+                    where: { id: { in: stepIds.map(Number) } },
+                    data
+                });
+            } else {
+                const pasos = await prisma.orderLineStep.findMany({
+                    where: { id: { in: stepIds.map(Number) } },
+                    include: { stepConfig: true, itineraryStep: true },
+                });
+                await completarPasos(prisma, pasos, userId, now);
+                updated = { count: pasos.length };
+            }
 
             // Auto-marcar pedidos como "ready" si se completaron
             const readyOrderIds = [];
@@ -1006,7 +1350,9 @@ export default async function (fastify, opts) {
     // ─── GET /api/tracking/resources ── Obtener recursos ──
     fastify.get('/resources', async (req, reply) => {
         try {
-            const resources = await prisma.resourceConfig.findMany();
+            const resources = await prisma.resourceConfig.findMany({
+                include: { programs: { where: { isActive: true }, orderBy: [{ position: 'asc' }, { durationMin: 'asc' }] } },
+            });
             return reply.send(resources);
         } catch (err) {
             return reply.status(500).send({ error: 'Error cargando recursos' });
@@ -1017,7 +1363,7 @@ export default async function (fastify, opts) {
     fastify.post('/resources', async (req, reply) => {
         if (req.user?.role !== 'admin') return reply.status(403).send({ error: 'Solo administradores' });
 
-        const { resourceKey, label, units, processingMode, batchCapacity, cycleDurationMin, capacityUnit } = req.body;
+        const { resourceKey, label, units, processingMode, batchCapacity, cycleDurationMin, capacityUnit, resourceKind } = req.body;
         if (!resourceKey || !label) return reply.status(400).send({ error: 'resourceKey y label son obligatorios' });
 
         try {
@@ -1030,6 +1376,8 @@ export default async function (fastify, opts) {
                     batchCapacity: batchCapacity || 1,
                     cycleDurationMin: cycleDurationMin || 0,
                     capacityUnit: capacityUnit || 'items',
+                    resourceKind: TIPOS_RECURSO.includes(resourceKind) ? resourceKind
+                        : (processingMode === 'batch' ? 'maquina' : 'persona'),
                 }
             });
             return reply.status(201).send(resource);
@@ -1044,10 +1392,11 @@ export default async function (fastify, opts) {
         if (req.user?.role !== 'admin') return reply.status(403).send({ error: 'Solo administradores' });
 
         const id = Number(req.params.id);
-        const { label, units, processingMode, batchCapacity, cycleDurationMin, capacityUnit } = req.body;
+        const { label, units, processingMode, batchCapacity, cycleDurationMin, capacityUnit, resourceKind } = req.body;
 
         try {
             const data = {};
+            if (resourceKind !== undefined && TIPOS_RECURSO.includes(resourceKind)) data.resourceKind = resourceKind;
             if (label !== undefined) data.label = label;
             if (units !== undefined) data.units = Number(units);
             if (processingMode !== undefined) data.processingMode = processingMode;
@@ -1062,6 +1411,43 @@ export default async function (fastify, opts) {
             return reply.send(resource);
         } catch (err) {
             return reply.status(500).send({ error: 'Error actualizando recurso' });
+        }
+    });
+
+    // ─── PUT /api/tracking/resources/:id/programs ── Programas de una máquina ──
+    // Recibe la lista completa [{ id?, name, durationMin }]. Los que faltan se
+    // desactivan (no se borran: las cargas antiguas los citan).
+    fastify.put('/resources/:id/programs', async (req, reply) => {
+        if (req.user?.role !== 'admin') return reply.status(403).send({ error: 'Solo administradores' });
+        const id = Number(req.params.id);
+        const lista = Array.isArray(req.body?.programs) ? req.body.programs : null;
+        if (!lista) return reply.status(400).send({ error: 'Falta la lista de programas' });
+        const limpios = lista
+            .map((p, i) => ({ id: Number(p.id) || null, name: String(p.name || '').trim().slice(0, 60), durationMin: Math.round(Number(p.durationMin)), position: i }))
+            .filter(p => p.name && p.durationMin > 0);
+        try {
+            const recurso = await prisma.resourceConfig.findUnique({ where: { id } });
+            if (!recurso) return reply.status(404).send({ error: 'Recurso no encontrado' });
+            const actuales = await prisma.resourceProgram.findMany({ where: { resourceKey: recurso.resourceKey } });
+            const idsActuales = new Set(actuales.map(p => p.id));
+            const seQuedan = new Set(limpios.filter(p => p.id && idsActuales.has(p.id)).map(p => p.id));
+            await prisma.$transaction([
+                prisma.resourceProgram.updateMany({
+                    where: { resourceKey: recurso.resourceKey, id: { notIn: [...seQuedan] } },
+                    data: { isActive: false },
+                }),
+                ...limpios.map(p => (p.id && seQuedan.has(p.id))
+                    ? prisma.resourceProgram.update({ where: { id: p.id }, data: { name: p.name, durationMin: p.durationMin, position: p.position, isActive: true } })
+                    : prisma.resourceProgram.create({ data: { resourceKey: recurso.resourceKey, name: p.name, durationMin: p.durationMin, position: p.position } })),
+            ]);
+            const programs = await prisma.resourceProgram.findMany({
+                where: { resourceKey: recurso.resourceKey, isActive: true },
+                orderBy: [{ position: 'asc' }, { durationMin: 'asc' }],
+            });
+            return reply.send(programs);
+        } catch (err) {
+            console.error('Error en PUT /tracking/resources/:id/programs:', err);
+            return reply.status(500).send({ error: 'Error guardando los programas' });
         }
     });
 

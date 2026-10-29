@@ -949,6 +949,33 @@ export function deleteTrackingResource(token, id) {
     return request(`/tracking/resources/${id}`, token, { method: 'DELETE' });
 }
 
+// Programas de una máquina: lista completa [{ id?, name, durationMin }] (sql/039)
+export function saveResourcePrograms(token, id, programs) {
+    return request(`/tracking/resources/${id}/programs`, token, {
+        method: 'PUT', body: JSON.stringify({ programs }),
+    });
+}
+
+// --- Cargas de máquina / tendido (sql/039) ---
+export function createLoad(token, data) {
+    return request('/tracking/loads', token, { method: 'POST', body: JSON.stringify(data) });
+}
+
+// accion: 'finish' (sacar/recoger), 'reopen' (deshacer sacar), 'cancel' (anular la carga)
+export function loadAction(token, loadId, accion) {
+    return request(`/tracking/loads/${loadId}/${accion}`, token, { method: 'POST', body: JSON.stringify({}) });
+}
+
+// --- Tandas de trabajo (sql/039) ---
+export function startSession(token, stepKey) {
+    return request('/tracking/sessions', token, { method: 'POST', body: JSON.stringify({ stepKey }) });
+}
+
+// accion: 'pause' | 'resume' | 'end'
+export function sessionAction(token, sessionId, accion) {
+    return request(`/tracking/sessions/${sessionId}/${accion}`, token, { method: 'POST', body: JSON.stringify({}) });
+}
+
 export function recalculateTracking(token, orderId) {
     return request(`/orders/${orderId}/recalculate-tracking`, token, {
         method: 'POST',

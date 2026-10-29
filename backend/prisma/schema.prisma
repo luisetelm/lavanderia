@@ -191,6 +191,11 @@ model OrderLineStep {
   itineraryStep   ItineraryStep?     @relation(fields: [itineraryStepId], references: [id])
   completedByUser User?              @relation("step_completed_by", fields: [completedBy], references: [id])
   repeats         OrderLineStepRepeat[]
+  // Carga de máquina o tendido en la que entró, y tanda en la que se marcó (sql/039)
+  loadId          Int?               @map("load_id")
+  sessionId       Int?               @map("session_id")
+  load            MachineLoad?       @relation(fields: [loadId], references: [id])
+  session         WorkSession?       @relation(fields: [sessionId], references: [id])
 
   @@unique([orderLineId, stepConfigId])
   @@index([orderLineId])
@@ -215,6 +220,54 @@ model OrderLineStepRepeat {
   @@map("order_line_step_repeat")
 }
 
+// Programa de una máquina (algodón 60º, delicado…) con su duración (sql/039).
+model ResourceProgram {
+  id          Int            @id @default(autoincrement())
+  resourceKey String         @map("resource_key") @db.VarChar(30)
+  name        String         @db.VarChar(60)
+  durationMin Int            @map("duration_min")
+  position    Int            @default(0)
+  isActive    Boolean        @default(true) @map("is_active")
+  resource    ResourceConfig @relation(fields: [resourceKey], references: [resourceKey], onDelete: Cascade, onUpdate: Cascade)
+  loads       MachineLoad[]
+
+  @@index([resourceKey])
+  @@map("resource_program")
+}
+
+// Carga de una máquina o tanda de tendido. Abierta mientras finishedAt es null (sql/039).
+model MachineLoad {
+  id          Int              @id @default(autoincrement())
+  resourceKey String           @map("resource_key") @db.VarChar(30)
+  unitNo      Int              @default(1) @map("unit_no")
+  programId   Int?             @map("program_id")
+  programName String?          @map("program_name") @db.VarChar(60)
+  durationMin Int              @map("duration_min")
+  startedAt   DateTime         @default(now()) @map("started_at") @db.Timestamptz(6)
+  finishedAt  DateTime?        @map("finished_at") @db.Timestamptz(6)
+  startedBy   Int?             @map("started_by")
+  finishedBy  Int?             @map("finished_by")
+  program     ResourceProgram? @relation(fields: [programId], references: [id])
+  steps       OrderLineStep[]
+
+  @@map("machine_load")
+}
+
+// Tanda de trabajo de persona en una fase: cada prenda marcada cuenta desde
+// lastMarkAt (sql/039). Una sola abierta por fase.
+model WorkSession {
+  id         Int             @id @default(autoincrement())
+  stepKey    String          @map("step_key") @db.VarChar(30)
+  startedAt  DateTime        @default(now()) @map("started_at") @db.Timestamptz(6)
+  lastMarkAt DateTime        @default(now()) @map("last_mark_at") @db.Timestamptz(6)
+  pausedAt   DateTime?       @map("paused_at") @db.Timestamptz(6)
+  endedAt    DateTime?       @map("ended_at") @db.Timestamptz(6)
+  startedBy  Int?            @map("started_by")
+  steps      OrderLineStep[]
+
+  @@map("work_session")
+}
+
 model ResourceConfig {
   id               Int    @id @default(autoincrement())
   resourceKey      String @unique @map("resource_key") @db.VarChar(30)
@@ -224,6 +277,9 @@ model ResourceConfig {
   batchCapacity    Int    @default(1) @map("batch_capacity")    // Para batch: capacidad por ciclo
   cycleDurationMin Int    @default(0) @map("cycle_duration_min") // batch: min/ciclo, individual: min/prenda
   capacityUnit     String @default("items") @map("capacity_unit") @db.VarChar(15) // 'kg' o 'items'
+  // Qué tiempo ocupa: 'persona' (tandas), 'maquina' (cargas con programa) o 'tendido' (sql/039)
+  resourceKind     String @default("persona") @map("resource_kind") @db.VarChar(10)
+  programs         ResourceProgram[]
 
   @@map("resource_config")
 }

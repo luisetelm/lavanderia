@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { confirmar } from '../utils/dialogo.js';
-import { fetchTrackingResources, createTrackingResource, updateTrackingResource, deleteTrackingResource } from '../api.js';
+import { fetchTrackingResources, createTrackingResource, updateTrackingResource, deleteTrackingResource, saveResourcePrograms } from '../api.js';
 import PageToolbar from '../components/PageToolbar.jsx';
 import UIkit from 'uikit';
 
@@ -8,6 +8,14 @@ const PROCESSING_MODES = [
     { value: 'batch', label: 'Lote (varias prendas a la vez)' },
     { value: 'individual', label: 'Individual (prenda a prenda)' },
 ];
+
+// Qué tiempo ocupa el recurso (sql/039): decide cómo se usa en la vista Taller
+const KINDS = [
+    { value: 'persona', label: 'Persona', help: 'Tandas: cada prenda cuenta desde la anterior' },
+    { value: 'maquina', label: 'Máquina', help: 'Cargas con programa y aviso al acabar' },
+    { value: 'tendido', label: 'Tendido', help: 'Como una máquina, sin ocupar a nadie' },
+];
+const kindLabel = (k) => KINDS.find(x => x.value === (k || 'persona'))?.label || 'Persona';
 
 const CAPACITY_UNITS = [
     { value: 'items', label: 'Prendas' },
@@ -21,6 +29,28 @@ export default function ResourceConfig({ token }) {
     const [form, setForm] = useState({});
     const [saving, setSaving] = useState(false);
     const [showNew, setShowNew] = useState(false);
+    // Programas de la máquina que se está editando: { resourceId, list: [{ id?, name, durationMin }] }
+    const [programs, setPrograms] = useState(null);
+    const [savingPrograms, setSavingPrograms] = useState(false);
+
+    const openPrograms = (r) => setPrograms({
+        resourceId: r.id,
+        list: (r.programs || []).map(p => ({ id: p.id, name: p.name, durationMin: p.durationMin })),
+    });
+
+    const savePrograms = async () => {
+        setSavingPrograms(true);
+        try {
+            await saveResourcePrograms(token, programs.resourceId, programs.list);
+            UIkit.notification({ message: 'Programas guardados', status: 'success', pos: 'top-right', timeout: 2000 });
+            setPrograms(null);
+            await load();
+        } catch (err) {
+            UIkit.notification({ message: err?.error || 'Error al guardar', status: 'danger', pos: 'top-right', timeout: 3000 });
+        } finally {
+            setSavingPrograms(false);
+        }
+    };
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -45,6 +75,7 @@ export default function ResourceConfig({ token }) {
             batchCapacity: r.batchCapacity,
             cycleDurationMin: r.cycleDurationMin,
             capacityUnit: r.capacityUnit || 'items',
+            resourceKind: r.resourceKind || 'persona',
         });
         setShowNew(false);
     };
@@ -59,6 +90,7 @@ export default function ResourceConfig({ token }) {
             batchCapacity: 1,
             cycleDurationMin: 15,
             capacityUnit: 'items',
+            resourceKind: 'persona',
         });
         setShowNew(true);
     };
@@ -140,6 +172,7 @@ export default function ResourceConfig({ token }) {
                         <thead>
                             <tr>
                                 <th>Nombre</th>
+                                <th>Tipo</th>
                                 <th>Clave</th>
                                 <th style={{ textAlign: 'center' }}>Unidades</th>
                                 <th>Modo</th>
@@ -155,6 +188,11 @@ export default function ResourceConfig({ token }) {
                                 <tr style={{ background: '#f0fdf4' }}>
                                     <td>
                                         <input className="uk-input uk-form-small" value={form.label} onChange={e => setForm(f => ({ ...f, label: e.target.value }))} placeholder="Lavadora XL" style={{ minWidth: 120 }} />
+                                    </td>
+                                    <td>
+                                        <select className="uk-select uk-form-small" value={form.resourceKind} onChange={e => setForm(f => ({ ...f, resourceKind: e.target.value }))}>
+                                            {KINDS.map(k => <option key={k.value} value={k.value} title={k.help}>{k.label}</option>)}
+                                        </select>
                                     </td>
                                     <td>
                                         <input className="uk-input uk-form-small" value={form.resourceKey} onChange={e => setForm(f => ({ ...f, resourceKey: e.target.value.replace(/\s/g, '_').toLowerCase() }))} placeholder="washer_xl" style={{ minWidth: 90 }} />
@@ -191,13 +229,22 @@ export default function ResourceConfig({ token }) {
                                 </tr>
                             )}
 
-                            {resources.map(r => (
-                                <tr key={r.id} style={editingId === r.id ? { background: '#eff6ff' } : {}}>
+                            {resources.map(r => (<React.Fragment key={r.id}>
+                                <tr style={editingId === r.id ? { background: '#eff6ff' } : {}}>
                                     <td>
                                         {editingId === r.id ? (
                                             <input className="uk-input uk-form-small" value={form.label} onChange={e => setForm(f => ({ ...f, label: e.target.value }))} style={{ minWidth: 120 }} />
                                         ) : (
                                             <strong>{r.label}</strong>
+                                        )}
+                                    </td>
+                                    <td>
+                                        {editingId === r.id ? (
+                                            <select className="uk-select uk-form-small" value={form.resourceKind} onChange={e => setForm(f => ({ ...f, resourceKind: e.target.value }))}>
+                                                {KINDS.map(k => <option key={k.value} value={k.value} title={k.help}>{k.label}</option>)}
+                                            </select>
+                                        ) : (
+                                            <span style={{ fontSize: '0.8rem' }}>{kindLabel(r.resourceKind)}</span>
                                         )}
                                     </td>
                                     <td>
@@ -262,6 +309,11 @@ export default function ResourceConfig({ token }) {
                                             </div>
                                         ) : (
                                             <div style={{ display: 'flex', gap: 4 }}>
+                                                {(r.resourceKind === 'maquina' || r.resourceKind === 'tendido') && (
+                                                    <button className="uk-button uk-button-default uk-button-small" onClick={() => openPrograms(r)} style={{ padding: '2px 8px', textTransform: 'none' }} title="Programas y su duración">
+                                                        Programas ({(r.programs || []).length})
+                                                    </button>
+                                                )}
                                                 <button className="uk-button uk-button-default uk-button-small" onClick={() => startEdit(r)} style={{ padding: '2px 8px' }} title="Editar">
                                                     <span uk-icon="icon: pencil; ratio: 0.75"></span>
                                                 </button>
@@ -272,7 +324,42 @@ export default function ResourceConfig({ token }) {
                                         )}
                                     </td>
                                 </tr>
-                            ))}
+                                {programs?.resourceId === r.id && (
+                                    <tr style={{ background: 'var(--tyb-surface-muted)' }}>
+                                        <td colSpan={9}>
+                                            <div style={{ fontSize: '0.8rem', color: 'var(--tyb-text-muted)', marginBottom: 6 }}>
+                                                Programas de {r.label}. En el taller se elige uno al cargar y la máquina avisa al acabar.
+                                                Sin programas, se pregunta la duración.
+                                            </div>
+                                            {programs.list.map((p, i) => (
+                                                <div key={i} style={{ display: 'flex', gap: 6, marginBottom: 4, alignItems: 'center' }}>
+                                                    <input className="uk-input uk-form-small" value={p.name} placeholder="Algodón 60º" style={{ maxWidth: 220 }}
+                                                           onChange={e => setPrograms(pr => ({ ...pr, list: pr.list.map((x, j) => j === i ? { ...x, name: e.target.value } : x) }))}/>
+                                                    <input className="uk-input uk-form-small" type="number" min="1" value={p.durationMin} style={{ width: 70 }}
+                                                           onChange={e => setPrograms(pr => ({ ...pr, list: pr.list.map((x, j) => j === i ? { ...x, durationMin: e.target.value } : x) }))}/>
+                                                    <span>min</span>
+                                                    <button className="uk-button uk-button-default uk-button-small" style={{ padding: '2px 8px' }} title="Quitar"
+                                                            onClick={() => setPrograms(pr => ({ ...pr, list: pr.list.filter((_, j) => j !== i) }))}>
+                                                        <span uk-icon="icon: close; ratio: 0.7"></span>
+                                                    </button>
+                                                </div>
+                                            ))}
+                                            <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                                                <button className="uk-button uk-button-default uk-button-small" style={{ textTransform: 'none' }}
+                                                        onClick={() => setPrograms(pr => ({ ...pr, list: [...pr.list, { name: '', durationMin: r.cycleDurationMin || 60 }] }))}>
+                                                    + Añadir programa
+                                                </button>
+                                                <button className="uk-button uk-button-primary uk-button-small" disabled={savingPrograms} onClick={savePrograms}>
+                                                    {savingPrograms ? 'Guardando…' : 'Guardar programas'}
+                                                </button>
+                                                <button className="uk-button uk-button-default uk-button-small" onClick={() => setPrograms(null)}>
+                                                    Cancelar
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                )}
+                            </React.Fragment>))}
                         </tbody>
                     </table>
 
@@ -292,6 +379,7 @@ export default function ResourceConfig({ token }) {
                     <li><strong>Modo Individual</strong> (ej. planchado): prenda a prenda. Tiempo = <code>cantidad × tiempo/prenda ÷ unidades (personas)</code></li>
                     <li><strong>Unid. medida</strong>: para lotes, indica si la capacidad se mide en <em>prendas</em> o <em>kg</em>. Si es kg, se usa el peso del producto × cantidad.</li>
                     <li><strong>Unidades</strong>: cuántas máquinas o personas hay disponibles (divide el tiempo total).</li>
+                    <li><strong>Tipo</strong>: <em>Persona</em> (pretratar, planchar: en el taller se mide con tandas), <em>Máquina</em> (lavadora, secadora: se carga con un programa y avisa al acabar) o <em>Tendido</em> (como una máquina, sin ocupar a nadie; varias tandas a la vez).</li>
                 </ul>
             </div>
         </div>
