@@ -16,7 +16,8 @@ import { formatEUR } from '../utils/format.js';
 export default function PaymentModal({ total, onClose, onPayCard, onPayCash, onPayMixed, onStripeLink }) {
     const totalNum = Number(total || 0);
 
-    const [method, setMethod] = useState(null);   // null | 'card' | 'cash' | 'mixed' | 'stripe'
+    // 'mixed' pide los importes; 'mixed-card' es el paso de pasar la tarjeta, y sólo ahí se registra el cobro
+    const [method, setMethod] = useState(null);   // null | 'card' | 'cash' | 'mixed' | 'mixed-card' | 'stripe'
     const [received, setReceived] = useState('');
     const [mixCash, setMixCash] = useState('');         // parte en efectivo del cobro mixto
     const [mixReceived, setMixReceived] = useState(''); // efectivo entregado (opcional, para la vuelta)
@@ -148,15 +149,15 @@ export default function PaymentModal({ total, onClose, onPayCard, onPayCash, onP
                 ) : (
                     /* ── Paso 2: confirmar según método ── */
                     <div>
-                        <button type="button" className="uk-button uk-button-link" onClick={() => { setMethod(null); setError(''); }}
+                        <button type="button" className="uk-button uk-button-link" onClick={() => { setMethod(method === 'mixed-card' ? 'mixed' : null); setError(''); }}
                                 style={{ fontSize: '0.8rem', color: '#64748b', padding: 0, marginBottom: 12 }}>
-                            ← Cambiar método
+                            {method === 'mixed-card' ? '← Cambiar importes' : '← Cambiar método'}
                         </button>
 
                         {method === 'card' && (
                             <div>
                                 <p style={{ fontSize: '0.9rem', margin: '0 0 16px' }}>
-                                    Vas a cobrar <b>{formatEUR(totalNum)}</b> con tarjeta. Realiza la operación en el TPV y confirma.
+                                    Vas a cobrar <b>{formatEUR(totalNum)}</b> con tarjeta. Pásalo por el TPV y confirma sólo cuando el datáfono lo haya aprobado.
                                 </p>
                                 <button className="uk-button uk-button-primary uk-width-1-1" disabled={busy} onClick={confirmCard}>
                                     {busy ? 'Procesando…' : 'Confirmar pago con tarjeta'}
@@ -236,14 +237,35 @@ export default function PaymentModal({ total, onClose, onPayCard, onPayCash, onP
                                     {!mixShort && <span style={{ fontWeight: 700, color: '#166534' }}>{formatEUR(mixChange)}</span>}
                                 </div>
 
-                                {mixReady && (
-                                    <p style={{ fontSize: '0.85rem', margin: '0 0 12px' }}>
-                                        Cobra <b>{formatEUR(mixCardNum)}</b> en el TPV y guarda <b>{formatEUR(mixCashNum)}</b> en caja antes de confirmar.
-                                    </p>
-                                )}
                                 <button className="uk-button uk-button-primary uk-width-1-1"
-                                        disabled={busy || !mixReady} onClick={confirmMixed}>
-                                    {busy ? 'Procesando…' : 'Confirmar cobro mixto'}
+                                        disabled={busy || !mixReady} onClick={() => { setMethod('mixed-card'); setError(''); }}>
+                                    Efectivo recogido · siguiente: tarjeta
+                                </button>
+                            </div>
+                        )}
+
+                        {/* Segundo paso del cobro mixto: no se registra nada hasta que el TPV aprueba */}
+                        {method === 'mixed-card' && (
+                            <div>
+                                <div style={{ background: 'var(--tyb-warning-bg, #fef3c7)', border: '1px solid #f59e0b', borderRadius: 8, padding: '12px 14px', marginBottom: 14 }}>
+                                    <div style={{ fontSize: 13, color: '#92400e' }}>Pasa ahora por el TPV</div>
+                                    <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#92400e' }}>{formatEUR(mixCardNum)}</div>
+                                    <div style={{ fontSize: 12, color: '#92400e', marginTop: 4 }}>
+                                        Todavía no se ha apuntado nada. Confirma sólo cuando el datáfono haya aprobado el pago.
+                                    </div>
+                                </div>
+                                <p style={{ fontSize: 13, color: '#64748b', margin: '0 0 12px' }}>
+                                    Efectivo ya recogido: <b>{formatEUR(mixCashNum)}</b>
+                                    {mixChange > 0 && <> · vuelta <b>{formatEUR(mixChange)}</b></>}
+                                </p>
+                                <button className="uk-button uk-button-primary uk-width-1-1"
+                                        disabled={busy} onClick={confirmMixed}>
+                                    {busy ? 'Procesando…' : `El TPV ha aprobado ${formatEUR(mixCardNum)} · confirmar`}
+                                </button>
+                                <button type="button" className="uk-button uk-button-default uk-width-1-1"
+                                        style={{ marginTop: 8 }} disabled={busy}
+                                        onClick={() => { setReceived(''); setMethod('cash'); setError(''); }}>
+                                    La tarjeta no ha pasado: cobrar todo en efectivo
                                 </button>
                             </div>
                         )}

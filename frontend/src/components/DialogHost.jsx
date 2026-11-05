@@ -48,7 +48,8 @@ export default function DialogHost() {
             onClick={(e) => { if (e.target === e.currentTarget) cerrar(false); }}
             style={{
                 position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1010,
+                // Por encima de los modales de UIkit (1010), que también abren confirmaciones
+                display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100,
             }}
         >
             <div style={{
